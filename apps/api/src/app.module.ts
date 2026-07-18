@@ -5,6 +5,7 @@ import { AuthModule } from "./auth/auth.module";
 import { loadConfig } from "./config";
 import { DbModule } from "./db/db.module";
 import { HealthController } from "./health.controller";
+import { HierarchyModule } from "./hierarchy/hierarchy.module";
 import { WorkspacesModule } from "./workspaces/workspaces.module";
 
 /**
@@ -23,6 +24,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     AuditModule,
     AuthModule,
     WorkspacesModule,
+    HierarchyModule,
   ],
   controllers: [HealthController],
 })

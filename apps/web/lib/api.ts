@@ -49,6 +49,52 @@ export interface Member {
 }
 
 /* ------------------------------------------------------------------ *
+ * Hierarchy (Module 1): Spaces → Folders → Lists.
+ * ------------------------------------------------------------------ */
+export interface Space {
+  id: string;
+  name: string;
+  color: string;
+  icon: string | null;
+  isPrivate: boolean;
+  archived: boolean;
+  sortOrder: number;
+}
+
+export interface Folder {
+  id: string;
+  spaceId: string;
+  name: string;
+  archived: boolean;
+  sortOrder: number;
+}
+
+export interface List {
+  id: string;
+  spaceId: string;
+  folderId: string | null;
+  name: string;
+  color: string | null;
+  archived: boolean;
+  sortOrder: number;
+}
+
+/** A folder with its nested lists (as returned inside the tree). */
+export interface FolderWithLists extends Folder {
+  lists: List[];
+}
+
+/** A space with its folders (each carrying lists) and folderless lists. */
+export interface SpaceTree extends Space {
+  folders: FolderWithLists[];
+  lists: List[];
+}
+
+export interface HierarchyTree {
+  spaces: SpaceTree[];
+}
+
+/* ------------------------------------------------------------------ *
  * Storage that never throws. Private-browsing modes can block
  * localStorage entirely — degrade to an in-memory map rather than crash.
  * ------------------------------------------------------------------ */
@@ -248,6 +294,114 @@ export const workspacesApi = {
     api<Member>("/workspaces/current/members", {
       method: "POST",
       body,
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Hierarchy endpoints — all workspace-scoped (access token).
+ * ------------------------------------------------------------------ */
+export const hierarchyApi = {
+  /** The whole tree in one shot — spaces → folders → lists. */
+  getTree: () => api<HierarchyTree>("/hierarchy", { auth: "access" }),
+
+  listSpaces: () => api<{ spaces: Space[] }>("/spaces", { auth: "access" }),
+  createSpace: (body: {
+    name: string;
+    color?: string;
+    icon?: string | null;
+    isPrivate?: boolean;
+  }) => api<{ space: Space }>("/spaces", { method: "POST", body, auth: "access" }),
+  updateSpace: (
+    id: string,
+    body: {
+      name?: string;
+      color?: string;
+      icon?: string | null;
+      isPrivate?: boolean;
+      archived?: boolean;
+    },
+  ) =>
+    api<{ space: Space }>(`/spaces/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  deleteSpace: (id: string) =>
+    api<void>(`/spaces/${id}`, { method: "DELETE", auth: "access" }),
+  getSpace: (id: string) =>
+    api<{ space: Space; folders: FolderWithLists[]; lists: List[] }>(
+      `/spaces/${id}`,
+      { auth: "access" },
+    ),
+
+  createFolder: (spaceId: string, body: { name: string }) =>
+    api<{ folder: Folder }>(`/spaces/${spaceId}/folders`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateFolder: (id: string, body: { name?: string; archived?: boolean }) =>
+    api<{ folder: Folder }>(`/folders/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  deleteFolder: (id: string) =>
+    api<void>(`/folders/${id}`, { method: "DELETE", auth: "access" }),
+
+  createList: (
+    spaceId: string,
+    body: { name: string; folderId?: string | null; color?: string | null },
+  ) =>
+    api<{ list: List }>(`/spaces/${spaceId}/lists`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateList: (
+    id: string,
+    body: {
+      name?: string;
+      color?: string | null;
+      archived?: boolean;
+      folderId?: string | null;
+    },
+  ) =>
+    api<{ list: List }>(`/lists/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  deleteList: (id: string) =>
+    api<void>(`/lists/${id}`, { method: "DELETE", auth: "access" }),
+  getList: (id: string) =>
+    api<{
+      list: List;
+      space: { id: string; name: string; color: string; icon: string | null };
+      folder: { id: string; name: string } | null;
+    }>(`/lists/${id}`, { auth: "access" }),
+
+  reorderSpaces: (ids: string[]) =>
+    api<{ ok: true }>("/spaces/reorder", {
+      method: "POST",
+      body: { ids },
+      auth: "access",
+    }),
+  reorderFolders: (spaceId: string, ids: string[]) =>
+    api<{ ok: true }>("/folders/reorder", {
+      method: "POST",
+      body: { spaceId, ids },
+      auth: "access",
+    }),
+  reorderLists: (
+    spaceId: string,
+    folderId: string | null,
+    ids: string[],
+  ) =>
+    api<{ ok: true }>("/lists/reorder", {
+      method: "POST",
+      body: { spaceId, folderId, ids },
       auth: "access",
     }),
 };

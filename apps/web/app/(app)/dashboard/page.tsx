@@ -21,7 +21,6 @@ interface ModuleTile {
 }
 
 const MODULES: ModuleTile[] = [
-  { label: "Spaces", desc: "Organize teams and projects", icon: "spaces", color: "#7B68EE" },
   { label: "Tasks", desc: "Lists, boards & calendars", icon: "tasks", color: "#5B5FEF" },
   { label: "Docs", desc: "Wikis and collaborative docs", icon: "docs", color: "#00B8D9" },
   { label: "Goals", desc: "Targets that roll up", icon: "goals", color: "#36B37E" },
@@ -31,7 +30,7 @@ const MODULES: ModuleTile[] = [
 const CHECKLIST = [
   { title: "Create your workspace", sub: "You're in — nice work.", done: true },
   { title: "Invite your teammates", sub: "Work is better together.", done: false, href: "/members", cta: "Invite" },
-  { title: "Set up your first Space", sub: "Coming soon in the next module.", done: false, soon: true },
+  { title: "Set up your first Space", sub: "Organize teams, folders and lists.", done: false, href: "/everything", cta: "Open" },
   { title: "Create your first task", sub: "Coming soon in the next module.", done: false, soon: true },
 ];
 
@@ -160,6 +159,16 @@ export default function DashboardPage() {
         <span className="muted">More modules are on the way</span>
       </div>
       <div className="module-grid">
+        <Link href="/everything" className="module-tile module-tile-live">
+          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
+            Ready
+          </span>
+          <span className="module-ic" style={{ background: "#7B68EE" }}>
+            {Icons.spaces}
+          </span>
+          <h3>Spaces</h3>
+          <p>Organize teams and projects — create your first space.</p>
+        </Link>
         {MODULES.map((m) => (
           <div className="module-tile" key={m.label}>
             <span className="badge badge-soon">Coming soon</span>

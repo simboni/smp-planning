@@ -16,7 +16,7 @@ const DESTINATIONS: Destination[] = [
   { label: "Home", href: "/dashboard", icon: "home", keywords: "dashboard start" },
   { label: "Members", href: "/members", icon: "members", keywords: "people team invite" },
   { label: "Settings", href: "/settings", icon: "settings", keywords: "workspace preferences" },
-  { label: "Spaces", href: "#", icon: "spaces", soon: true },
+  { label: "Everything", href: "/everything", icon: "spaces", keywords: "spaces folders lists overview" },
   { label: "Tasks", href: "#", icon: "tasks", soon: true },
   { label: "Docs", href: "#", icon: "docs", soon: true },
   { label: "Goals", href: "#", icon: "goals", soon: true },

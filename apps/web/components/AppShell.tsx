@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
   authApi,
   clearTokens,
@@ -15,6 +15,7 @@ import {
   type WorkspaceSummary,
 } from "@/lib/api";
 import { CommandPalette } from "@/components/CommandPalette";
+import { HierarchyTree } from "@/components/HierarchyTree";
 import { Icons, StackMark, type IconKey } from "@/components/icons";
 import { colorFor, initials } from "@/lib/format";
 
@@ -31,7 +32,6 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 const COMING_SOON: NavItem[] = [
-  { href: "#", label: "Spaces", icon: "spaces" },
   { href: "#", label: "Tasks", icon: "tasks" },
   { href: "#", label: "Docs", icon: "docs" },
   { href: "#", label: "Goals", icon: "goals" },
@@ -140,6 +140,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </div>
+
+          <Suspense
+            fallback={
+              <div className="nav-section tree-section">
+                <div className="nav-title">Spaces</div>
+              </div>
+            }
+          >
+            <HierarchyTree />
+          </Suspense>
 
           <div className="nav-section">
             <div className="nav-title">Coming soon</div>

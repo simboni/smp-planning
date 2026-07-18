@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
+import { HierarchyProvider } from "@/components/HierarchyProvider";
 import { StackMark } from "@/components/icons";
 
 export default function AppLayout({
@@ -33,5 +34,9 @@ export default function AppLayout({
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <HierarchyProvider>
+      <AppShell>{children}</AppShell>
+    </HierarchyProvider>
+  );
 }
