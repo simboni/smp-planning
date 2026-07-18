@@ -1,0 +1,249 @@
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import * as argon2 from "argon2";
+import { randomBytes } from "node:crypto";
+import type { Role, WorkspaceSummary } from "@stackup/shared";
+import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
+import { DbService } from "../db/db.service";
+
+export interface WorkspaceMember {
+  id: string;
+  email: string;
+  fullName: string;
+  avatarUrl: string | null;
+  role: Role;
+  status: string;
+}
+
+@Injectable()
+export class WorkspacesService {
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: AuditService,
+    private readonly auth: AuthService,
+  ) {}
+
+  /** The caller's active workspaces (workspace picker). */
+  async list(userId: string): Promise<WorkspaceSummary[]> {
+    return this.auth.listWorkspaces(userId);
+  }
+
+  /**
+   * Create a workspace with the caller as owner. Provisioning goes through
+   * the create_workspace_with_owner SECURITY DEFINER function — the only
+   * write path to `workspaces` for the app role — which inserts the
+   * workspace and the owner membership atomically. We then write an audit
+   * entry inside the new workspace's RLS context.
+   */
+  async create(userId: string, name: string): Promise<WorkspaceSummary> {
+    const workspaceId = await this.provisionWithUniqueSlug(name, userId);
+    const summary = await this.db.withUser(userId, async (client) => {
+      const res = await client.query(
+        `SELECT w.id, w.name, w.slug, w.color, w.avatar_url, m.role
+         FROM workspaces w
+         JOIN memberships m ON m.workspace_id = w.id AND m.user_id = $2
+         WHERE w.id = $1`,
+        [workspaceId, userId],
+      );
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        color: row.color,
+        avatarUrl: row.avatar_url,
+        role: row.role as Role,
+      };
+    });
+    await this.db.withWorkspace(workspaceId, userId, (client) =>
+      this.audit.record(client, {
+        workspaceId,
+        actorUserId: userId,
+        action: "workspace.created",
+        entity: "workspace",
+        entityId: workspaceId,
+        data: { name: summary.name, slug: summary.slug },
+      }),
+    );
+    return summary;
+  }
+
+  /** Mint a workspace-scoped access token (membership verified in AuthService). */
+  async token(
+    userId: string,
+    workspaceId: string,
+  ): Promise<{ accessToken: string; workspace: WorkspaceSummary }> {
+    return this.auth.issueAccessToken(userId, workspaceId);
+  }
+
+  /** The active workspace behind an access token, plus the caller's role. */
+  async current(
+    workspaceId: string,
+    userId: string,
+  ): Promise<{ workspace: WorkspaceSummary; role: Role }> {
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const res = await client.query(
+        `SELECT w.id, w.name, w.slug, w.color, w.avatar_url, m.role
+         FROM workspaces w
+         JOIN memberships m ON m.workspace_id = w.id AND m.user_id = $2
+         WHERE w.id = $1`,
+        [workspaceId, userId],
+      );
+      const row = res.rows[0];
+      if (!row) throw new NotFoundException();
+      const workspace: WorkspaceSummary = {
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        color: row.color,
+        avatarUrl: row.avatar_url,
+        role: row.role,
+      };
+      return { workspace, role: row.role as Role };
+    });
+  }
+
+  /**
+   * Members of the current workspace. Runs under withWorkspace, so RLS
+   * confines the memberships join to this workspace — the WHERE clause is
+   * intent, the policy is enforcement.
+   */
+  async members(
+    workspaceId: string,
+    userId: string,
+  ): Promise<WorkspaceMember[]> {
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const res = await client.query(
+        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status
+         FROM memberships m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.workspace_id = $1
+         ORDER BY m.created_at`,
+        [workspaceId],
+      );
+      return res.rows.map((r) => ({
+        id: r.id,
+        email: r.email,
+        fullName: r.full_name,
+        avatarUrl: r.avatar_url,
+        role: r.role as Role,
+        status: r.status,
+      }));
+    });
+  }
+
+  /**
+   * Invite a member by email. If an identity with that email exists, add an
+   * active membership (409 if already a member). Otherwise create a shell
+   * user (active, random unusable password, name from the email local-part)
+   * then add the membership — the invitee sets a real password later. The
+   * user row is written outside the workspace transaction (global table);
+   * the membership + audit entry are written inside it under RLS.
+   */
+  async addMember(
+    workspaceId: string,
+    actorUserId: string,
+    email: string,
+    role: Role,
+  ): Promise<WorkspaceMember> {
+    const targetUserId = await this.resolveOrCreateUser(email);
+    return this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
+      const insert = await client.query(
+        `INSERT INTO memberships (workspace_id, user_id, role)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (workspace_id, user_id) DO NOTHING
+         RETURNING id`,
+        [workspaceId, targetUserId, role],
+      );
+      if (!insert.rows[0]) {
+        throw new ConflictException("Already a member of this workspace");
+      }
+      const res = await client.query(
+        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status
+         FROM memberships m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.workspace_id = $1 AND m.user_id = $2`,
+        [workspaceId, targetUserId],
+      );
+      const r = res.rows[0];
+      const member: WorkspaceMember = {
+        id: r.id,
+        email: r.email,
+        fullName: r.full_name,
+        avatarUrl: r.avatar_url,
+        role: r.role,
+        status: r.status,
+      };
+      await this.audit.record(client, {
+        workspaceId,
+        actorUserId,
+        action: "member.invited",
+        entity: "membership",
+        entityId: insert.rows[0].id,
+        data: { email, role },
+      });
+      return member;
+    });
+  }
+
+  /** Look up a user by email (case-insensitive) or create a shell account. */
+  private async resolveOrCreateUser(email: string): Promise<string> {
+    const found = await this.db.query(
+      "SELECT id FROM users WHERE lower(email) = lower($1)",
+      [email.trim()],
+    );
+    if (found.rows[0]) return found.rows[0].id as string;
+    // Shell account: a random hash no one can log in with until the invitee
+    // resets it. Name defaults to the email local-part.
+    const passwordHash = await argon2.hash(randomBytes(32).toString("base64url"), {
+      type: argon2.argon2id,
+    });
+    const localPart = email.split("@")[0] || email;
+    const res = await this.db.query(
+      `INSERT INTO users (email, password_hash, full_name)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [email.trim(), passwordHash, localPart],
+    );
+    return res.rows[0].id as string;
+  }
+
+  /**
+   * Provision with a URL-safe slug derived from the name plus a short random
+   * suffix for uniqueness. The suffix makes collisions vanishingly rare, but
+   * we still retry a few times on the slug unique-violation to be safe.
+   */
+  private async provisionWithUniqueSlug(
+    name: string,
+    userId: string,
+  ): Promise<string> {
+    const base = slugify(name);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const slug = `${base}-${randomBytes(3).toString("hex")}`;
+      try {
+        const res = await this.db.query(
+          "SELECT create_workspace_with_owner($1, $2, $3) AS id",
+          [name.trim(), slug, userId],
+        );
+        return res.rows[0].id as string;
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === "23505") continue;
+        throw err;
+      }
+    }
+    throw new ConflictException("Could not allocate a unique workspace slug");
+  }
+}
+
+/** Lowercase, strip to [a-z0-9-], collapse dashes; fallback for empty. */
+function slugify(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+  return slug || "workspace";
+}

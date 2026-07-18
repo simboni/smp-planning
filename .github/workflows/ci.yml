@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bootstrap DB roles and databases
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f db/bootstrap.sql
+
+      - name: Run migrations (dev + test)
+        run: |
+          ADMIN_DB_URL=postgres://stackup_migrator:migrator_dev_pw@localhost:5432/stackup_dev pnpm db:migrate
+          ADMIN_DB_URL=postgres://stackup_migrator:migrator_dev_pw@localhost:5432/stackup_test pnpm db:migrate
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test (includes cross-workspace RLS isolation gate)
+        env:
+          APP_DB_URL: postgres://stackup_app:app_dev_pw@localhost:5432/stackup_test
+          JWT_SECRET: ci-test-secret
+        run: pnpm test
