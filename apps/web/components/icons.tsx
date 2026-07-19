@@ -240,6 +240,33 @@ export const Icons = {
       <path d="M12 5v14M6 13l6 6 6-6" />
     </svg>
   ),
+  team: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="8" cy="8.5" r="2.8" />
+      <path d="M2.8 19c.7-2.8 2.7-4.2 5.2-4.2s4.5 1.4 5.2 4.2" />
+      <circle cx="16.5" cy="7.5" r="2.4" />
+      <path d="M16 14.6c2.2 0 4 1.3 4.6 3.9" />
+    </svg>
+  ),
+  share: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="6" cy="12" r="2.6" />
+      <circle cx="18" cy="6" r="2.6" />
+      <circle cx="18" cy="18" r="2.6" />
+      <path d="M8.4 10.9 15.6 7.1M8.4 13.1l7.2 3.8" />
+    </svg>
+  ),
+  globe: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c2.5 2.5 3.8 5.7 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.7-3.8-9S9.5 5.5 12 3z" />
+    </svg>
+  ),
+  close: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;

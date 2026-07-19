@@ -49,6 +49,74 @@ export interface Member {
 }
 
 /* ------------------------------------------------------------------ *
+ * Teams (Module 2): named groups of members, shareable as a principal.
+ * ------------------------------------------------------------------ */
+export interface Team {
+  id: string;
+  name: string;
+  color: string;
+  memberCount: number;
+}
+
+export interface TeamMember {
+  userId: string;
+  fullName: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+export interface TeamDetail {
+  team: { id: string; name: string; color: string };
+  members: TeamMember[];
+}
+
+/* ------------------------------------------------------------------ *
+ * Space sharing (Module 2): privacy + per-principal grants.
+ * ------------------------------------------------------------------ */
+export interface AccessEntry {
+  principalType: "user" | "team";
+  principalId: string;
+  name: string;
+  email: string | null;
+  avatarUrl: string | null;
+  permission: Permission;
+}
+
+export interface SpaceAccess {
+  isPrivate: boolean;
+  /** Whether the current user may change privacy / shares. */
+  canManage: boolean;
+  entries: AccessEntry[];
+}
+
+/* ------------------------------------------------------------------ *
+ * Access & permissions (Module 2).
+ * Ordering: view < comment < edit < full.
+ * ------------------------------------------------------------------ */
+export type Permission = "view" | "comment" | "edit" | "full";
+
+/** Rank a permission so the UI can compare (e.g. "at least edit"). */
+export const PERMISSION_RANK: Record<Permission, number> = {
+  view: 0,
+  comment: 1,
+  edit: 2,
+  full: 3,
+};
+
+/** Human label for a permission level. */
+export const PERMISSION_LABEL: Record<Permission, string> = {
+  view: "View",
+  comment: "Comment",
+  edit: "Edit",
+  full: "Full",
+};
+
+/** True when `have` grants at least `need`. */
+export function permissionAtLeast(have: Permission, need: Permission): boolean {
+  return PERMISSION_RANK[have] >= PERMISSION_RANK[need];
+}
+
+/* ------------------------------------------------------------------ *
  * Hierarchy (Module 1): Spaces → Folders → Lists.
  * ------------------------------------------------------------------ */
 export interface Space {
@@ -59,6 +127,8 @@ export interface Space {
   isPrivate: boolean;
   archived: boolean;
   sortOrder: number;
+  /** The current user's effective permission on this space (Module 2). */
+  myPermission: Permission;
 }
 
 export interface Folder {
@@ -402,6 +472,71 @@ export const hierarchyApi = {
     api<{ ok: true }>("/lists/reorder", {
       method: "POST",
       body: { spaceId, folderId, ids },
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Teams — workspace-scoped groups (Module 2). Owner/admin may mutate.
+ * ------------------------------------------------------------------ */
+export const teamsApi = {
+  list: () => api<{ teams: Team[] }>("/teams", { auth: "access" }),
+  get: (id: string) => api<TeamDetail>(`/teams/${id}`, { auth: "access" }),
+  create: (body: { name: string; color?: string; memberUserIds?: string[] }) =>
+    api<{ team: Team }>("/teams", { method: "POST", body, auth: "access" }),
+  update: (id: string, body: { name?: string; color?: string }) =>
+    api<{ team: Team }>(`/teams/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/teams/${id}`, { method: "DELETE", auth: "access" }),
+  addMember: (id: string, userId: string) =>
+    api<unknown>(`/teams/${id}/members`, {
+      method: "POST",
+      body: { userId },
+      auth: "access",
+    }),
+  removeMember: (id: string, userId: string) =>
+    api<void>(`/teams/${id}/members/${userId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Space access / sharing (Module 2).
+ * ------------------------------------------------------------------ */
+export const accessApi = {
+  getSpaceAccess: (spaceId: string) =>
+    api<SpaceAccess>(`/spaces/${spaceId}/access`, { auth: "access" }),
+  setPrivacy: (spaceId: string, isPrivate: boolean) =>
+    api<{ isPrivate: boolean }>(`/spaces/${spaceId}/privacy`, {
+      method: "PUT",
+      body: { isPrivate },
+      auth: "access",
+    }),
+  upsertShare: (
+    spaceId: string,
+    body: {
+      principalType: "user" | "team";
+      principalId: string;
+      permission: Permission;
+    },
+  ) =>
+    api<{ entry: AccessEntry }>(`/spaces/${spaceId}/shares`, {
+      method: "PUT",
+      body,
+      auth: "access",
+    }),
+  removeShare: (
+    spaceId: string,
+    principalType: "user" | "team",
+    principalId: string,
+  ) =>
+    api<void>(`/spaces/${spaceId}/shares/${principalType}/${principalId}`, {
+      method: "DELETE",
       auth: "access",
     }),
 };

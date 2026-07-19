@@ -6,12 +6,14 @@ import { useSearchParams } from "next/navigation";
 import {
   ApiError,
   hierarchyApi,
+  permissionAtLeast,
   type FolderWithLists,
   type List,
   type Space,
 } from "@/lib/api";
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
+import { ShareDialog } from "@/components/ShareDialog";
 import { colorFor } from "@/lib/format";
 
 function ListRow({ list }: { list: List }) {
@@ -38,6 +40,7 @@ function SpaceView() {
   const [adding, setAdding] = useState<null | "folder" | "list">(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const load = (): void => {
     if (!id) return;
@@ -114,6 +117,8 @@ function SpaceView() {
 
   const color = space.color || colorFor(space.id);
   const totalLists = lists.length + folders.reduce((n, f) => n + f.lists.length, 0);
+  const canEdit = permissionAtLeast(space.myPermission, "edit");
+  const canManage = space.myPermission === "full";
 
   return (
     <div className="page">
@@ -134,14 +139,32 @@ function SpaceView() {
           </div>
         </div>
         <div className="sp-head-actions">
-          <button className="btn btn-ghost btn-sm" onClick={() => { setAdding("folder"); setDraft(""); }}>
-            {Icons.folder} Add folder
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={() => { setAdding("list"); setDraft(""); }}>
-            {Icons.plus} Add list
-          </button>
+          {canManage && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setSharing(true)}>
+              {Icons.share} Share
+            </button>
+          )}
+          {canEdit && (
+            <>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setAdding("folder"); setDraft(""); }}>
+                {Icons.folder} Add folder
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={() => { setAdding("list"); setDraft(""); }}>
+                {Icons.plus} Add list
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {sharing && (
+        <ShareDialog
+          spaceId={space.id}
+          spaceName={space.name}
+          onClose={() => setSharing(false)}
+          onChanged={() => { load(); void reload(); }}
+        />
+      )}
 
       {adding && (
         <div className="card sp-add-card">
@@ -209,15 +232,21 @@ function SpaceView() {
           <div className="empty-state">
             <span className="empty-ic">{Icons.list}</span>
             <h3>Nothing here yet</h3>
-            <p>Create your first list (or a folder to group lists) to get going.</p>
-            <div className="hero-actions" style={{ justifyContent: "center" }}>
-              <button className="btn btn-primary" onClick={() => { setAdding("list"); setDraft(""); }}>
-                {Icons.plus} Add a list
-              </button>
-              <button className="btn btn-ghost" onClick={() => { setAdding("folder"); setDraft(""); }}>
-                {Icons.folder} Add a folder
-              </button>
-            </div>
+            {canEdit ? (
+              <>
+                <p>Create your first list (or a folder to group lists) to get going.</p>
+                <div className="hero-actions" style={{ justifyContent: "center" }}>
+                  <button className="btn btn-primary" onClick={() => { setAdding("list"); setDraft(""); }}>
+                    {Icons.plus} Add a list
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => { setAdding("folder"); setDraft(""); }}>
+                    {Icons.folder} Add a folder
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p>Nothing has been added to this space yet.</p>
+            )}
           </div>
         </div>
       )}

@@ -13,10 +13,13 @@ import { colorFor, initials } from "@/lib/format";
 
 const INVITE_ROLES: WorkspaceRole[] = ["admin", "member", "guest"];
 
+type MemberFilter = "all" | "members" | "guests";
+
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [role, setRole] = useState<WorkspaceRole | null>(null);
+  const [filter, setFilter] = useState<MemberFilter>("all");
 
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>("member");
@@ -46,6 +49,16 @@ export default function MembersPage() {
   }, []);
 
   const canInvite = role === "owner" || role === "admin";
+
+  const guestCount = (members ?? []).filter((m) => m.role === "guest").length;
+  const memberCount = (members ?? []).length - guestCount;
+  const visible = (members ?? []).filter((m) =>
+    filter === "all"
+      ? true
+      : filter === "guests"
+        ? m.role === "guest"
+        : m.role !== "guest",
+  );
 
   const invite = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -141,6 +154,37 @@ export default function MembersPage() {
 
       {loadError && <div className="form-error">{loadError}</div>}
 
+      {/* filter chips + guest legend */}
+      {members !== null && members.length > 0 && (
+        <div className="member-toolbar">
+          <div className="chips" role="tablist" aria-label="Filter members">
+            {(
+              [
+                { key: "all", label: "All", count: members.length },
+                { key: "members", label: "Members", count: memberCount },
+                { key: "guests", label: "Guests", count: guestCount },
+              ] as { key: MemberFilter; label: string; count: number }[]
+            ).map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                role="tab"
+                aria-selected={filter === c.key}
+                className={`chip${filter === c.key ? " active" : ""}`}
+                onClick={() => setFilter(c.key)}
+              >
+                {c.label}
+                <span className="chip-count">{c.count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="member-legend">
+            <span className="badge role-guest">Guest</span>
+            <span className="muted">limited, space-scoped access</span>
+          </div>
+        </div>
+      )}
+
       {/* members table */}
       {members === null ? (
         <div className="card">
@@ -167,8 +211,8 @@ export default function MembersPage() {
               </tr>
             </thead>
             <tbody>
-              {members.map((m) => (
-                <tr key={m.id}>
+              {visible.map((m) => (
+                <tr key={m.id} className={m.role === "guest" ? "row-guest" : undefined}>
                   <td>
                     <div className="cell-user">
                       <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
@@ -188,6 +232,13 @@ export default function MembersPage() {
                   </td>
                 </tr>
               ))}
+              {visible.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="muted" style={{ textAlign: "center", padding: 24 }}>
+                    No {filter === "guests" ? "guests" : "members"} to show.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -1,11 +1,14 @@
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
+import { AccessModule } from "./access/access.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { loadConfig } from "./config";
 import { DbModule } from "./db/db.module";
 import { HealthController } from "./health.controller";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
+import { SharingModule } from "./sharing/sharing.module";
+import { TeamsModule } from "./teams/teams.module";
 import { WorkspacesModule } from "./workspaces/workspaces.module";
 
 /**
@@ -22,9 +25,12 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     }),
     DbModule,
     AuditModule,
+    AccessModule,
     AuthModule,
     WorkspacesModule,
     HierarchyModule,
+    TeamsModule,
+    SharingModule,
   ],
   controllers: [HealthController],
 })

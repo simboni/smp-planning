@@ -28,6 +28,7 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/members", label: "Members", icon: "members" },
+  { href: "/teams", label: "Teams", icon: "team" },
   { href: "/settings", label: "Settings", icon: "settings" },
 ];
 

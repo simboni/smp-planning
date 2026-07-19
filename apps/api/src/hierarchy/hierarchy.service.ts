@@ -1,9 +1,17 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
+import type { Role } from "@stackup/shared";
+import {
+  AccessService,
+  Permission,
+  PermissionOrNone,
+  permAtLeast,
+} from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
 
@@ -38,10 +46,13 @@ export interface List {
   sortOrder: number;
 }
 
+/** A space annotated with the caller's effective permission on it. */
+export type SpaceWithPermission = Space & { myPermission: Permission };
+
 /** The sidebar tree: spaces -> folders -> lists, plus folderless lists. */
 export interface HierarchyTree {
   spaces: Array<
-    Space & {
+    SpaceWithPermission & {
       folders: Array<Folder & { lists: List[] }>;
       lists: List[];
     }
@@ -56,7 +67,56 @@ export class HierarchyService {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
+    private readonly access: AccessService,
   ) {}
+
+  // --- Permission enforcement helpers ---------------------------------------
+
+  /**
+   * Require the caller to have >= edit on the space (owner/admin always do).
+   * A space the caller cannot see reads as 'none' -> 404 (never leak its
+   * existence); a visible space with too weak a share -> 403.
+   */
+  private async requireSpaceEdit(
+    client: PoolClient,
+    userId: string,
+    role: Role,
+    spaceId: string,
+  ): Promise<void> {
+    const perm = await this.access.spacePermission(
+      client,
+      userId,
+      role,
+      spaceId,
+    );
+    if (perm === "none") throw new NotFoundException("Space not found");
+    if (!permAtLeast(perm, "edit")) {
+      throw new ForbiddenException("You need edit access on this space");
+    }
+  }
+
+  /**
+   * Require the caller to be able to manage the space (owner/admin or a full
+   * share): rename/delete the space itself, or reorder within the sidebar.
+   */
+  private async requireSpaceManage(
+    client: PoolClient,
+    userId: string,
+    role: Role,
+    spaceId: string,
+  ): Promise<PermissionOrNone> {
+    const perm = await this.access.spacePermission(
+      client,
+      userId,
+      role,
+      spaceId,
+    );
+    if (perm === "none") throw new NotFoundException("Space not found");
+    if (!this.access.canManageSpace(perm, role)) {
+      throw new ForbiddenException("You need full access to manage this space");
+    }
+    return perm;
+  }
 
   // --- Row -> DTO mappers ---------------------------------------------------
 
@@ -113,7 +173,11 @@ export class HierarchyService {
   // --- Tree (sidebar) -------------------------------------------------------
 
   /** The full non-archived tree in one round trip (3 queries, assembled in JS). */
-  async tree(workspaceId: string, userId: string): Promise<HierarchyTree> {
+  async tree(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+  ): Promise<HierarchyTree> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       const spacesRes = await client.query(
         `SELECT id, name, color, icon, is_private, archived, sort_order
@@ -160,21 +224,44 @@ export class HierarchyService {
         }
       }
 
-      const spaces = spacesRes.rows.map((row) => {
-        const space = this.toSpace(row);
-        return {
+      // Visibility + myPermission per space: one team lookup + one share
+      // lookup, then resolve each space's permission in JS. Spaces that
+      // resolve to 'none' are not visible to the caller and are dropped.
+      const teamIds = await this.access.userTeamIds(client, userId);
+      const shareMap = await this.access.userSpaceShareMap(
+        client,
+        userId,
+        teamIds,
+      );
+
+      const spaces = spacesRes.rows
+        .map((row) => {
+          const space = this.toSpace(row);
+          const perm = AccessService.permissionFor(
+            role,
+            space.isPrivate,
+            shareMap.get(space.id) ?? null,
+          );
+          return { space, perm };
+        })
+        .filter((x): x is { space: Space; perm: Permission } => x.perm !== "none")
+        .map(({ space, perm }) => ({
           ...space,
+          myPermission: perm,
           folders: foldersBySpace.get(space.id) ?? [],
           lists: folderlessBySpace.get(space.id) ?? [],
-        };
-      });
+        }));
       return { spaces };
     });
   }
 
   // --- Spaces ---------------------------------------------------------------
 
-  async listSpaces(workspaceId: string, userId: string): Promise<Space[]> {
+  async listSpaces(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+  ): Promise<SpaceWithPermission[]> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       const res = await client.query(
         `SELECT id, name, color, icon, is_private, archived, sort_order
@@ -182,15 +269,33 @@ export class HierarchyService {
          WHERE archived = false
          ORDER BY sort_order, created_at`,
       );
-      return res.rows.map((r) => this.toSpace(r));
+      const teamIds = await this.access.userTeamIds(client, userId);
+      const shareMap = await this.access.userSpaceShareMap(
+        client,
+        userId,
+        teamIds,
+      );
+      const out: SpaceWithPermission[] = [];
+      for (const r of res.rows) {
+        const space = this.toSpace(r);
+        const perm = AccessService.permissionFor(
+          role,
+          space.isPrivate,
+          shareMap.get(space.id) ?? null,
+        );
+        if (perm === "none") continue;
+        out.push({ ...space, myPermission: perm });
+      }
+      return out;
     });
   }
 
   async createSpace(
     workspaceId: string,
     userId: string,
+    role: Role,
     body: { name?: string; color?: string; icon?: string; isPrivate?: boolean },
-  ): Promise<Space> {
+  ): Promise<SpaceWithPermission> {
     const name = this.requireName(body?.name);
     const color =
       body?.color === undefined || body.color === null
@@ -212,6 +317,24 @@ export class HierarchyService {
         [workspaceId, name, color, icon, isPrivate, nextOrder, userId],
       );
       const space = this.toSpace(res.rows[0]);
+      // A plain member who creates a PRIVATE space would otherwise be unable
+      // to see it (private + no share = invisible). Grant them a full
+      // self-share so the creator keeps ownership of what they just made.
+      if (isPrivate && role !== "owner" && role !== "admin") {
+        await client.query(
+          `INSERT INTO shares
+             (workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by)
+           VALUES ($1, 'space', $2, 'user', $3, 'full', $3)
+           ON CONFLICT (object_type, object_id, principal_type, principal_id)
+           DO NOTHING`,
+          [workspaceId, space.id, userId],
+        );
+      }
+      const myPermission = AccessService.permissionFor(
+        role,
+        space.isPrivate,
+        isPrivate && role !== "owner" && role !== "admin" ? "full" : null,
+      );
       await this.audit.record(client, {
         workspaceId,
         actorUserId: userId,
@@ -220,13 +343,14 @@ export class HierarchyService {
         entityId: space.id,
         data: { name: space.name },
       });
-      return space;
+      return { ...space, myPermission } as SpaceWithPermission;
     });
   }
 
   async updateSpace(
     workspaceId: string,
     userId: string,
+    role: Role,
     id: string,
     body: {
       name?: string;
@@ -235,7 +359,7 @@ export class HierarchyService {
       isPrivate?: boolean;
       archived?: boolean;
     },
-  ): Promise<Space> {
+  ): Promise<SpaceWithPermission> {
     const sets: string[] = [];
     const params: unknown[] = [];
     let i = 1;
@@ -261,6 +385,8 @@ export class HierarchyService {
     }
 
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // Renaming/reconfiguring a space is a management action.
+      await this.requireSpaceManage(client, userId, role, id);
       let space: Space;
       if (sets.length === 0) {
         const res = await client.query(
@@ -289,16 +415,28 @@ export class HierarchyService {
         entityId: space.id,
         data: { ...body },
       });
-      return space;
+      const myPermission = await this.access.spacePermission(
+        client,
+        userId,
+        role,
+        space.id,
+      );
+      return {
+        ...space,
+        myPermission: (myPermission === "none" ? "view" : myPermission),
+      } as SpaceWithPermission;
     });
   }
 
   async deleteSpace(
     workspaceId: string,
     userId: string,
+    role: Role,
     id: string,
   ): Promise<void> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // Deleting a space requires full/manage rights (404s if not visible).
+      await this.requireSpaceManage(client, userId, role, id);
       const res = await client.query(
         `DELETE FROM spaces WHERE id = $1 RETURNING id`,
         [id],
@@ -318,20 +456,28 @@ export class HierarchyService {
   async spaceDetail(
     workspaceId: string,
     userId: string,
+    role: Role,
     id: string,
   ): Promise<{
-    space: Space;
+    space: SpaceWithPermission;
     folders: Array<Folder & { lists: List[] }>;
     lists: List[];
   }> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // A space the caller cannot see is a 404 (never disclose its existence).
+      const perm = await this.access.spacePermission(client, userId, role, id);
+      if (perm === "none") throw new NotFoundException("Space not found");
+
       const spaceRes = await client.query(
         `SELECT id, name, color, icon, is_private, archived, sort_order
          FROM spaces WHERE id = $1`,
         [id],
       );
       if (!spaceRes.rows[0]) throw new NotFoundException("Space not found");
-      const space = this.toSpace(spaceRes.rows[0]);
+      const space: SpaceWithPermission = {
+        ...this.toSpace(spaceRes.rows[0]),
+        myPermission: perm,
+      };
 
       const foldersRes = await client.query(
         `SELECT id, space_id, name, archived, sort_order
@@ -373,12 +519,13 @@ export class HierarchyService {
   async createFolder(
     workspaceId: string,
     userId: string,
+    role: Role,
     spaceId: string,
     body: { name?: string },
   ): Promise<Folder> {
     const name = this.requireName(body?.name);
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
-      await this.assertSpaceExists(client, spaceId);
+      await this.requireSpaceEdit(client, userId, role, spaceId);
       const nextOrder = await this.nextOrder(
         client,
         `SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM folders WHERE space_id = $1`,
@@ -406,6 +553,7 @@ export class HierarchyService {
   async updateFolder(
     workspaceId: string,
     userId: string,
+    role: Role,
     id: string,
     body: { name?: string; archived?: boolean },
   ): Promise<Folder> {
@@ -422,6 +570,17 @@ export class HierarchyService {
     }
 
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const owning = await client.query(
+        `SELECT space_id FROM folders WHERE id = $1`,
+        [id],
+      );
+      if (!owning.rows[0]) throw new NotFoundException("Folder not found");
+      await this.requireSpaceEdit(
+        client,
+        userId,
+        role,
+        owning.rows[0].space_id as string,
+      );
       let folder: Folder;
       if (sets.length === 0) {
         const res = await client.query(
@@ -456,9 +615,21 @@ export class HierarchyService {
   async deleteFolder(
     workspaceId: string,
     userId: string,
+    role: Role,
     id: string,
   ): Promise<void> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const owning = await client.query(
+        `SELECT space_id FROM folders WHERE id = $1`,
+        [id],
+      );
+      if (!owning.rows[0]) throw new NotFoundException("Folder not found");
+      await this.requireSpaceEdit(
+        client,
+        userId,
+        role,
+        owning.rows[0].space_id as string,
+      );
       const res = await client.query(
         `DELETE FROM folders WHERE id = $1 RETURNING id`,
         [id],
@@ -479,6 +650,7 @@ export class HierarchyService {
   async createList(
     workspaceId: string,
     userId: string,
+    role: Role,
     spaceId: string,
     body: { name?: string; folderId?: string | null; color?: string },
   ): Promise<List> {
@@ -493,7 +665,7 @@ export class HierarchyService {
         : this.validColor(body.color);
 
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
-      await this.assertSpaceExists(client, spaceId);
+      await this.requireSpaceEdit(client, userId, role, spaceId);
       if (folderId) await this.assertFolderInSpace(client, folderId, spaceId);
       const nextOrder = await this.containerNextOrder(client, spaceId, folderId);
       const res = await client.query(
@@ -518,6 +690,7 @@ export class HierarchyService {
   async updateList(
     workspaceId: string,
     userId: string,
+    role: Role,
     id: string,
     body: {
       name?: string;
@@ -534,6 +707,7 @@ export class HierarchyService {
       );
       if (!current.rows[0]) throw new NotFoundException("List not found");
       const spaceId = current.rows[0].space_id as string;
+      await this.requireSpaceEdit(client, userId, role, spaceId);
 
       const sets: string[] = [];
       const params: unknown[] = [];
@@ -589,9 +763,21 @@ export class HierarchyService {
   async deleteList(
     workspaceId: string,
     userId: string,
+    role: Role,
     id: string,
   ): Promise<void> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const owning = await client.query(
+        `SELECT space_id FROM lists WHERE id = $1`,
+        [id],
+      );
+      if (!owning.rows[0]) throw new NotFoundException("List not found");
+      await this.requireSpaceEdit(
+        client,
+        userId,
+        role,
+        owning.rows[0].space_id as string,
+      );
       const res = await client.query(
         `DELETE FROM lists WHERE id = $1 RETURNING id`,
         [id],
@@ -611,10 +797,17 @@ export class HierarchyService {
   async listDetail(
     workspaceId: string,
     userId: string,
+    role: Role,
     id: string,
   ): Promise<{
     list: List;
-    space: { id: string; name: string; color: string; icon: string | null };
+    space: {
+      id: string;
+      name: string;
+      color: string;
+      icon: string | null;
+      myPermission: Permission;
+    };
     folder: { id: string; name: string } | null;
   }> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
@@ -626,6 +819,15 @@ export class HierarchyService {
       if (!listRes.rows[0]) throw new NotFoundException("List not found");
       const list = this.toList(listRes.rows[0]);
 
+      // The list is only reachable if its owning space is visible.
+      const perm = await this.access.spacePermission(
+        client,
+        userId,
+        role,
+        list.spaceId,
+      );
+      if (perm === "none") throw new NotFoundException("List not found");
+
       const spaceRes = await client.query(
         `SELECT id, name, color, icon FROM spaces WHERE id = $1`,
         [list.spaceId],
@@ -636,6 +838,7 @@ export class HierarchyService {
         name: s.name as string,
         color: s.color as string,
         icon: (s.icon as string | null) ?? null,
+        myPermission: perm,
       };
 
       let folder: { id: string; name: string } | null = null;
@@ -660,10 +863,15 @@ export class HierarchyService {
   async reorderSpaces(
     workspaceId: string,
     userId: string,
+    role: Role,
     ids: string[],
   ): Promise<void> {
     this.assertIdArray(ids);
     if (ids.length === 0) return;
+    // Reordering the sidebar's top level is a workspace-admin action.
+    if (role !== "owner" && role !== "admin") {
+      throw new ForbiddenException("Only an admin can reorder spaces");
+    }
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       await client.query(
         `UPDATE spaces AS s SET sort_order = v.ord
@@ -678,12 +886,14 @@ export class HierarchyService {
   async reorderFolders(
     workspaceId: string,
     userId: string,
+    role: Role,
     spaceId: string,
     ids: string[],
   ): Promise<void> {
     this.assertIdArray(ids);
     if (ids.length === 0) return;
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await this.requireSpaceEdit(client, userId, role, spaceId);
       await client.query(
         `UPDATE folders AS f SET sort_order = v.ord
          FROM (SELECT unnest($1::uuid[]) AS id,
@@ -697,6 +907,7 @@ export class HierarchyService {
   async reorderLists(
     workspaceId: string,
     userId: string,
+    role: Role,
     spaceId: string,
     folderId: string | null,
     ids: string[],
@@ -704,6 +915,7 @@ export class HierarchyService {
     this.assertIdArray(ids);
     if (ids.length === 0) return;
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await this.requireSpaceEdit(client, userId, role, spaceId);
       await client.query(
         `UPDATE lists AS l SET sort_order = v.ord
          FROM (SELECT unnest($1::uuid[]) AS id,
@@ -738,16 +950,6 @@ export class HierarchyService {
       [spaceId, folderId],
     );
     return res.rows[0].n as number;
-  }
-
-  private async assertSpaceExists(
-    client: PoolClient,
-    spaceId: string,
-  ): Promise<void> {
-    const res = await client.query(`SELECT id FROM spaces WHERE id = $1`, [
-      spaceId,
-    ]);
-    if (!res.rows[0]) throw new NotFoundException("Space not found");
   }
 
   private async assertFolderInSpace(

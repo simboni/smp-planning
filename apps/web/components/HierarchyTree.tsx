@@ -20,12 +20,14 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   hierarchyApi,
+  permissionAtLeast,
   type FolderWithLists,
   type List,
   type SpaceTree,
 } from "@/lib/api";
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
+import { ShareDialog } from "@/components/ShareDialog";
 import { colorFor } from "@/lib/format";
 
 const EXPANDED_KEY = "stackup.tree.expanded";
@@ -136,6 +138,7 @@ export function HierarchyTree() {
   const [menu, setMenu] = useState<string | null>(null); // same key form
   const [colorFor_, setColorPicker] = useState<string | null>(null); // "space:id" | "list:id"
   const [busy, setBusy] = useState(false);
+  const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
   const drag = useRef<DragState | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
@@ -424,6 +427,7 @@ export function HierarchyTree() {
     folderId: string | null,
     bucket: List[],
     indent: number,
+    canEdit: boolean,
   ) => {
     const k = menuKey("list", list.id);
     const container = `lists:${spaceId}:${folderId ?? "root"}`;
@@ -445,20 +449,24 @@ export function HierarchyTree() {
               dragOverKey === `list:${list.id}` ? " dragover" : ""
             }`}
             style={{ paddingLeft: indent }}
-            {...dragProps(
-              { kind: "list", id: list.id, container },
-              { kind: "list", id: list.id, container },
-              { lists: bucket, spaceId, folderId },
-            )}
+            {...(canEdit
+              ? dragProps(
+                  { kind: "list", id: list.id, container },
+                  { kind: "list", id: list.id, container },
+                  { lists: bucket, spaceId, folderId },
+                )
+              : {})}
           >
             <Link href={`/list?id=${list.id}`} className="tree-label">
               <span className="tree-dot" style={{ background: dot }} />
               <span className="tree-name">{list.name}</span>
             </Link>
-            <span className="tree-actions">
-              <MenuButton k={k} title="List actions" />
-            </span>
-            {menu === k && (
+            {canEdit && (
+              <span className="tree-actions">
+                <MenuButton k={k} title="List actions" />
+              </span>
+            )}
+            {canEdit && menu === k && (
               <div className="tree-menu" onClick={(e) => e.stopPropagation()}>
                 <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
                   {Icons.edit} Rename
@@ -493,7 +501,12 @@ export function HierarchyTree() {
     );
   };
 
-  const renderFolder = (folder: FolderWithLists, space: SpaceTree, indent: number) => {
+  const renderFolder = (
+    folder: FolderWithLists,
+    space: SpaceTree,
+    indent: number,
+    canEdit: boolean,
+  ) => {
     const k = menuKey("folder", folder.id);
     const open = isOpen(folder.id);
     const container = `folders:${space.id}`;
@@ -512,25 +525,29 @@ export function HierarchyTree() {
             className={`tree-row${dragOverKey === `folder:${folder.id}` ? " dragover" : ""}`}
             style={{ paddingLeft: indent }}
             onClick={() => toggle(folder.id)}
-            {...dragProps(
-              { kind: "folder", id: folder.id, container },
-              { kind: "folder", id: folder.id, container },
-              { folders: space.folders, spaceId: space.id },
-            )}
+            {...(canEdit
+              ? dragProps(
+                  { kind: "folder", id: folder.id, container },
+                  { kind: "folder", id: folder.id, container },
+                  { folders: space.folders, spaceId: space.id },
+                )
+              : {})}
           >
             <span className="tree-label">
               <span className={`tree-caret${open ? " open" : ""}`}>{Icons.chevronRight}</span>
               <span className="tree-ic">{open ? Icons.folderOpen : Icons.folder}</span>
               <span className="tree-name">{folder.name}</span>
             </span>
-            <span className="tree-actions">
-              <AddButton
-                title="Add list"
-                onClick={() => { ensureOpen(folder.id); setCreating({ type: "list", spaceId: space.id, folderId: folder.id }); }}
-              />
-              <MenuButton k={k} title="Folder actions" />
-            </span>
-            {menu === k && (
+            {canEdit && (
+              <span className="tree-actions">
+                <AddButton
+                  title="Add list"
+                  onClick={() => { ensureOpen(folder.id); setCreating({ type: "list", spaceId: space.id, folderId: folder.id }); }}
+                />
+                <MenuButton k={k} title="Folder actions" />
+              </span>
+            )}
+            {canEdit && menu === k && (
               <div className="tree-menu" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
@@ -566,7 +583,7 @@ export function HierarchyTree() {
 
         {open && (
           <div className="tree-children">
-            {folder.lists.map((l) => renderList(l, space.id, folder.id, folder.lists, indent + 34))}
+            {folder.lists.map((l) => renderList(l, space.id, folder.id, folder.lists, indent + 34, canEdit))}
             {creating?.type === "list" &&
               creating.spaceId === space.id &&
               creating.folderId === folder.id && (
@@ -594,6 +611,10 @@ export function HierarchyTree() {
     const open = isOpen(space.id);
     const dot = space.color || colorFor(space.id);
     const active = activeSpaceId === space.id;
+    // Permission gating: edit+ may mutate structure; full may manage sharing.
+    const canEdit = permissionAtLeast(space.myPermission, "edit");
+    const canManageSpace = space.myPermission === "full";
+    const showMenu = canEdit || canManageSpace;
     return (
       <div key={space.id} className="tree-item">
         {renaming === k ? (
@@ -627,63 +648,85 @@ export function HierarchyTree() {
               <span className="tree-name strong">{space.name}</span>
               {space.isPrivate && <span className="tree-lock" title="Private">{Icons.lock}</span>}
             </span>
-            <span className="tree-actions">
-              <AddButton
-                title="Add list"
-                onClick={() => { ensureOpen(space.id); setCreating({ type: "list", spaceId: space.id, folderId: null }); }}
-              />
-              <MenuButton k={k} title="Space actions" />
-            </span>
-            {menu === k && (
+            {showMenu && (
+              <span className="tree-actions">
+                {canEdit && (
+                  <AddButton
+                    title="Add list"
+                    onClick={() => { ensureOpen(space.id); setCreating({ type: "list", spaceId: space.id, folderId: null }); }}
+                  />
+                )}
+                <MenuButton k={k} title="Space actions" />
+              </span>
+            )}
+            {showMenu && menu === k && (
               <div className="tree-menu" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  onClick={() => { ensureOpen(space.id); setMenu(null); setCreating({ type: "folder", spaceId: space.id }); }}
-                >
-                  {Icons.folder} Add folder
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { ensureOpen(space.id); setMenu(null); setCreating({ type: "list", spaceId: space.id, folderId: null }); }}
-                >
-                  {Icons.list} Add list
-                </button>
-                <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
-                  {Icons.edit} Rename
-                </button>
-                <button type="button" onClick={() => { setMenu(null); setColorPicker(k); }}>
-                  {Icons.palette} Change color
-                </button>
-                <button type="button" onClick={() => togglePrivate(space)}>
-                  {Icons.lock} {space.isPrivate ? "Make public" : "Make private"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { const ids = move(tree, space.id, -1); if (ids) reorderSpaces(ids); setMenu(null); }}
-                >
-                  {Icons.arrowUp} Move up
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { const ids = move(tree, space.id, 1); if (ids) reorderSpaces(ids); setMenu(null); }}
-                >
-                  {Icons.arrowDown} Move down
-                </button>
-                <button type="button" onClick={() => doArchive("space", space.id)}>
-                  {Icons.archive} Archive
-                </button>
-                <button type="button" className="danger" onClick={() => doDelete("space", space.id, space.name)}>
-                  {Icons.trash} Delete
-                </button>
+                {canManageSpace && (
+                  <button
+                    type="button"
+                    onClick={() => { setMenu(null); setSharing({ id: space.id, name: space.name }); }}
+                  >
+                    {Icons.share} Sharing &amp; permissions
+                  </button>
+                )}
+                {canEdit && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { ensureOpen(space.id); setMenu(null); setCreating({ type: "folder", spaceId: space.id }); }}
+                    >
+                      {Icons.folder} Add folder
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { ensureOpen(space.id); setMenu(null); setCreating({ type: "list", spaceId: space.id, folderId: null }); }}
+                    >
+                      {Icons.list} Add list
+                    </button>
+                    <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
+                      {Icons.edit} Rename
+                    </button>
+                    <button type="button" onClick={() => { setMenu(null); setColorPicker(k); }}>
+                      {Icons.palette} Change color
+                    </button>
+                  </>
+                )}
+                {canManageSpace && (
+                  <button type="button" onClick={() => togglePrivate(space)}>
+                    {Icons.lock} {space.isPrivate ? "Make public" : "Make private"}
+                  </button>
+                )}
+                {canEdit && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { const ids = move(tree, space.id, -1); if (ids) reorderSpaces(ids); setMenu(null); }}
+                    >
+                      {Icons.arrowUp} Move up
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { const ids = move(tree, space.id, 1); if (ids) reorderSpaces(ids); setMenu(null); }}
+                    >
+                      {Icons.arrowDown} Move down
+                    </button>
+                    <button type="button" onClick={() => doArchive("space", space.id)}>
+                      {Icons.archive} Archive
+                    </button>
+                    <button type="button" className="danger" onClick={() => doDelete("space", space.id, space.name)}>
+                      {Icons.trash} Delete
+                    </button>
+                  </>
+                )}
               </div>
             )}
-            {colorFor_ === k && <ColorPopover kind="space" id={space.id} />}
+            {canEdit && colorFor_ === k && <ColorPopover kind="space" id={space.id} />}
           </div>
         )}
 
         {open && (
           <div className="tree-children">
-            {space.folders.map((f) => renderFolder(f, space, 24))}
+            {space.folders.map((f) => renderFolder(f, space, 24, canEdit))}
 
             {creating?.type === "folder" && creating.spaceId === space.id && (
               <InlineInput
@@ -694,7 +737,7 @@ export function HierarchyTree() {
               />
             )}
 
-            {space.lists.map((l) => renderList(l, space.id, null, space.lists, 24))}
+            {space.lists.map((l) => renderList(l, space.id, null, space.lists, 24, canEdit))}
 
             {creating?.type === "list" &&
               creating.spaceId === space.id &&
@@ -721,6 +764,7 @@ export function HierarchyTree() {
   };
 
   return (
+    <>
     <div className="nav-section tree-section">
       <div className="nav-title tree-head">
         <span>Spaces</span>
@@ -779,5 +823,15 @@ export function HierarchyTree() {
         )}
       </div>
     </div>
+
+    {sharing && (
+      <ShareDialog
+        spaceId={sharing.id}
+        spaceName={sharing.name}
+        onClose={() => setSharing(null)}
+        onChanged={() => void reload()}
+      />
+    )}
+    </>
   );
 }

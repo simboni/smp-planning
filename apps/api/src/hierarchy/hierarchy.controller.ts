@@ -35,13 +35,17 @@ export class HierarchyController {
 
   @Get("hierarchy")
   async tree(@Req() req: AuthedRequest) {
-    return this.hierarchy.tree(req.workspaceId!, req.userId!);
+    return this.hierarchy.tree(req.workspaceId!, req.userId!, req.role!);
   }
 
   @Get("spaces")
   async listSpaces(@Req() req: AuthedRequest) {
     return {
-      spaces: await this.hierarchy.listSpaces(req.workspaceId!, req.userId!),
+      spaces: await this.hierarchy.listSpaces(
+        req.workspaceId!,
+        req.userId!,
+        req.role!,
+      ),
     };
   }
 
@@ -50,7 +54,12 @@ export class HierarchyController {
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,
   ) {
-    return this.hierarchy.spaceDetail(req.workspaceId!, req.userId!, id);
+    return this.hierarchy.spaceDetail(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      id,
+    );
   }
 
   @Get("lists/:id")
@@ -58,7 +67,12 @@ export class HierarchyController {
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,
   ) {
-    return this.hierarchy.listDetail(req.workspaceId!, req.userId!, id);
+    return this.hierarchy.listDetail(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      id,
+    );
   }
 
   // --- Space writes ---------------------------------------------------------
@@ -75,6 +89,7 @@ export class HierarchyController {
       space: await this.hierarchy.createSpace(
         req.workspaceId!,
         req.userId!,
+        req.role!,
         body ?? {},
       ),
     };
@@ -99,6 +114,7 @@ export class HierarchyController {
       space: await this.hierarchy.updateSpace(
         req.workspaceId!,
         req.userId!,
+        req.role!,
         id,
         body ?? {},
       ),
@@ -113,7 +129,12 @@ export class HierarchyController {
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,
   ) {
-    await this.hierarchy.deleteSpace(req.workspaceId!, req.userId!, id);
+    await this.hierarchy.deleteSpace(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      id,
+    );
   }
 
   @Post("spaces/reorder")
@@ -127,6 +148,7 @@ export class HierarchyController {
     await this.hierarchy.reorderSpaces(
       req.workspaceId!,
       req.userId!,
+      req.role!,
       body?.ids ?? [],
     );
     return { ok: true };
@@ -146,6 +168,7 @@ export class HierarchyController {
       folder: await this.hierarchy.createFolder(
         req.workspaceId!,
         req.userId!,
+        req.role!,
         spaceId,
         body ?? {},
       ),
@@ -164,6 +187,7 @@ export class HierarchyController {
       folder: await this.hierarchy.updateFolder(
         req.workspaceId!,
         req.userId!,
+        req.role!,
         id,
         body ?? {},
       ),
@@ -178,7 +202,12 @@ export class HierarchyController {
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,
   ) {
-    await this.hierarchy.deleteFolder(req.workspaceId!, req.userId!, id);
+    await this.hierarchy.deleteFolder(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      id,
+    );
   }
 
   @Post("folders/reorder")
@@ -192,6 +221,7 @@ export class HierarchyController {
     await this.hierarchy.reorderFolders(
       req.workspaceId!,
       req.userId!,
+      req.role!,
       body?.spaceId ?? "",
       body?.ids ?? [],
     );
@@ -212,6 +242,7 @@ export class HierarchyController {
       list: await this.hierarchy.createList(
         req.workspaceId!,
         req.userId!,
+        req.role!,
         spaceId,
         body ?? {},
       ),
@@ -236,6 +267,7 @@ export class HierarchyController {
       list: await this.hierarchy.updateList(
         req.workspaceId!,
         req.userId!,
+        req.role!,
         id,
         body ?? {},
       ),
@@ -250,7 +282,12 @@ export class HierarchyController {
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,
   ) {
-    await this.hierarchy.deleteList(req.workspaceId!, req.userId!, id);
+    await this.hierarchy.deleteList(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      id,
+    );
   }
 
   @Post("lists/reorder")
@@ -264,6 +301,7 @@ export class HierarchyController {
     await this.hierarchy.reorderLists(
       req.workspaceId!,
       req.userId!,
+      req.role!,
       body?.spaceId ?? "",
       body?.folderId ?? null,
       body?.ids ?? [],
