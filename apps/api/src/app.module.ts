@@ -10,6 +10,7 @@ import { HierarchyModule } from "./hierarchy/hierarchy.module";
 import { SharingModule } from "./sharing/sharing.module";
 import { TasksModule } from "./tasks/tasks.module";
 import { TeamsModule } from "./teams/teams.module";
+import { ViewsModule } from "./views/views.module";
 import { WorkspacesModule } from "./workspaces/workspaces.module";
 
 /**
@@ -33,6 +34,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     TeamsModule,
     SharingModule,
     TasksModule,
+    ViewsModule,
   ],
   controllers: [HealthController],
 })

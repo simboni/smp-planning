@@ -1,26 +1,49 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+/**
+ * List page (Module 5) — the view-switching shell. Owns task/status/tag/
+ * member loading, the saved-view state, filter/sort/group config and the
+ * Task panel, then renders one of the five live views (List, Board,
+ * Calendar, Table, Gantt). Filters and sort are applied centrally
+ * (lib/viewUtils) so every view sees the same task set.
+ */
+
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   ApiError,
+  getUser,
   hierarchyApi,
   permissionAtLeast,
   statusesApi,
+  tagsApi,
   tasksApi,
+  viewsApi,
   workspacesApi,
   type List,
   type Member,
   type Status,
+  type Tag,
   type TaskCard,
+  type TaskUpdateBody,
+  type View,
+  type ViewConfig,
+  type ViewKind,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { colorFor } from "@/lib/format";
+import { activeFilterCount, applyView } from "@/lib/viewUtils";
 import { useHierarchy } from "@/components/HierarchyProvider";
-import { TaskRow } from "@/components/TaskRow";
 import { TaskPanel } from "@/components/TaskPanel";
 import { StatusManager } from "@/components/StatusManager";
+import { ViewTabs, type ActiveTab } from "@/components/views/ViewTabs";
+import { FilterBar } from "@/components/views/FilterBar";
+import { ListView } from "@/components/views/ListView";
+import { BoardView } from "@/components/views/BoardView";
+import { CalendarView } from "@/components/views/CalendarView";
+import { TableView } from "@/components/views/TableView";
+import { GanttView } from "@/components/views/GanttView";
 
 interface ListMeta {
   list: List;
@@ -28,9 +51,34 @@ interface ListMeta {
   folder: { id: string; name: string } | null;
 }
 
-const VIEWS = ["List", "Board", "Calendar"] as const;
+const KINDS: ViewKind[] = ["list", "board", "calendar", "table", "gantt"];
+const DEFAULT_CONFIG: ViewConfig = { filters: {}, sort: null, groupBy: "status" };
 
-function ListView() {
+/* localStorage helpers (guarded for the static export). */
+function readStoredTab(listId: string): string | null {
+  try {
+    return localStorage.getItem(`stackup.view.${listId}`);
+  } catch {
+    return null;
+  }
+}
+function storeTab(listId: string, tab: string): void {
+  try {
+    localStorage.setItem(`stackup.view.${listId}`, tab);
+  } catch {
+    /* ignore */
+  }
+}
+
+function normalizeConfig(c: ViewConfig | null | undefined): ViewConfig {
+  return {
+    filters: c?.filters ?? {},
+    sort: c?.sort ?? null,
+    groupBy: c?.groupBy ?? "status",
+  };
+}
+
+function ListShell() {
   const search = useSearchParams();
   const id = search.get("id");
   const { tree } = useHierarchy();
@@ -39,16 +87,20 @@ function ListView() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [tasks, setTasks] = useState<TaskCard[] | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [views, setViews] = useState<View[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [view, setView] = useState<(typeof VIEWS)[number]>("List");
 
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [addingIn, setAddingIn] = useState<string | null>(null);
+  const [active, setActive] = useState<ActiveTab>({ kind: "list", viewId: null });
+  const [config, setConfig] = useState<ViewConfig>(DEFAULT_CONFIG);
+  const [addSignal, setAddSignal] = useState(0);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [managingStatuses, setManagingStatuses] = useState(false);
+  const pendingViewTab = useRef<string | null>(null);
 
   const spaceId = meta?.space.id;
+  const me = getUser();
 
   // Edit gating from the space's effective permission (from the shared tree).
   const canEdit = useMemo(() => {
@@ -58,6 +110,7 @@ function ListView() {
     return s ? permissionAtLeast(s.myPermission, "edit") : true;
   }, [tree, spaceId]);
 
+  /* -- loading ------------------------------------------------------- */
   const loadTasks = useCallback((): Promise<void> => {
     if (!id) return Promise.resolve();
     return tasksApi
@@ -75,23 +128,72 @@ function ListView() {
       .catch(() => undefined);
   }, []);
 
-  // List meta first (gives us the space); then statuses + tasks.
+  const loadTags = useCallback((sid: string): Promise<void> => {
+    return tagsApi
+      .list(sid)
+      .then((r) => setTags(r.tags))
+      .catch(() => undefined);
+  }, []);
+
+  const loadViews = useCallback((): Promise<void> => {
+    if (!id) return Promise.resolve();
+    return viewsApi
+      .list(id)
+      .then((r) => setViews([...r.views].sort((a, b) => a.position - b.position)))
+      .catch(() => undefined); // degrade gracefully if the API isn't there yet
+  }, [id]);
+
+  // List meta first (gives us the space); then statuses + tags + tasks + views.
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     setTasks(null);
+    setViews([]);
+    setConfig(DEFAULT_CONFIG);
+    setSelectedTask(null);
+
+    // Restore the last-used tab for this list.
+    const stored = readStoredTab(id);
+    if (stored && stored.startsWith("view:")) {
+      pendingViewTab.current = stored.slice(5);
+      setActive({ kind: "list", viewId: null });
+    } else if (stored && (KINDS as string[]).includes(stored)) {
+      pendingViewTab.current = null;
+      setActive({ kind: stored as ViewKind, viewId: null });
+    } else {
+      pendingViewTab.current = null;
+      setActive({ kind: "list", viewId: null });
+    }
+
     hierarchyApi
       .getList(id)
       .then(async (r) => {
         setMeta(r);
         setError("");
-        await Promise.all([loadStatuses(r.space.id), loadTasks()]);
+        await Promise.all([
+          loadStatuses(r.space.id),
+          loadTags(r.space.id),
+          loadTasks(),
+          loadViews(),
+        ]);
       })
       .catch((err) =>
         setError(err instanceof ApiError ? err.message : "Couldn't load this list."),
       )
       .finally(() => setLoading(false));
-  }, [id, loadStatuses, loadTasks]);
+  }, [id, loadStatuses, loadTags, loadTasks, loadViews]);
+
+  // Once views arrive, re-select a stored saved-view tab.
+  useEffect(() => {
+    const vid = pendingViewTab.current;
+    if (!vid || views.length === 0) return;
+    const v = views.find((x) => x.id === vid);
+    if (v) {
+      pendingViewTab.current = null;
+      setActive({ kind: v.kind, viewId: v.id });
+      setConfig(normalizeConfig(v.config));
+    }
+  }, [views]);
 
   useEffect(() => {
     workspacesApi
@@ -100,32 +202,66 @@ function ListView() {
       .catch(() => undefined);
   }, []);
 
-  const toggleGroup = (statusId: string): void => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(statusId)) next.delete(statusId);
-      else next.add(statusId);
-      return next;
-    });
+  /* -- view/tab state ------------------------------------------------ */
+  const selectBuiltin = (kind: ViewKind): void => {
+    setActive({ kind, viewId: null });
+    if (id) storeTab(id, kind);
   };
 
-  // Group tasks by status, in status position order.
-  const grouped = useMemo(() => {
-    const byStatus = new Map<string, TaskCard[]>();
-    for (const s of statuses) byStatus.set(s.id, []);
-    for (const t of tasks ?? []) {
-      if (!byStatus.has(t.statusId)) byStatus.set(t.statusId, []);
-      byStatus.get(t.statusId)!.push(t);
-    }
-    for (const arr of byStatus.values()) arr.sort((a, b) => a.position - b.position);
-    return byStatus;
-  }, [statuses, tasks]);
+  const selectView = (v: View): void => {
+    setActive({ kind: v.kind, viewId: v.id });
+    setConfig(normalizeConfig(v.config));
+    if (id) storeTab(id, `view:${v.id}`);
+  };
 
-  /* -- mutations ----------------------------------------------------- */
+  const canManageView = (v: View): boolean =>
+    v.createdBy === me?.id || (v.isShared && canEdit);
+
+  const changeConfig = (next: ViewConfig): void => {
+    setConfig(next);
+    // Autosave into the active saved view when the user may edit it.
+    if (active.viewId) {
+      const v = views.find((x) => x.id === active.viewId);
+      if (v && canManageView(v)) {
+        setViews((prev) => prev.map((x) => (x.id === v.id ? { ...x, config: next } : x)));
+        viewsApi.update(v.id, { config: next }).catch(() => undefined);
+      }
+    }
+  };
+
+  const saveView = (name: string, isShared: boolean): void => {
+    if (!id) return;
+    viewsApi
+      .create(id, { name, kind: active.kind, config, isShared })
+      .then((r) => {
+        setViews((prev) => [...prev, r.view]);
+        setActive({ kind: r.view.kind, viewId: r.view.id });
+        storeTab(id, `view:${r.view.id}`);
+      })
+      .catch((err) =>
+        setError(err instanceof ApiError ? err.message : "Couldn't save the view."),
+      );
+  };
+
+  const renameView = (v: View, name: string): void => {
+    setViews((prev) => prev.map((x) => (x.id === v.id ? { ...x, name } : x)));
+    viewsApi.update(v.id, { name }).catch(() => void loadViews());
+  };
+
+  const deleteView = (v: View): void => {
+    if (!window.confirm(`Delete the view “${v.name}”?`)) return;
+    setViews((prev) => prev.filter((x) => x.id !== v.id));
+    if (active.viewId === v.id) {
+      setActive({ kind: v.kind, viewId: null });
+      if (id) storeTab(id, v.kind);
+    }
+    viewsApi.remove(v.id).catch(() => void loadViews());
+  };
+
+  /* -- task mutations ------------------------------------------------ */
   const changeStatus = (task: TaskCard, statusId: string): void => {
     const target = statuses.find((s) => s.id === statusId);
     if (!target) return;
-    // Optimistic move between groups.
     setTasks((prev) =>
       (prev ?? []).map((t) =>
         t.id === task.id
@@ -157,17 +293,103 @@ function ListView() {
       );
   };
 
-  const startNewTask = (): void => {
-    if (statuses.length > 0) {
-      const first = statuses[0].id;
-      setCollapsed((prev) => {
-        const next = new Set(prev);
-        next.delete(first);
-        return next;
-      });
-      setAddingIn(first);
-    }
+  const quickAddDate = (dueDate: string, name: string): void => {
+    const trimmed = name.trim();
+    if (!id || !trimmed) return;
+    tasksApi
+      .create(id, { name: trimmed, statusId: statuses[0]?.id, dueDate })
+      .then(() => loadTasks())
+      .catch((err) =>
+        setError(err instanceof ApiError ? err.message : "Couldn't create the task."),
+      );
   };
+
+  /** Optimistic PATCH used by the Table/Calendar/Gantt inline edits. */
+  const updateTask = (
+    task: TaskCard,
+    body: TaskUpdateBody,
+    optimistic?: Partial<TaskCard>,
+  ): void => {
+    if (optimistic) {
+      setTasks((prev) =>
+        (prev ?? []).map((t) => (t.id === task.id ? { ...t, ...optimistic } : t)),
+      );
+    }
+    tasksApi
+      .update(task.id, body)
+      .then(() => {
+        if (!optimistic) void loadTasks();
+      })
+      .catch(() => void loadTasks());
+  };
+
+  const toggleAssignee = (task: TaskCard, userId: string, on: boolean): void => {
+    const call = on
+      ? tasksApi.addAssignee(task.id, userId)
+      : tasksApi.removeAssignee(task.id, userId);
+    // Optimistic avatar update from the workspace member list.
+    setTasks((prev) =>
+      (prev ?? []).map((t) => {
+        if (t.id !== task.id) return t;
+        if (on) {
+          const m = members.find((x) => x.id === userId);
+          if (!m || t.assignees.some((a) => a.id === userId)) return t;
+          return {
+            ...t,
+            assignees: [...t.assignees, { id: m.id, fullName: m.fullName, avatarUrl: m.avatarUrl }],
+          };
+        }
+        return { ...t, assignees: t.assignees.filter((a) => a.id !== userId) };
+      }),
+    );
+    call.catch(() => void loadTasks());
+  };
+
+  const toggleTag = (task: TaskCard, tagId: string, on: boolean): void => {
+    const call = on ? tasksApi.addTag(task.id, tagId) : tasksApi.removeTag(task.id, tagId);
+    setTasks((prev) =>
+      (prev ?? []).map((t) => {
+        if (t.id !== task.id) return t;
+        if (on) {
+          const tag = tags.find((x) => x.id === tagId);
+          if (!tag || t.tags.some((x) => x.id === tagId)) return t;
+          return { ...t, tags: [...t.tags, tag] };
+        }
+        return { ...t, tags: t.tags.filter((x) => x.id !== tagId) };
+      }),
+    );
+    call.catch(() => void loadTasks());
+  };
+
+  /** Board DnD drop: move `taskId` into `statusId` with the column's id order. */
+  const moveTask = (taskId: string, statusId: string, orderedIds: string[]): void => {
+    if (!id) return;
+    const target = statuses.find((s) => s.id === statusId);
+    const pos = new Map(orderedIds.map((tid, i) => [tid, i]));
+    setTasks((prev) =>
+      (prev ?? []).map((t) => {
+        let next = t;
+        if (t.id === taskId && target) {
+          next = {
+            ...t,
+            statusId,
+            status: { id: target.id, name: target.name, color: target.color, type: target.type },
+          };
+        }
+        const p = pos.get(t.id);
+        if (p !== undefined) next = { ...next, position: p };
+        return next;
+      }),
+    );
+    tasksApi.reorder(id, statusId, orderedIds).catch(() => void loadTasks());
+  };
+
+  /* -- derived ------------------------------------------------------- */
+  const visibleTasks = useMemo(
+    () => (tasks === null ? [] : applyView(tasks, config)),
+    [tasks, config],
+  );
+  const filtersActive = activeFilterCount(config.filters) > 0;
 
   /* -- guards -------------------------------------------------------- */
   if (!id) {
@@ -204,7 +426,19 @@ function ListView() {
   const { list, space, folder } = meta;
   const spaceColor = space.color || colorFor(space.id);
   const listColor = list.color || colorFor(list.id);
-  const totalTasks = tasks?.length ?? 0;
+  const kind = active.kind;
+
+  const viewProps = {
+    tasks: visibleTasks,
+    statuses,
+    members,
+    canEdit,
+    onOpenTask: (tid: string) => setSelectedTask(tid),
+    onChanged: () => void loadTasks(),
+    listId: id,
+  };
+
+  const showNoStatuses = statuses.length === 0 && (kind === "list" || kind === "board");
 
   return (
     <div className="page">
@@ -235,50 +469,53 @@ function ListView() {
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setManagingStatuses(true)}>
                 {Icons.settings} Statuses
               </button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={startNewTask}>
-                {Icons.plus} New Task
-              </button>
+              {(kind === "list" || kind === "board") && statuses.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setAddSignal((n) => n + 1)}
+                >
+                  {Icons.plus} New Task
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
 
-      {/* view switcher */}
-      <div className="view-tabs" role="tablist">
-        {VIEWS.map((v) => (
-          <button
-            key={v}
-            role="tab"
-            aria-selected={view === v}
-            className={`view-tab${view === v ? " active" : ""}`}
-            onClick={() => setView(v)}
-            title={v === "List" ? undefined : `${v} view — coming soon`}
-          >
-            {v}
-            {v !== "List" && <span className="view-tab-soon">Soon</span>}
-          </button>
-        ))}
-      </div>
+      {/* view tabs */}
+      <ViewTabs
+        active={active}
+        savedViews={views}
+        canEdit={canEdit}
+        currentUserId={me?.id ?? null}
+        onSelectBuiltin={selectBuiltin}
+        onSelectView={selectView}
+        onSaveView={saveView}
+        onRenameView={renameView}
+        onDeleteView={deleteView}
+      />
+
+      {/* filter / sort / group */}
+      <FilterBar
+        statuses={statuses}
+        members={members}
+        tags={tags}
+        config={config}
+        onChange={changeConfig}
+        showGroup={kind === "list" || kind === "board"}
+      />
 
       {error && <div className="form-error">{error}</div>}
 
-      {/* tasks */}
-      {view !== "List" ? (
-        <div className="card task-placeholder">
-          <div className="empty-state">
-            <span className="empty-ic">{Icons.tasks}</span>
-            <h3>{view} view is coming soon</h3>
-            <p>The List view is live — {view} arrives in a later module.</p>
-            <span className="badge badge-soon">{view} · soon</span>
-          </div>
-        </div>
-      ) : tasks === null ? (
+      {/* the active view */}
+      {tasks === null ? (
         <div className="task-groups">
           <span className="skel" style={{ width: "100%", height: 44, marginBottom: 8 }} />
           <span className="skel" style={{ width: "100%", height: 44, marginBottom: 8 }} />
           <span className="skel" style={{ width: "100%", height: 44 }} />
         </div>
-      ) : statuses.length === 0 ? (
+      ) : showNoStatuses ? (
         <div className="card task-placeholder">
           <div className="empty-state">
             <span className="empty-ic">{Icons.circle}</span>
@@ -291,72 +528,49 @@ function ListView() {
             )}
           </div>
         </div>
-      ) : totalTasks === 0 && addingIn === null ? (
-        <div className="card task-placeholder">
-          <div className="empty-state">
-            <span className="empty-ic">{Icons.tasks}</span>
-            <h3>No tasks yet</h3>
-            <p>This list is a blank canvas. Add your first task to get going.</p>
-            {canEdit && (
-              <button type="button" className="btn btn-primary" onClick={startNewTask}>
-                {Icons.plus} Add a task
-              </button>
-            )}
-          </div>
-        </div>
+      ) : kind === "list" ? (
+        <ListView
+          {...viewProps}
+          groupBy={config.groupBy ?? "status"}
+          onChangeStatus={changeStatus}
+          onDelete={deleteTask}
+          onQuickAdd={quickAdd}
+          addSignal={addSignal}
+          filtersActive={filtersActive}
+        />
+      ) : kind === "board" ? (
+        <BoardView
+          {...viewProps}
+          groupBy={config.groupBy ?? "status"}
+          onQuickAdd={quickAdd}
+          onMoveTask={moveTask}
+          onManageStatuses={() => setManagingStatuses(true)}
+          addSignal={addSignal}
+        />
+      ) : kind === "calendar" ? (
+        <CalendarView
+          {...viewProps}
+          onQuickAddDate={quickAddDate}
+          onSetDueDate={(task, due) => updateTask(task, { dueDate: due }, { dueDate: due })}
+        />
+      ) : kind === "table" ? (
+        <TableView
+          {...viewProps}
+          tags={tags}
+          sort={config.sort ?? null}
+          onSortChange={(s) => changeConfig({ ...config, sort: s })}
+          onUpdateTask={updateTask}
+          onToggleAssignee={toggleAssignee}
+          onToggleTag={toggleTag}
+          onQuickAdd={quickAdd}
+        />
       ) : (
-        <div className="task-groups">
-          {statuses.map((s) => {
-            const rows = grouped.get(s.id) ?? [];
-            const isCollapsed = collapsed.has(s.id);
-            const dot = s.color || colorFor(s.id);
-            return (
-              <div className="task-group" key={s.id}>
-                <div className="task-group-head" onClick={() => toggleGroup(s.id)}>
-                  <span className={`task-group-caret${isCollapsed ? "" : " open"}`}>
-                    {Icons.chevronRight}
-                  </span>
-                  <span className="status-dot lg" style={{ background: dot }} />
-                  <span className="task-group-name">{s.name}</span>
-                  <span className="task-group-count">{rows.length}</span>
-                </div>
-                {!isCollapsed && (
-                  <div className="task-group-body">
-                    {rows.map((t) => (
-                      <TaskRow
-                        key={t.id}
-                        task={t}
-                        statuses={statuses}
-                        canEdit={canEdit}
-                        onOpen={() => setSelectedTask(t.id)}
-                        onChangeStatus={(sid) => changeStatus(t, sid)}
-                        onDelete={() => deleteTask(t)}
-                      />
-                    ))}
-                    {rows.length === 0 && addingIn !== s.id && (
-                      <div className="task-group-empty">No tasks</div>
-                    )}
-                    {canEdit &&
-                      (addingIn === s.id ? (
-                        <QuickAdd
-                          onCommit={(name) => quickAdd(s.id, name)}
-                          onClose={() => setAddingIn(null)}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className="task-add"
-                          onClick={() => setAddingIn(s.id)}
-                        >
-                          {Icons.plus} Add task
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <GanttView
+          {...viewProps}
+          onShiftDates={(task, s, d) =>
+            updateTask(task, { startDate: s, dueDate: d }, { startDate: s, dueDate: d })
+          }
+        />
       )}
 
       {selectedTask && (
@@ -383,43 +597,6 @@ function ListView() {
   );
 }
 
-/* Inline quick-add: keeps focus so several tasks can be added in a row. */
-function QuickAdd({
-  onCommit,
-  onClose,
-}: {
-  onCommit: (name: string) => void;
-  onClose: () => void;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <div className="task-quickadd">
-      <span className="status-circle-ghost">{Icons.circle}</span>
-      <input
-        autoFocus
-        className="task-quickadd-input"
-        placeholder="Task name — Enter to add, Esc to close"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            const v = value.trim();
-            if (v) {
-              onCommit(v);
-              setValue("");
-            }
-          } else if (e.key === "Escape") {
-            onClose();
-          }
-        }}
-        onBlur={() => {
-          if (!value.trim()) onClose();
-        }}
-      />
-    </div>
-  );
-}
-
 export default function ListPage() {
   return (
     <Suspense
@@ -429,7 +606,7 @@ export default function ListPage() {
         </div>
       }
     >
-      <ListView />
+      <ListShell />
     </Suspense>
   );
 }

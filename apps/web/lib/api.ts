@@ -408,6 +408,46 @@ export interface TaskUpdateBody {
   recurrence?: Recurrence | null;
 }
 
+/* ------------------------------------------------------------------ *
+ * Views Engine (Module 5): saved views per list.
+ * ------------------------------------------------------------------ */
+export type ViewKind = "list" | "board" | "calendar" | "table" | "gantt";
+
+export interface ViewFilters {
+  statusIds?: string[];
+  assigneeIds?: string[];
+  priorities?: Priority[];
+  tagIds?: string[];
+  /** Default true — matches the classic List behavior of showing done. */
+  includeDone?: boolean;
+}
+
+export type ViewSortKey = "name" | "dueDate" | "priority" | "created" | "position";
+
+export interface ViewSort {
+  key: ViewSortKey;
+  dir: "asc" | "desc";
+}
+
+export type ViewGroupBy = "status" | "assignee" | "priority" | null;
+
+/** Client-owned view configuration blob (the API stores it opaquely). */
+export interface ViewConfig {
+  filters?: ViewFilters;
+  sort?: ViewSort | null;
+  groupBy?: ViewGroupBy;
+}
+
+export interface View {
+  id: string;
+  name: string;
+  kind: ViewKind;
+  config: ViewConfig;
+  isShared: boolean;
+  position: number;
+  createdBy: string;
+}
+
 /** Human labels + accent colors for the four priorities. */
 export const PRIORITY_META: Record<
   Priority,
@@ -1025,6 +1065,39 @@ export const relationsApi = {
       method: "DELETE",
       auth: "access",
     }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Saved views — per-list (Module 5). `config` is client-owned JSON.
+ * ------------------------------------------------------------------ */
+export const viewsApi = {
+  list: (listId: string) =>
+    api<{ views: View[] }>(`/lists/${listId}/views`, { auth: "access" }),
+  create: (
+    listId: string,
+    body: { name: string; kind: ViewKind; config?: ViewConfig; isShared?: boolean },
+  ) =>
+    api<{ view: View }>(`/lists/${listId}/views`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      config?: ViewConfig;
+      isShared?: boolean;
+      position?: number;
+    },
+  ) =>
+    api<{ view: View }>(`/views/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/views/${id}`, { method: "DELETE", auth: "access" }),
 };
 
 /* ------------------------------------------------------------------ *

@@ -401,6 +401,54 @@ export const Icons = {
       <path d="M14.8 9.3c-.5-.9-1.6-1.5-2.8-1.5-1.7 0-3 .9-3 2.2s1.3 1.8 3 2c1.7.2 3 .7 3 2s-1.3 2.2-3 2.2c-1.2 0-2.3-.6-2.8-1.5M12 6v1.8M12 16.2V18" />
     </svg>
   ),
+  /* ---- Module 5: Views Engine ---- */
+  board: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="3.5" y="4" width="5.4" height="16" rx="1.5" />
+      <rect x="11.3" y="4" width="5.4" height="11" rx="1.5" />
+      <rect x="19.1" y="4" width="1.4" height="7" rx="0.7" />
+    </svg>
+  ),
+  table: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M3.5 9.5h17M3.5 14.5h17M10 9.5v10M16 9.5v10" />
+    </svg>
+  ),
+  gantt: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4 5v14" />
+      <path d="M7 7.5h7M9.5 12h9M7 16.5h5" strokeWidth={2.6} />
+    </svg>
+  ),
+  filter: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4 5h16l-6.2 7.2V19l-3.6-2v-4.8z" />
+    </svg>
+  ),
+  sortAsc: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4 6h9M4 12h6M4 18h4" />
+      <path d="M17 18V7M13.8 10.2 17 7l3.2 3.2" />
+    </svg>
+  ),
+  sortDesc: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4 6h4M4 12h6M4 18h9" />
+      <path d="M17 6v11M13.8 13.8 17 17l3.2-3.2" />
+    </svg>
+  ),
+  group: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="4" y="4" width="16" height="6.5" rx="1.5" />
+      <rect x="4" y="13.5" width="16" height="6.5" rx="1.5" />
+    </svg>
+  ),
+  chevronLeft: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="m15 6-6 6 6 6" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;
