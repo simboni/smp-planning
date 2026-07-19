@@ -41,6 +41,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/timesheet", label: "Timesheet", icon: "clock" },
   { href: "/workload", label: "Workload", icon: "workload" },
   { href: "/docs", label: "Docs", icon: "docs" },
+  { href: "/whiteboards", label: "Whiteboards", icon: "whiteboard" },
   { href: "/forms", label: "Forms", icon: "clipboard" },
   { href: "/goals", label: "Goals", icon: "goals" },
   { href: "/portfolios", label: "Portfolios", icon: "briefcase" },
@@ -242,6 +243,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 pathname === item.href ||
                 pathname.startsWith(`${item.href}/`) ||
                 (item.href === "/docs" && pathname === "/doc") ||
+                (item.href === "/whiteboards" &&
+                  (pathname === "/whiteboard" || pathname === "/mindmap")) ||
                 (item.href === "/forms" && pathname === "/form-builder") ||
                 (item.href === "/goals" && pathname === "/goal") ||
                 (item.href === "/portfolios" && pathname === "/portfolio") ||

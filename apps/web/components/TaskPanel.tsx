@@ -41,6 +41,7 @@ import { colorFor, formatEstimate, initials, toDateInputValue } from "@/lib/form
 import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChip, TypeIcon } from "@/components/TaskBits";
 import { FieldManager } from "@/components/FieldManager";
 import { CommentsActivity } from "@/components/CommentsActivity";
+import { Attachments } from "@/components/Attachments";
 import { TimeTracking } from "@/components/TimeTracking";
 import { useRealtime } from "@/lib/realtime";
 
@@ -1121,6 +1122,9 @@ export function TaskPanel({
                 <span className="tp-empty">No watchers yet.</span>
               )}
             </section>
+
+            {/* Attachments & proofing (Module 12) */}
+            <Attachments taskId={detail.id} canEdit={canEdit} />
 
             {/* Comments & activity (Module 6) */}
             <CommentsActivity

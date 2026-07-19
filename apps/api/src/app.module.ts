@@ -18,6 +18,7 @@ import { InboxModule } from "./inbox/inbox.module";
 import { SharingModule } from "./sharing/sharing.module";
 import { SprintsModule } from "./sprints/sprints.module";
 import { TasksModule } from "./tasks/tasks.module";
+import { VisualModule } from "./visual/visual.module";
 import { TeamsModule } from "./teams/teams.module";
 import { TimeModule } from "./time/time.module";
 import { ViewsModule } from "./views/views.module";
@@ -55,6 +56,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     SprintsModule,
     FormsModule,
     AutomationsModule,
+    VisualModule,
   ],
   controllers: [HealthController],
 })

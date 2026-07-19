@@ -21,7 +21,11 @@ process.on("unhandledRejection", (reason) => {
 });
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // Disable Nest's default 100kb body parser; register our own with a larger
+  // limit so base64 file uploads (M12, 5MB decoded ≈ 6.7MB encoded) fit.
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.use(express.json({ limit: "12mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "12mb" }));
   const config = loadConfig();
 
   // Allowed browser origins: explicit WEB_ORIGINS (comma-separated) else the

@@ -2209,3 +2209,222 @@ export const sprintsApi = {
   report: (id: string) =>
     api<SprintReport>(`/sprints/${id}/report`, { auth: "access" }),
 };
+
+/* ================================================================== *
+ * Module 12 — Visual collaboration: Whiteboards & Mind maps.
+ *
+ * Both store a client-owned JSON blob (elements array / root tree) the
+ * API persists opaquely — the canvas is entirely frontend-driven.
+ * ================================================================== */
+
+/** The five element kinds a whiteboard canvas can hold. */
+export type WhiteboardElementKind =
+  | "sticky"
+  | "rect"
+  | "ellipse"
+  | "text"
+  | "arrow";
+
+/**
+ * One canvas element. Coordinates are world-space (pre-zoom). Arrows
+ * carry their two endpoints in `points`; x/y/w/h stay the bounding box.
+ * The whole array is client-owned and PATCHed wholesale (≤512KB).
+ */
+export interface WhiteboardElement {
+  id: string;
+  kind: WhiteboardElementKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text?: string;
+  color?: string;
+  points?: { x: number; y: number }[];
+  fontSize?: number;
+}
+
+/** A whiteboard as listed on the visual hub. */
+export interface WhiteboardSummary {
+  id: string;
+  name: string;
+  /** Space the board is attached to; null = workspace-level. */
+  spaceId: string | null;
+  spaceName: string | null;
+  updatedAt: string;
+  updatedBy: string | null;
+  elementCount: number;
+}
+
+/** The full board including its element array. */
+export interface WhiteboardDetail {
+  id: string;
+  name: string;
+  spaceId: string | null;
+  elements: WhiteboardElement[];
+  updatedAt: string;
+}
+
+export const whiteboardsApi = {
+  list: () =>
+    api<{ whiteboards: WhiteboardSummary[] }>("/whiteboards", {
+      auth: "access",
+    }),
+  create: (body: { name: string; spaceId?: string | null }) =>
+    api<{ whiteboard: WhiteboardSummary }>("/whiteboards", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  get: (id: string) =>
+    api<{ whiteboard: WhiteboardDetail }>(`/whiteboards/${id}`, {
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      elements?: WhiteboardElement[];
+      spaceId?: string | null;
+    },
+  ) =>
+    api<{ whiteboard: WhiteboardDetail }>(`/whiteboards/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/whiteboards/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/**
+ * A mind-map node. The whole tree hangs off the map's `root` and is
+ * client-owned jsonb — `collapsed` and `taskId` (set when a node is
+ * converted to a task) ride along in the same blob.
+ */
+export interface MindmapNode {
+  id: string;
+  text: string;
+  children: MindmapNode[];
+  collapsed?: boolean;
+  taskId?: string;
+}
+
+/** A mind map as listed on the visual hub. */
+export interface MindmapSummary {
+  id: string;
+  name: string;
+  spaceId: string | null;
+  spaceName: string | null;
+  updatedAt: string;
+  updatedBy: string | null;
+  /** Node count-ish rollup (the server may omit it — guard at display). */
+  nodeCount?: number;
+}
+
+/** The full map including its root tree. */
+export interface MindmapDetail {
+  id: string;
+  name: string;
+  spaceId: string | null;
+  root: MindmapNode;
+  updatedAt: string;
+}
+
+export const mindmapsApi = {
+  list: () =>
+    api<{ mindmaps: MindmapSummary[] }>("/mindmaps", { auth: "access" }),
+  create: (body: { name: string; spaceId?: string | null }) =>
+    api<{ mindmap: MindmapSummary }>("/mindmaps", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  get: (id: string) =>
+    api<{ mindmap: MindmapDetail }>(`/mindmaps/${id}`, { auth: "access" }),
+  update: (
+    id: string,
+    body: { name?: string; root?: MindmapNode; spaceId?: string | null },
+  ) =>
+    api<{ mindmap: MindmapDetail }>(`/mindmaps/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/mindmaps/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ==========================================================================
+   Module 12: Attachments & Proofing (files live under whiteboards/mindmaps
+   API section above; these are task-scoped).
+   ========================================================================== */
+
+export interface TaskFile {
+  id: string;
+  name: string;
+  mime: string;
+  sizeBytes: number;
+  isClip: boolean;
+  author: PublicUser;
+  createdAt: string;
+  annotationCount: number;
+}
+
+export interface ProofAnnotation {
+  id: string;
+  x: number;
+  y: number;
+  body: string;
+  author: PublicUser;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export const filesApi = {
+  list: (taskId: string) =>
+    api<{ files: TaskFile[] }>(`/tasks/${taskId}/files`, {
+      auth: "access",
+    }).then((r) => r.files),
+  upload: (
+    taskId: string,
+    body: { name: string; mime: string; dataBase64: string; isClip?: boolean },
+  ) =>
+    api<{ file: TaskFile }>(`/tasks/${taskId}/files`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }).then((r) => r.file),
+  remove: (id: string) =>
+    api<void>(`/files/${id}`, { method: "DELETE", auth: "access" }),
+  /** The raw file URL (needs the auth header, so use blobUrl() for <img>). */
+  rawUrl: (id: string) => `${API_BASE}/files/${id}`,
+  /** Fetch a file WITH auth and return an object URL for <img>/<video>. */
+  blobUrl: async (id: string): Promise<string> => {
+    const res = await fetch(`${API_BASE}/files/${id}`, {
+      headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+    });
+    if (!res.ok) throw new Error(`file ${id}: ${res.status}`);
+    return URL.createObjectURL(await res.blob());
+  },
+};
+
+export const annotationsApi = {
+  list: (fileId: string) =>
+    api<{ annotations: ProofAnnotation[] }>(`/files/${fileId}/annotations`, {
+      auth: "access",
+    }).then((r) => r.annotations),
+  add: (fileId: string, body: { x: number; y: number; body: string }) =>
+    api<{ annotation: ProofAnnotation }>(`/files/${fileId}/annotations`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }).then((r) => r.annotation),
+  update: (id: string, body: { body?: string; resolved?: boolean }) =>
+    api<{ annotation: ProofAnnotation }>(`/annotations/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }).then((r) => r.annotation),
+  remove: (id: string) =>
+    api<void>(`/annotations/${id}`, { method: "DELETE", auth: "access" }),
+};

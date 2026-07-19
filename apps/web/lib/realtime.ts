@@ -25,7 +25,9 @@ export type RealtimeEvent =
   | { type: "presence"; payload: { online: string[] } }
   | { type: "doc.changed"; payload: { docId: string; pageId: string } }
   | { type: "time.changed"; payload: { taskId: string } }
-  | { type: "goal.changed"; payload: { goalId: string } };
+  | { type: "goal.changed"; payload: { goalId: string } }
+  | { type: "board.changed"; payload: { whiteboardId: string } }
+  | { type: "mindmap.changed"; payload: { mindmapId: string } };
 
 export type RealtimeHandler = (event: RealtimeEvent) => void;
 

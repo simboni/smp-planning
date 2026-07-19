@@ -559,6 +559,38 @@ export const Icons = {
       <circle cx="15" cy="18" r="1.4" />
     </svg>
   ),
+  /* ---- Module 12: Whiteboards & Mind maps ---- */
+  whiteboard: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="3" y="4" width="18" height="13.5" rx="2" />
+      <path d="M8.5 21h7M12 17.5V21" />
+      <path d="m7.2 13.2 3.6-4.6 2.4 2.6 3.4-4" />
+    </svg>
+  ),
+  pen: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="m14.5 5.5 4 4L8 20H4v-4z" />
+      <path d="m12.5 7.5 4 4" />
+      <path d="M17 3l4 4-1.5 1.5-4-4z" />
+    </svg>
+  ),
+  mindmap: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="5.5" cy="12" r="2.5" />
+      <circle cx="18.5" cy="5.5" r="2.2" />
+      <circle cx="18.5" cy="12" r="2.2" />
+      <circle cx="18.5" cy="18.5" r="2.2" />
+      <path d="M8 11.2c3 0 4.6-1.6 6-4M8 12h8.3M8 12.8c3 0 4.6 1.6 6 4" />
+    </svg>
+  ),
+  branch: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="6" cy="6" r="2.4" />
+      <circle cx="6" cy="18" r="2.4" />
+      <circle cx="18" cy="12" r="2.4" />
+      <path d="M8.4 6c4 0 3.2 6 7.2 6M8.4 18c4 0 3.2-6 7.2-6" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;

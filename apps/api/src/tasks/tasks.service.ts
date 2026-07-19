@@ -62,6 +62,8 @@ export interface TaskCard {
   trackedSeconds: number;
   /** M10: story points for sprint math (0..999, null = unestimated). */
   sprintPoints: number | null;
+  /** M12: number of file attachments on the task. */
+  attachmentCount: number;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -256,6 +258,7 @@ export class TasksService {
       blockedCount: 0,
       trackedSeconds: 0,
       sprintPoints: (r.sprint_points as number | null) ?? null,
+      attachmentCount: 0,
       archived: r.archived as boolean,
       createdAt: iso(r.created_at)!,
       updatedAt: iso(r.updated_at)!,
@@ -352,6 +355,19 @@ export class TasksService {
     for (const r of tracked.rows) {
       const c = byId.get(r.task_id as string);
       if (c) c.trackedSeconds = r.n as number;
+    }
+
+    // M12: attachment count per task.
+    const attachments = await client.query(
+      `SELECT task_id, COUNT(*)::int AS n
+       FROM files
+       WHERE task_id = ANY($1)
+       GROUP BY task_id`,
+      [ids],
+    );
+    for (const r of attachments.rows) {
+      const c = byId.get(r.task_id as string);
+      if (c) c.attachmentCount = r.n as number;
     }
     return cards;
   }
