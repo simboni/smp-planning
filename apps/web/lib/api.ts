@@ -1516,6 +1516,199 @@ export const timeApi = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Module 9 — Goals, OKRs & Portfolios.
+ * Progress values are 0..1 floats; numeric fields may arrive from the
+ * API as strings (decimal columns) — always coerce with Number() at
+ * the point of display/math.
+ * ------------------------------------------------------------------ */
+
+/** A folder grouping goals on the Goals home. */
+export interface GoalFolder {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+  goalCount: number;
+}
+
+/** A goal as listed on the Goals home (targets come with the detail). */
+export interface GoalSummary {
+  id: string;
+  folderId: string | null;
+  name: string;
+  description: string | null;
+  owner: TaskUser | null;
+  dueDate: string | null;
+  archived: boolean;
+  /** 0..1 (may arrive as a string — Number() it). */
+  progress: number;
+  targetCount: number;
+  createdAt: string;
+}
+
+export type TargetType = "number" | "currency" | "boolean" | "tasks";
+
+/** A task linked to a "tasks" target. */
+export interface TargetTask {
+  id: string;
+  name: string;
+  listId: string;
+  statusType: StatusType;
+}
+
+/** A key result on a goal. Value fields may arrive as strings. */
+export interface Target {
+  id: string;
+  name: string;
+  type: TargetType;
+  startValue: number;
+  targetValue: number;
+  currentValue: number;
+  currency: string | null;
+  done: boolean;
+  position: number;
+  /** 0..1 (may arrive as a string — Number() it). */
+  progress: number;
+  tasks?: TargetTask[];
+}
+
+export interface GoalDetail extends GoalSummary {
+  targets: Target[];
+}
+
+export interface Portfolio {
+  id: string;
+  name: string;
+  color: string;
+  itemCount: number;
+}
+
+/** One list rolled up inside a portfolio. */
+export interface PortfolioItem {
+  listId: string;
+  listName: string;
+  spaceId: string;
+  spaceName: string;
+  color: string | null;
+  stats: { total: number; done: number; inProgress: number; overdue: number };
+  /** 0..1 (may arrive as a string — Number() it). */
+  progress: number;
+}
+
+export const goalsApi = {
+  /* folders ---------------------------------------------------------- */
+  listFolders: () =>
+    api<{ folders: GoalFolder[] }>("/goal-folders", { auth: "access" }),
+  createFolder: (body: { name: string; color?: string }) =>
+    api<{ folder: GoalFolder }>("/goal-folders", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateFolder: (id: string, body: { name?: string; color?: string }) =>
+    api<{ folder: GoalFolder }>(`/goal-folders/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  removeFolder: (id: string) =>
+    api<void>(`/goal-folders/${id}`, { method: "DELETE", auth: "access" }),
+
+  /* goals ------------------------------------------------------------ */
+  list: () => api<{ goals: GoalSummary[] }>("/goals", { auth: "access" }),
+  create: (body: {
+    name: string;
+    description?: string;
+    folderId?: string;
+    ownerUserId?: string;
+    dueDate?: string;
+  }) => api<{ goal: GoalSummary }>("/goals", { method: "POST", body, auth: "access" }),
+  get: (id: string) =>
+    api<{ goal: GoalDetail }>(`/goals/${id}`, { auth: "access" }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      description?: string | null;
+      folderId?: string | null;
+      ownerUserId?: string | null;
+      dueDate?: string | null;
+      archived?: boolean;
+    },
+  ) =>
+    api<{ goal: GoalDetail }>(`/goals/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/goals/${id}`, { method: "DELETE", auth: "access" }),
+
+  /* targets (key results) -------------------------------------------- */
+  createTarget: (
+    goalId: string,
+    body: {
+      name: string;
+      type: TargetType;
+      startValue?: number;
+      targetValue?: number;
+      currency?: string;
+      taskIds?: string[];
+    },
+  ) =>
+    api<{ target: Target }>(`/goals/${goalId}/targets`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateTarget: (
+    id: string,
+    body: {
+      name?: string;
+      startValue?: number;
+      targetValue?: number;
+      currentValue?: number;
+      currency?: string;
+      done?: boolean;
+      taskIds?: string[];
+    },
+  ) =>
+    api<{ target: Target }>(`/targets/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  removeTarget: (id: string) =>
+    api<void>(`/targets/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+export const portfoliosApi = {
+  list: () =>
+    api<{ portfolios: Portfolio[] }>("/portfolios", { auth: "access" }),
+  create: (body: { name: string; color?: string; listIds?: string[] }) =>
+    api<{ portfolio: Portfolio }>("/portfolios", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  get: (id: string) =>
+    api<{ portfolio: Portfolio; items: PortfolioItem[] }>(`/portfolios/${id}`, {
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: { name?: string; color?: string; listIds?: string[] },
+  ) =>
+    api<{ portfolio: Portfolio }>(`/portfolios/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/portfolios/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
  * Task types — per-space (Module 4). "Task" is the implicit default.
  * ------------------------------------------------------------------ */
 export const taskTypesApi = {

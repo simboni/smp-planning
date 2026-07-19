@@ -219,6 +219,32 @@ export function isTodayYmd(ymd: string): boolean {
 /** Preset emoji row for doc icons (Docs home modal + editor header). */
 export const DOC_EMOJI = ["📄", "📘", "📗", "📕", "🧠", "💡", "🗺️", "🚀", "📌", "✨"] as const;
 
+/* ------------------------------------------------------------------ *
+ * Goals & portfolios (Module 9). Pure — safe anywhere.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Coerce anything the API sends (number | numeric string | junk) to a
+ * 0..1 float. Decimal columns often serialize as strings.
+ */
+export function clamp01(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
+}
+
+/** "72%" from a 0..1 float (rounded to whole percents). */
+export function formatPercent(value: unknown): string {
+  return `${Math.round(clamp01(value) * 100)}%`;
+}
+
+/** "4,000" / "0.5" — thousands-grouped number for target readouts. */
+export function formatMetric(value: unknown): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 /** ISO (or date) → "yyyy-mm-dd" for a native date input; "" when empty. */
 export function toDateInputValue(iso: string | null | undefined): string {
   if (!iso) return "";

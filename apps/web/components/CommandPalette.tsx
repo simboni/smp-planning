@@ -20,8 +20,9 @@ const DESTINATIONS: Destination[] = [
   { label: "Docs", href: "/docs", icon: "docs", keywords: "wiki pages notes write document" },
   { label: "Timesheet", href: "/timesheet", icon: "clock", keywords: "time tracking hours week entries submit approval" },
   { label: "Workload", href: "/workload", icon: "workload", keywords: "capacity team hours estimates planning" },
+  { label: "Goals", href: "/goals", icon: "goals", keywords: "okr okrs objectives key results targets progress tracking" },
+  { label: "Portfolios", href: "/portfolios", icon: "briefcase", keywords: "rollup roll-up lists projects overview progress" },
   { label: "Tasks", href: "#", icon: "tasks", soon: true },
-  { label: "Goals", href: "#", icon: "goals", soon: true },
   { label: "Dashboards", href: "#", icon: "dashboards", soon: true },
   { label: "Chat", href: "#", icon: "chat", soon: true },
 ];

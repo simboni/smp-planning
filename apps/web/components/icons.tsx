@@ -515,6 +515,21 @@ export const Icons = {
       <path d="M4 7.5h12M4 12h16M4 16.5h8" strokeWidth={2.6} />
     </svg>
   ),
+  /* ---- Module 9: Goals, OKRs & Portfolios ---- */
+  briefcase: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="3" y="7.5" width="18" height="12.5" rx="2" />
+      <path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5" />
+      <path d="M3 12.5c2.9 1.3 5.9 2 9 2s6.1-.7 9-2" />
+      <path d="M12 13.5v2" />
+    </svg>
+  ),
+  trendUp: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M3.5 17.5 9.5 11.5l4 4 7-7.5" />
+      <path d="M15.5 8h5v5" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;

@@ -8,6 +8,7 @@ import { loadConfig } from "./config";
 import { DbModule } from "./db/db.module";
 import { DocsModule } from "./docs/docs.module";
 import { EventsModule } from "./events/events.module";
+import { GoalsModule } from "./goals/goals.module";
 import { HealthController } from "./health.controller";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
 import { InboxModule } from "./inbox/inbox.module";
@@ -45,6 +46,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     InboxModule,
     DocsModule,
     TimeModule,
+    GoalsModule,
   ],
   controllers: [HealthController],
 })

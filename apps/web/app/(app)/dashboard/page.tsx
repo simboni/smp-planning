@@ -21,7 +21,6 @@ interface ModuleTile {
 }
 
 const MODULES: ModuleTile[] = [
-  { label: "Goals", desc: "Targets that roll up", icon: "goals", color: "#36B37E" },
   { label: "Dashboards", desc: "Reporting at a glance", icon: "dashboards", color: "#FFAB00" },
 ];
 
@@ -195,6 +194,16 @@ export default function DashboardPage() {
           </span>
           <h3>Time Tracking</h3>
           <p>Timers, timesheets & team workload — track your week.</p>
+        </Link>
+        <Link href="/goals" className="module-tile module-tile-live">
+          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
+            Ready
+          </span>
+          <span className="module-ic" style={{ background: "#36B37E" }}>
+            {Icons.goals}
+          </span>
+          <h3>Goals</h3>
+          <p>OKRs, targets & portfolios — set a goal and watch it fill.</p>
         </Link>
         {MODULES.map((m) => (
           <div className="module-tile" key={m.label}>

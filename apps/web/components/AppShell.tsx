@@ -40,6 +40,8 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/timesheet", label: "Timesheet", icon: "clock" },
   { href: "/workload", label: "Workload", icon: "workload" },
   { href: "/docs", label: "Docs", icon: "docs" },
+  { href: "/goals", label: "Goals", icon: "goals" },
+  { href: "/portfolios", label: "Portfolios", icon: "briefcase" },
   { href: "/members", label: "Members", icon: "members" },
   { href: "/teams", label: "Teams", icon: "team" },
   { href: "/settings", label: "Settings", icon: "settings" },
@@ -47,7 +49,6 @@ const PRIMARY_NAV: NavItem[] = [
 
 const COMING_SOON: NavItem[] = [
   { href: "#", label: "Tasks", icon: "tasks" },
-  { href: "#", label: "Goals", icon: "goals" },
   { href: "#", label: "Dashboards", icon: "dashboards" },
   { href: "#", label: "Chat", icon: "chat" },
 ];
@@ -239,7 +240,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               const active =
                 pathname === item.href ||
                 pathname.startsWith(`${item.href}/`) ||
-                (item.href === "/docs" && pathname === "/doc");
+                (item.href === "/docs" && pathname === "/doc") ||
+                (item.href === "/goals" && pathname === "/goal") ||
+                (item.href === "/portfolios" && pathname === "/portfolio");
               return (
                 <Link
                   key={item.href}

@@ -24,7 +24,8 @@ export type RealtimeEvent =
   | { type: "notification.new"; payload: { userId: string } }
   | { type: "presence"; payload: { online: string[] } }
   | { type: "doc.changed"; payload: { docId: string; pageId: string } }
-  | { type: "time.changed"; payload: { taskId: string } };
+  | { type: "time.changed"; payload: { taskId: string } }
+  | { type: "goal.changed"; payload: { goalId: string } };
 
 export type RealtimeHandler = (event: RealtimeEvent) => void;
 
