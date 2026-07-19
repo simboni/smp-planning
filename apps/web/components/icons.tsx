@@ -267,6 +267,70 @@ export const Icons = {
       <path d="M6 6l12 12M18 6 6 18" />
     </svg>
   ),
+  circle: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="8" />
+    </svg>
+  ),
+  checkCircle: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M8.5 12.2 11 14.7 15.7 9.7" />
+    </svg>
+  ),
+  flag: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M5 21V4M5 4.5h11l-2 3.5 2 3.5H5" />
+    </svg>
+  ),
+  calendar: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="4" y="5" width="16" height="16" rx="2" />
+      <path d="M4 9.5h16M8 3.5v3M16 3.5v3" />
+    </svg>
+  ),
+  tag: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4 4h7l9 9-7 7-9-9z" />
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  subtask: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M6 4v10a3 3 0 0 0 3 3h9" />
+      <path d="M15 13.5 18.5 17 15 20.5" />
+    </svg>
+  ),
+  paperclip: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M20 11.5 12 19.5a4.5 4.5 0 0 1-6.4-6.4L14 4.7a3 3 0 0 1 4.3 4.3l-8.4 8.4a1.5 1.5 0 0 1-2.2-2.1l7.6-7.6" />
+    </svg>
+  ),
+  userPlus: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="9" cy="8.5" r="3.2" />
+      <path d="M3.5 19c.8-3 3-4.5 5.5-4.5 1.2 0 2.3.3 3.2.9" />
+      <path d="M17.5 13v6M14.5 16h6" />
+    </svg>
+  ),
+  clock: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  ),
+  eye: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </svg>
+  ),
+  checkSquare: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <path d="M8.5 12.2 11 14.7 15.7 9.7" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;

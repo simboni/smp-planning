@@ -21,7 +21,6 @@ interface ModuleTile {
 }
 
 const MODULES: ModuleTile[] = [
-  { label: "Tasks", desc: "Lists, boards & calendars", icon: "tasks", color: "#5B5FEF" },
   { label: "Docs", desc: "Wikis and collaborative docs", icon: "docs", color: "#00B8D9" },
   { label: "Goals", desc: "Targets that roll up", icon: "goals", color: "#36B37E" },
   { label: "Dashboards", desc: "Reporting at a glance", icon: "dashboards", color: "#FFAB00" },
@@ -31,7 +30,7 @@ const CHECKLIST = [
   { title: "Create your workspace", sub: "You're in — nice work.", done: true },
   { title: "Invite your teammates", sub: "Work is better together.", done: false, href: "/members", cta: "Invite" },
   { title: "Set up your first Space", sub: "Organize teams, folders and lists.", done: false, href: "/everything", cta: "Open" },
-  { title: "Create your first task", sub: "Coming soon in the next module.", done: false, soon: true },
+  { title: "Create your first task", sub: "Open a list and add your first task.", done: false, href: "/everything", cta: "Open" },
 ];
 
 export default function DashboardPage() {
@@ -106,7 +105,6 @@ export default function DashboardPage() {
                     {c.cta}
                   </Link>
                 )}
-                {c.soon && <span className="badge badge-soon">Soon</span>}
               </div>
             ))}
           </div>
@@ -168,6 +166,16 @@ export default function DashboardPage() {
           </span>
           <h3>Spaces</h3>
           <p>Organize teams and projects — create your first space.</p>
+        </Link>
+        <Link href="/everything" className="module-tile module-tile-live">
+          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
+            Ready
+          </span>
+          <span className="module-ic" style={{ background: "#5B5FEF" }}>
+            {Icons.tasks}
+          </span>
+          <h3>Tasks</h3>
+          <p>Lists, statuses & task detail — open a list to start.</p>
         </Link>
         {MODULES.map((m) => (
           <div className="module-tile" key={m.label}>

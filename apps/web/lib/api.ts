@@ -165,6 +165,134 @@ export interface HierarchyTree {
 }
 
 /* ------------------------------------------------------------------ *
+ * Tasks Core (Module 3): Statuses, Tags, Tasks, Checklists.
+ * ------------------------------------------------------------------ */
+export type StatusType = "not_started" | "active" | "done";
+
+export interface Status {
+  id: string;
+  name: string;
+  color: string;
+  type: StatusType;
+  position: number;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export type Priority = "urgent" | "high" | "normal" | "low";
+
+/** A person referenced from a task (assignee / watcher / author). */
+export interface TaskUser {
+  id: string;
+  fullName: string;
+  avatarUrl: string | null;
+}
+
+/** The denormalized status carried on every card. */
+export interface TaskStatusRef {
+  id: string;
+  name: string;
+  color: string;
+  type: StatusType;
+}
+
+export interface TaskCard {
+  id: string;
+  listId: string;
+  spaceId: string;
+  parentTaskId: string | null;
+  name: string;
+  statusId: string;
+  status: TaskStatusRef;
+  priority: Priority | null;
+  startDate: string | null;
+  dueDate: string | null;
+  timeEstimateMinutes: number | null;
+  position: number;
+  assignees: TaskUser[];
+  tags: Tag[];
+  subtaskCount: number;
+  checklistTotal: number;
+  checklistDone: number;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface ChecklistItem {
+  id: string;
+  name: string;
+  resolved: boolean;
+  assigneeUserId: string | null;
+  position: number;
+}
+
+export interface Checklist {
+  id: string;
+  name: string;
+  position: number;
+  items: ChecklistItem[];
+}
+
+export interface TaskBreadcrumb {
+  space: { id: string; name: string; color: string; icon: string | null };
+  folder: { id: string; name: string } | null;
+  list: { id: string; name: string };
+}
+
+export interface TaskDetail extends TaskCard {
+  description: string | null;
+  watchers: TaskUser[];
+  subtasks: TaskCard[];
+  checklists: Checklist[];
+  createdBy: TaskUser | null;
+  breadcrumb: TaskBreadcrumb;
+}
+
+/** Body for creating a task (top-level or subtask). */
+export interface TaskCreateBody {
+  name: string;
+  statusId?: string;
+  priority?: Priority | null;
+  assigneeIds?: string[];
+  tagIds?: string[];
+  startDate?: string | null;
+  dueDate?: string | null;
+  timeEstimateMinutes?: number | null;
+  description?: string | null;
+  parentTaskId?: string | null;
+}
+
+/** Body for patching a task's own fields (relations have dedicated calls). */
+export interface TaskUpdateBody {
+  name?: string;
+  statusId?: string;
+  priority?: Priority | null;
+  startDate?: string | null;
+  dueDate?: string | null;
+  timeEstimateMinutes?: number | null;
+  description?: string | null;
+  archived?: boolean;
+}
+
+/** Human labels + accent colors for the four priorities. */
+export const PRIORITY_META: Record<
+  Priority,
+  { label: string; color: string }
+> = {
+  urgent: { label: "Urgent", color: "#E5484D" },
+  high: { label: "High", color: "#F5A623" },
+  normal: { label: "Normal", color: "#2B62C4" },
+  low: { label: "Low", color: "#8A8F9C" },
+};
+export const PRIORITY_ORDER: Priority[] = ["urgent", "high", "normal", "low"];
+
+/* ------------------------------------------------------------------ *
  * Storage that never throws. Private-browsing modes can block
  * localStorage entirely — degrade to an in-memory map rather than crash.
  * ------------------------------------------------------------------ */
@@ -539,4 +667,167 @@ export const accessApi = {
       method: "DELETE",
       auth: "access",
     }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Statuses — per-space task workflow columns (Module 3).
+ * ------------------------------------------------------------------ */
+export const statusesApi = {
+  list: (spaceId: string) =>
+    api<{ statuses: Status[] }>(`/spaces/${spaceId}/statuses`, {
+      auth: "access",
+    }),
+  create: (
+    spaceId: string,
+    body: { name: string; color?: string; type?: StatusType },
+  ) =>
+    api<{ status: Status }>(`/spaces/${spaceId}/statuses`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: { name?: string; color?: string; type?: StatusType },
+  ) =>
+    api<{ status: Status }>(`/statuses/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/statuses/${id}`, { method: "DELETE", auth: "access" }),
+  reorder: (spaceId: string, ids: string[]) =>
+    api<{ ok: true }>(`/spaces/${spaceId}/statuses/reorder`, {
+      method: "POST",
+      body: { ids },
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Tags — per-space labels (Module 3).
+ * ------------------------------------------------------------------ */
+export const tagsApi = {
+  list: (spaceId: string) =>
+    api<{ tags: Tag[] }>(`/spaces/${spaceId}/tags`, { auth: "access" }),
+  create: (spaceId: string, body: { name: string; color?: string }) =>
+    api<{ tag: Tag }>(`/spaces/${spaceId}/tags`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (id: string, body: { name?: string; color?: string }) =>
+    api<{ tag: Tag }>(`/tags/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/tags/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Tasks — the core of Module 3. Cards, detail, relations & checklists.
+ * ------------------------------------------------------------------ */
+export const tasksApi = {
+  /** Top-level tasks for a list (subtasks come nested in the detail). */
+  listForList: (listId: string) =>
+    api<{ tasks: TaskCard[] }>(`/lists/${listId}/tasks`, { auth: "access" }),
+  create: (listId: string, body: TaskCreateBody) =>
+    api<{ task: TaskDetail }>(`/lists/${listId}/tasks`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  get: (id: string) =>
+    api<{ task: TaskDetail }>(`/tasks/${id}`, { auth: "access" }),
+  update: (id: string, body: TaskUpdateBody) =>
+    api<{ task: TaskDetail }>(`/tasks/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/tasks/${id}`, { method: "DELETE", auth: "access" }),
+  createSubtask: (id: string, body: { name: string }) =>
+    api<{ task: TaskCard }>(`/tasks/${id}/subtasks`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  reorder: (listId: string, statusId: string, ids: string[]) =>
+    api<{ ok: true }>(`/lists/${listId}/tasks/reorder`, {
+      method: "POST",
+      body: { statusId, ids },
+      auth: "access",
+    }),
+
+  /* relations -------------------------------------------------------- */
+  addAssignee: (id: string, userId: string) =>
+    api<unknown>(`/tasks/${id}/assignees`, {
+      method: "POST",
+      body: { userId },
+      auth: "access",
+    }),
+  removeAssignee: (id: string, userId: string) =>
+    api<void>(`/tasks/${id}/assignees/${userId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
+  addWatcher: (id: string, userId: string) =>
+    api<unknown>(`/tasks/${id}/watchers`, {
+      method: "POST",
+      body: { userId },
+      auth: "access",
+    }),
+  removeWatcher: (id: string, userId: string) =>
+    api<void>(`/tasks/${id}/watchers/${userId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
+  addTag: (id: string, tagId: string) =>
+    api<unknown>(`/tasks/${id}/tags`, {
+      method: "POST",
+      body: { tagId },
+      auth: "access",
+    }),
+  removeTag: (id: string, tagId: string) =>
+    api<void>(`/tasks/${id}/tags/${tagId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
+
+  /* checklists ------------------------------------------------------- */
+  createChecklist: (taskId: string, body: { name?: string } = {}) =>
+    api<{ checklist: Checklist }>(`/tasks/${taskId}/checklists`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateChecklist: (id: string, body: { name?: string }) =>
+    api<{ checklist: Checklist }>(`/checklists/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  removeChecklist: (id: string) =>
+    api<void>(`/checklists/${id}`, { method: "DELETE", auth: "access" }),
+  createChecklistItem: (checklistId: string, body: { name: string }) =>
+    api<{ item: ChecklistItem }>(`/checklists/${checklistId}/items`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateChecklistItem: (
+    id: string,
+    body: { name?: string; resolved?: boolean; assigneeUserId?: string | null },
+  ) =>
+    api<{ item: ChecklistItem }>(`/checklist-items/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  removeChecklistItem: (id: string) =>
+    api<void>(`/checklist-items/${id}`, { method: "DELETE", auth: "access" }),
 };

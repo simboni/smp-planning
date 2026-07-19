@@ -8,6 +8,7 @@ import { DbModule } from "./db/db.module";
 import { HealthController } from "./health.controller";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
 import { SharingModule } from "./sharing/sharing.module";
+import { TasksModule } from "./tasks/tasks.module";
 import { TeamsModule } from "./teams/teams.module";
 import { WorkspacesModule } from "./workspaces/workspaces.module";
 
@@ -31,6 +32,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     HierarchyModule,
     TeamsModule,
     SharingModule,
+    TasksModule,
   ],
   controllers: [HealthController],
 })
