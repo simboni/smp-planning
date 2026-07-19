@@ -12,7 +12,14 @@ export async function insertNotification(
   n: {
     workspaceId: string;
     userId: string;
-    kind: "mention" | "assigned" | "comment" | "status" | "reminder" | "timesheet";
+    kind:
+      | "mention"
+      | "assigned"
+      | "comment"
+      | "status"
+      | "reminder"
+      | "timesheet"
+      | "chat";
     taskId?: string | null;
     commentId?: string | null;
     actorUserId?: string | null;

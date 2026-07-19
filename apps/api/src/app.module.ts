@@ -4,6 +4,7 @@ import { AccessModule } from "./access/access.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { AutomationsModule } from "./automations/automations.module";
+import { ChatModule } from "./chat/chat.module";
 import { CommentsModule } from "./comments/comments.module";
 import { loadConfig } from "./config";
 import { DashboardsModule } from "./dashboards/dashboards.module";
@@ -57,6 +58,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     FormsModule,
     AutomationsModule,
     VisualModule,
+    ChatModule,
   ],
   controllers: [HealthController],
 })
