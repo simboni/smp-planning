@@ -5,9 +5,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ApiError,
+  automationsApi,
   hierarchyApi,
   permissionAtLeast,
   sprintsApi,
+  statusesApi,
+  tagsApi,
+  workspacesApi,
+  type Automation,
   type FolderWithLists,
   type List,
   type Space,
@@ -17,11 +22,19 @@ import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { ShareDialog } from "@/components/ShareDialog";
 import {
+  actionSummary,
+  AutomationBuilder,
+  AutomationRunsModal,
+  triggerSummary,
+  type AutomationContext,
+} from "@/components/AutomationBuilder";
+import {
   colorFor,
   formatDateRange,
   localYmd,
   shiftYmd,
   sprintPhase,
+  timeAgo,
   toDateInputValue,
 } from "@/lib/format";
 
@@ -371,6 +384,216 @@ function SprintsSection({ spaceId, canEdit }: { spaceId: string; canEdit: boolea
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Module 11 — one automation rule row: name, "When … then …" summary,
+ * enabled toggle, run stats and a ⋯ menu (edit / runs / delete).
+ * ------------------------------------------------------------------ */
+function AutomationRow({
+  automation,
+  ctx,
+  canEdit,
+  onEdit,
+  onRuns,
+  onChanged,
+}: {
+  automation: Automation;
+  ctx: AutomationContext;
+  canEdit: boolean;
+  onEdit: () => void;
+  onRuns: () => void;
+  onChanged: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (): void => setMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [menuOpen]);
+
+  const toggle = (): void => {
+    automationsApi
+      .update(automation.id, { enabled: !automation.enabled })
+      .then(onChanged)
+      .catch(() => undefined);
+  };
+
+  const remove = (): void => {
+    setMenuOpen(false);
+    if (!window.confirm(`Delete “${automation.name}”? It stops running immediately.`)) return;
+    automationsApi.remove(automation.id).then(onChanged).catch(() => undefined);
+  };
+
+  const sentence = `When ${triggerSummary(automation.trigger, ctx)}, then ${automation.actions
+    .map((a) => actionSummary(a, ctx))
+    .join(", ")}`;
+
+  return (
+    <div className={`auto-row-card${automation.enabled ? "" : " off"}`}>
+      <span className="auto-row-ic">{Icons.zap}</span>
+      <span className="auto-row-main">
+        <span className="auto-row-name">{automation.name}</span>
+        <span className="auto-row-sentence">{sentence}</span>
+        <span className="auto-row-stats">
+          {automation.runCount} {automation.runCount === 1 ? "run" : "runs"}
+          {automation.lastRunAt ? ` · last ${timeAgo(automation.lastRunAt)}` : " · never fired"}
+        </span>
+      </span>
+
+      {canEdit ? (
+        <button
+          type="button"
+          className={`switch auto-switch${automation.enabled ? " on" : ""}`}
+          role="switch"
+          aria-checked={automation.enabled}
+          aria-label={automation.enabled ? "Disable automation" : "Enable automation"}
+          title={automation.enabled ? "On — click to pause" : "Paused — click to enable"}
+          onClick={toggle}
+        />
+      ) : (
+        <span className={`badge ${automation.enabled ? "badge-soft" : "badge-soon"}`}>
+          {automation.enabled ? "On" : "Off"}
+        </span>
+      )}
+
+      <span className="dp-menu-wrap">
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Automation menu"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((v) => !v);
+          }}
+        >
+          {Icons.more}
+        </button>
+        {menuOpen && (
+          <div className="menu dp-menu" onClick={(e) => e.stopPropagation()}>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onEdit();
+                }}
+              >
+                {Icons.edit} Edit
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onRuns();
+              }}
+            >
+              {Icons.clock} View runs
+            </button>
+            {canEdit && (
+              <button type="button" className="danger" onClick={remove}>
+                {Icons.trash} Delete automation
+              </button>
+            )}
+          </div>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Module 11 — the Automations section of a space page.
+ * ------------------------------------------------------------------ */
+function AutomationsSection({ spaceId, canEdit }: { spaceId: string; canEdit: boolean }) {
+  const [automations, setAutomations] = useState<Automation[] | null>(null);
+  const [ctx, setCtx] = useState<AutomationContext>({ statuses: [], members: [], tags: [] });
+  const [building, setBuilding] = useState<null | { existing: Automation | null }>(null);
+  const [runsFor, setRunsFor] = useState<Automation | null>(null);
+
+  const load = (): void => {
+    automationsApi
+      .list(spaceId)
+      .then((r) => setAutomations(r.automations))
+      .catch(() => setAutomations([]));
+  };
+
+  useEffect(() => {
+    setAutomations(null);
+    load();
+    // Names for the summary sentences + builder selects.
+    Promise.all([
+      statusesApi.list(spaceId).catch(() => ({ statuses: [] })),
+      workspacesApi.members().catch(() => ({ members: [] })),
+      tagsApi.list(spaceId).catch(() => ({ tags: [] })),
+    ]).then(([s, m, t]) =>
+      setCtx({ statuses: s.statuses, members: m.members, tags: t.tags }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId]);
+
+  const list = automations ?? [];
+
+  return (
+    <div className="sp-group auto-section">
+      <div className="sp-group-head">
+        <span className="sp-group-ic auto-head-ic">{Icons.zap}</span>
+        <h3>Automations</h3>
+        {automations !== null && <span className="badge badge-soft">{list.length}</span>}
+        {canEdit && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm spr-add-btn"
+            onClick={() => setBuilding({ existing: null })}
+          >
+            {Icons.plus} Add automation
+          </button>
+        )}
+      </div>
+
+      {automations === null ? (
+        <span className="skel" style={{ height: 56, borderRadius: 12 }} />
+      ) : list.length === 0 ? (
+        <div className="sp-group-empty">
+          No rules yet{canEdit ? " — automate the busywork: “when this happens, do that.”" : "."}
+        </div>
+      ) : (
+        <div className="auto-rows">
+          {list.map((a) => (
+            <AutomationRow
+              key={a.id}
+              automation={a}
+              ctx={ctx}
+              canEdit={canEdit}
+              onEdit={() => setBuilding({ existing: a })}
+              onRuns={() => setRunsFor(a)}
+              onChanged={load}
+            />
+          ))}
+        </div>
+      )}
+
+      {building && (
+        <AutomationBuilder
+          spaceId={spaceId}
+          ctx={ctx}
+          existing={building.existing}
+          onClose={() => setBuilding(null)}
+          onSaved={() => {
+            setBuilding(null);
+            load();
+          }}
+        />
+      )}
+
+      {runsFor && (
+        <AutomationRunsModal automation={runsFor} onClose={() => setRunsFor(null)} />
+      )}
+    </div>
+  );
+}
+
 function SpaceView() {
   const search = useSearchParams();
   const id = search.get("id");
@@ -572,6 +795,9 @@ function SpaceView() {
 
       {/* Sprints (Module 10) */}
       <SprintsSection spaceId={space.id} canEdit={canEdit} />
+
+      {/* Automations (Module 11) */}
+      <AutomationsSection spaceId={space.id} canEdit={canEdit} />
 
       {/* Empty state */}
       {folders.length === 0 && lists.length === 0 && !adding && (

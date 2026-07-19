@@ -7,6 +7,7 @@ import type { PoolClient } from "pg";
 import type { Role } from "@stackup/shared";
 import { AccessService } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
+import { AutomationsService } from "../automations/automations.service";
 import { DbService } from "../db/db.service";
 import { EventsService } from "../events/events.service";
 import { insertNotification } from "../inbox/inbox.support";
@@ -139,6 +140,7 @@ export class TasksService {
     private readonly statuses: StatusesService,
     private readonly tags: TagsService,
     private readonly events: EventsService,
+    private readonly automations: AutomationsService,
   ) {}
 
   /** Realtime hint that a task changed; clients refetch what they show. */
@@ -743,6 +745,14 @@ export class TasksService {
         data: { name, listId, parentTaskId },
       });
 
+      // M11: automations react inside the same transaction, AFTER the
+      // mutation, so the returned detail already reflects their effects.
+      await this.automations.fire(client, workspaceId, spaceId, {
+        type: "task.created",
+        taskId,
+        actorUserId: userId,
+      });
+
       const row = await this.taskRow(client, taskId);
       return this.buildDetail(client, row);
     });
@@ -880,11 +890,14 @@ export class TasksService {
           activities.push({ kind: "description", data: {} });
         }
       }
+      // M11: set when the priority actually changes, to fire automations.
+      let priorityChangedTo: Priority | null | undefined;
       if (body?.priority !== undefined) {
         const priority = validPriority(body.priority);
         sets.push(`priority = $${i++}`);
         params.push(priority);
         if (priority !== ((existing.priority as Priority | null) ?? null)) {
+          priorityChangedTo = priority;
           activities.push({
             kind: "priority",
             data: {
@@ -1035,6 +1048,25 @@ export class TasksService {
         spawnedTaskId =
           (await this.spawnNextOccurrence(client, workspaceId, userId, id)) ??
           undefined;
+      }
+
+      // M11: automations react inside the same transaction, AFTER the
+      // mutation (their own writes never re-fire — see AutomationsService).
+      if (body?.statusId !== undefined && existing.status_id !== body.statusId) {
+        await this.automations.fire(client, workspaceId, spaceId, {
+          type: "status.changed",
+          taskId: id,
+          toStatusId: body.statusId,
+          actorUserId: userId,
+        });
+      }
+      if (priorityChangedTo !== undefined) {
+        await this.automations.fire(client, workspaceId, spaceId, {
+          type: "priority.changed",
+          taskId: id,
+          toPriority: priorityChangedTo,
+          actorUserId: userId,
+        });
       }
 
       const row = await this.taskRow(client, id);
@@ -1245,7 +1277,7 @@ export class TasksService {
     userId: string,
     role: Role,
     taskId: string,
-  ): Promise<{ listId: string }> {
+  ): Promise<{ listId: string; spaceId: string }> {
     const res = await client.query(
       `SELECT space_id, list_id FROM tasks WHERE id = $1`,
       [taskId],
@@ -1258,7 +1290,10 @@ export class TasksService {
       role,
       res.rows[0].space_id as string,
     );
-    return { listId: res.rows[0].list_id as string };
+    return {
+      listId: res.rows[0].list_id as string,
+      spaceId: res.rows[0].space_id as string,
+    };
   }
 
   async addAssignee(
@@ -1303,6 +1338,12 @@ export class TasksService {
               message: "assigned you a task",
             });
           }
+          // M11: automations react in the same transaction, after the add.
+          await this.automations.fire(client, workspaceId, ctx.spaceId, {
+            type: "assignee.added",
+            taskId,
+            actorUserId: userId,
+          });
         }
         return { listId: ctx.listId, added };
       },

@@ -50,6 +50,25 @@ export class DbService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * PUBLIC form path (M11): run fn with ONLY `app.form_token` bound — no
+   * workspace, no user. The `forms_public_read` policy arm admits exactly the
+   * one form row whose public_token matches; every other RLS policy in the
+   * schema still reads its settings as NULL and denies, so this context can
+   * never see any tenant data beyond that single form.
+   */
+  async withFormToken<T>(
+    token: string,
+    fn: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return this.inTransaction(async (client) => {
+      await client.query("SELECT set_config('app.form_token', $1, true)", [
+        token,
+      ]);
+      return fn(client);
+    });
+  }
+
   /** Run fn with BOTH workspace and user context bound (all scoped work). */
   async withWorkspace<T>(
     workspaceId: string,

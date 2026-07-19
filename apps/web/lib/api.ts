@@ -1713,6 +1713,233 @@ export const portfoliosApi = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Module 11 — Forms & Automations.
+ * ------------------------------------------------------------------ */
+
+/** The seven input types a form field can be. */
+export type FormFieldType =
+  | "text"
+  | "textarea"
+  | "email"
+  | "number"
+  | "select"
+  | "date"
+  | "checkbox";
+
+/** Human labels for the form field types (add-field menu, editors). */
+export const FORM_FIELD_TYPE_LABEL: Record<FormFieldType, string> = {
+  text: "Text",
+  textarea: "Long text",
+  email: "Email",
+  number: "Number",
+  select: "Select",
+  date: "Date",
+  checkbox: "Checkbox",
+};
+
+export interface FormField {
+  id: string;
+  label: string;
+  type: FormFieldType;
+  required: boolean;
+  /** Select fields only — the choices. */
+  options?: string[];
+  /** At most one field: its value becomes the created task's title. */
+  asTitle?: boolean;
+}
+
+/** A form as listed on the Forms home. */
+export interface FormSummary {
+  id: string;
+  name: string;
+  listId: string;
+  listName: string;
+  active: boolean;
+  publicToken: string;
+  fieldCount: number;
+  updatedAt: string;
+}
+
+/** The full form (builder payload). */
+export interface FormDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  listId: string;
+  listName: string;
+  active: boolean;
+  publicToken: string;
+  fields: FormField[];
+  updatedAt: string;
+}
+
+/** What the anonymous public endpoint exposes — nothing more. */
+export interface PublicForm {
+  name: string;
+  description: string | null;
+  fields: FormField[];
+}
+
+export const formsApi = {
+  list: () => api<{ forms: FormSummary[] }>("/forms", { auth: "access" }),
+  create: (body: {
+    name: string;
+    listId: string;
+    description?: string;
+    fields: FormField[];
+  }) => api<{ form: FormDetail }>("/forms", { method: "POST", body, auth: "access" }),
+  get: (id: string) => api<{ form: FormDetail }>(`/forms/${id}`, { auth: "access" }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      description?: string | null;
+      fields?: FormField[];
+      active?: boolean;
+      listId?: string;
+    },
+  ) =>
+    api<{ form: FormDetail }>(`/forms/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/forms/${id}`, { method: "DELETE", auth: "access" }),
+  /** Mint a fresh public token — every previously shared link breaks. */
+  rotateToken: (id: string) =>
+    api<{ publicToken: string }>(`/forms/${id}/rotate-token`, {
+      method: "POST",
+      auth: "access",
+    }),
+};
+
+/**
+ * Anonymous fetch for the public form page (`/f?token=…`). Never attaches
+ * an Authorization header, never touches stored tokens and never bounces
+ * to /login — the page must work for visitors with no account at all.
+ */
+export async function publicApi<T>(
+  path: string,
+  opts: { method?: string; body?: unknown } = {},
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: opts.method ?? "GET",
+      headers: { "Content-Type": "application/json" },
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    });
+  } catch {
+    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
+  }
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      data && typeof data === "object" && "message" in data
+        ? Array.isArray((data as { message: unknown }).message)
+          ? ((data as { message: unknown[] }).message as unknown[]).join(", ")
+          : String((data as { message: unknown }).message)
+        : `HTTP ${res.status}`;
+    throw new ApiError(res.status, msg);
+  }
+  return data as T;
+}
+
+export const publicFormsApi = {
+  get: (token: string) =>
+    publicApi<{ form: PublicForm }>(`/public/forms/${encodeURIComponent(token)}`),
+  submit: (token: string, values: Record<string, unknown>) =>
+    publicApi<{ ok: true }>(`/public/forms/${encodeURIComponent(token)}/submit`, {
+      method: "POST",
+      body: { values },
+    }),
+};
+
+/* ---- automations -------------------------------------------------- */
+
+export type AutomationTriggerType =
+  | "task.created"
+  | "status.changed"
+  | "priority.changed"
+  | "assignee.added"
+  | "due.overdue";
+
+export interface AutomationTrigger {
+  type: AutomationTriggerType;
+  /** status.changed only — narrow to a destination status. */
+  toStatusId?: string;
+  /** priority.changed only — narrow to a destination priority. */
+  toPriority?: Priority;
+}
+
+export type AutomationAction =
+  | { type: "set.status"; statusId: string }
+  | { type: "set.priority"; priority: Priority }
+  | { type: "add.assignee"; userId: string }
+  | { type: "add.tag"; tagId: string }
+  | { type: "post.comment"; body: string };
+
+export interface Automation {
+  id: string;
+  name: string;
+  trigger: AutomationTrigger;
+  actions: AutomationAction[];
+  enabled: boolean;
+  runCount: number;
+  lastRunAt: string | null;
+}
+
+/** One execution of an automation against a task. */
+export interface AutomationRun {
+  id: string;
+  taskId: string;
+  taskName: string;
+  ok: boolean;
+  detail: string | null;
+  createdAt: string;
+}
+
+export const automationsApi = {
+  list: (spaceId: string) =>
+    api<{ automations: Automation[] }>(`/spaces/${spaceId}/automations`, {
+      auth: "access",
+    }),
+  create: (
+    spaceId: string,
+    body: {
+      name: string;
+      trigger: AutomationTrigger;
+      actions: AutomationAction[];
+      enabled?: boolean;
+    },
+  ) =>
+    api<{ automation: Automation }>(`/spaces/${spaceId}/automations`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      trigger?: AutomationTrigger;
+      actions?: AutomationAction[];
+      enabled?: boolean;
+    },
+  ) =>
+    api<{ automation: Automation }>(`/automations/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/automations/${id}`, { method: "DELETE", auth: "access" }),
+  runs: (id: string) =>
+    api<{ runs: AutomationRun[] }>(`/automations/${id}/runs`, { auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
  * Task types — per-space (Module 4). "Task" is the implicit default.
  * ------------------------------------------------------------------ */
 export const taskTypesApi = {

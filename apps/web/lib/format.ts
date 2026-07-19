@@ -220,6 +220,45 @@ export function isTodayYmd(ymd: string): boolean {
 export const DOC_EMOJI = ["📄", "📘", "📗", "📕", "🧠", "💡", "🗺️", "🚀", "📌", "✨"] as const;
 
 /* ------------------------------------------------------------------ *
+ * Forms (Module 11).
+ * ------------------------------------------------------------------ */
+
+/**
+ * Copy text to the clipboard, falling back to a hidden textarea when the
+ * async Clipboard API is unavailable (http, older browsers). Resolves
+ * true on success — callers show a toast either way.
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through to the textarea shim */
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/** The shareable public URL for a form token (origin-relative on SSR). */
+export function publicFormUrl(publicToken: string): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/f?token=${encodeURIComponent(publicToken)}`;
+}
+
+/* ------------------------------------------------------------------ *
  * Goals & portfolios (Module 9). Pure — safe anywhere.
  * ------------------------------------------------------------------ */
 

@@ -530,6 +530,35 @@ export const Icons = {
       <path d="M15.5 8h5v5" />
     </svg>
   ),
+  /* ---- Module 11: Forms & Automations ---- */
+  clipboard: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="5" y="4.5" width="14" height="16.5" rx="2" />
+      <path d="M9 4.5V3.8A1.3 1.3 0 0 1 10.3 2.5h3.4A1.3 1.3 0 0 1 15 3.8v.7" />
+      <path d="M8.5 10h7M8.5 13.5h7M8.5 17h4.5" />
+    </svg>
+  ),
+  copy: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="9" y="9" width="11.5" height="11.5" rx="2" />
+      <path d="M5.5 15H4.8A1.8 1.8 0 0 1 3 13.2V4.8A1.8 1.8 0 0 1 4.8 3h8.4A1.8 1.8 0 0 1 15 4.8v.7" />
+    </svg>
+  ),
+  zap: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M13.2 2.3 4.3 13.4a.6.6 0 0 0 .47.98H10l-1.1 7.1c-.1.63.7.97 1.1.47l8.9-11.1a.6.6 0 0 0-.47-.98H14l1.1-7.1c.1-.63-.7-.97-1.1-.47z" />
+    </svg>
+  ),
+  grip: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <circle cx="9" cy="6" r="1.4" />
+      <circle cx="15" cy="6" r="1.4" />
+      <circle cx="9" cy="12" r="1.4" />
+      <circle cx="15" cy="12" r="1.4" />
+      <circle cx="9" cy="18" r="1.4" />
+      <circle cx="15" cy="18" r="1.4" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;
