@@ -449,6 +449,32 @@ export const Icons = {
       <path d="m15 6-6 6 6 6" />
     </svg>
   ),
+  /* ---- Module 6: Real-time collaboration ---- */
+  bell: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M12 4a6 6 0 0 0-6 6v4.2L4.4 17h15.2L18 14.2V10a6 6 0 0 0-6-6z" />
+      <path d="M10 20a2.2 2.2 0 0 0 4 0" />
+    </svg>
+  ),
+  inbox: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M20.5 13.5V18a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18v-4.5" />
+      <path d="M3.5 13.5 6.2 5.5h11.6l2.7 8" />
+      <path d="M3.5 13.5H9l1.4 2.5h3.2l1.4-2.5h5.5" />
+    </svg>
+  ),
+  atSign: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="3.4" />
+      <path d="M15.4 12v1.4a2.2 2.2 0 0 0 4.4 0V12a7.8 7.8 0 1 0-3.1 6.2" />
+    </svg>
+  ),
+  send: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M20.5 3.5 10.8 13.2" />
+      <path d="M20.5 3.5 14 20.5l-3.2-7.3L3.5 10z" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;

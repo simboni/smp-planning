@@ -8,6 +8,8 @@ import type { Role } from "@stackup/shared";
 import { AccessService } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
+import { EventsService } from "../events/events.service";
+import { insertNotification } from "../inbox/inbox.support";
 import { StatusesService, Status } from "./statuses.service";
 import { TagsService, Tag } from "./tags.service";
 import { Checklist } from "./checklists.service";
@@ -17,6 +19,7 @@ import {
   advanceByRule,
   optionalName,
   parseDate,
+  recordActivity,
   requireName,
   requireSpaceEdit,
   requireSpaceVisible,
@@ -26,7 +29,7 @@ import {
   assertIdArray,
 } from "./tasks.support";
 
-interface UserRef {
+export interface UserRef {
   id: string;
   fullName: string;
   avatarUrl: string | null;
@@ -131,7 +134,20 @@ export class TasksService {
     private readonly audit: AuditService,
     private readonly statuses: StatusesService,
     private readonly tags: TagsService,
+    private readonly events: EventsService,
   ) {}
+
+  /** Realtime hint that a task changed; clients refetch what they show. */
+  private publishTaskChanged(
+    workspaceId: string,
+    taskId: string,
+    listId: string,
+  ): void {
+    this.events.publish(workspaceId, {
+      type: "task.changed",
+      payload: { taskId, listId },
+    });
+  }
 
   // --- helpers --------------------------------------------------------------
 
@@ -178,20 +194,20 @@ export class TasksService {
     }
   }
 
-  /** Validate a status belongs to the space; return its type. */
-  private async statusType(
+  /** Validate a status belongs to the space; return its type + name. */
+  private async statusInfo(
     client: PoolClient,
     statusId: string,
     spaceId: string,
-  ): Promise<string> {
+  ): Promise<{ type: string; name: string }> {
     const res = await client.query(
-      `SELECT type FROM statuses WHERE id = $1 AND space_id = $2`,
+      `SELECT type, name FROM statuses WHERE id = $1 AND space_id = $2`,
       [statusId, spaceId],
     );
     if (!res.rows[0]) {
       throw new BadRequestException("statusId must reference a status in this space");
     }
-    return res.rows[0].type as string;
+    return { type: res.rows[0].type as string, name: res.rows[0].name as string };
   }
 
   // --- Card assembly (batched, no N+1) --------------------------------------
@@ -587,7 +603,8 @@ export class TasksService {
     if (assigneeIds.length) assertIdArray(assigneeIds);
     if (tagIds.length) assertIdArray(tagIds);
 
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+    const notified: string[] = [];
+    const detail = await this.db.withWorkspace(workspaceId, userId, async (client) => {
       const spaceId = await this.listSpace(client, listId);
       await requireSpaceEdit(this.access, client, userId, role, spaceId);
       await this.statuses.ensureDefaults(client, workspaceId, spaceId);
@@ -595,7 +612,7 @@ export class TasksService {
       let statusId: string | null;
       let sType: string | null;
       if (body?.statusId) {
-        sType = await this.statusType(client, body.statusId, spaceId);
+        sType = (await this.statusInfo(client, body.statusId, spaceId)).type;
         statusId = body.statusId;
       } else {
         const first = await this.statuses.firstStatus(client, spaceId);
@@ -676,6 +693,28 @@ export class TasksService {
         );
       }
 
+      await recordActivity(client, {
+        workspaceId,
+        taskId,
+        actorUserId: userId,
+        kind: "created",
+        data: { name },
+      });
+      // Anyone assigned at creation (other than the creator) gets an inbox
+      // notification, same as a later assignee add.
+      for (const uid of new Set(assigneeIds)) {
+        if (uid === userId) continue;
+        await insertNotification(client, {
+          workspaceId,
+          userId: uid,
+          kind: "assigned",
+          taskId,
+          actorUserId: userId,
+          message: "assigned you a task",
+        });
+        notified.push(uid);
+      }
+
       await this.audit.record(client, {
         workspaceId,
         actorUserId: userId,
@@ -688,6 +727,15 @@ export class TasksService {
       const row = await this.taskRow(client, taskId);
       return this.buildDetail(client, row);
     });
+
+    this.publishTaskChanged(workspaceId, detail.id, listId);
+    for (const uid of notified) {
+      this.events.publish(workspaceId, {
+        type: "notification.new",
+        payload: { userId: uid },
+      });
+    }
+    return detail;
   }
 
   async createSubtask(
@@ -698,7 +746,7 @@ export class TasksService {
     body: { name?: string },
   ): Promise<TaskCard> {
     const name = requireName(body?.name);
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+    const card = await this.db.withWorkspace(workspaceId, userId, async (client) => {
       const parent = await client.query(
         `SELECT list_id, space_id FROM tasks WHERE id = $1`,
         [parentId],
@@ -735,6 +783,13 @@ export class TasksService {
         ],
       );
       const taskId = ins.rows[0].id as string;
+      await recordActivity(client, {
+        workspaceId,
+        taskId,
+        actorUserId: userId,
+        kind: "created",
+        data: { name },
+      });
       await this.audit.record(client, {
         workspaceId,
         actorUserId: userId,
@@ -744,9 +799,11 @@ export class TasksService {
         data: { name, listId, parentTaskId: parentId },
       });
       const row = await this.taskRow(client, taskId);
-      const [card] = await this.buildCards(client, [row]);
-      return card;
+      const [built] = await this.buildCards(client, [row]);
+      return built;
     });
+    this.publishTaskChanged(workspaceId, card.id, card.listId);
+    return card;
   }
 
   // --- Update / delete ------------------------------------------------------
@@ -770,7 +827,7 @@ export class TasksService {
       recurrence?: Record<string, unknown> | null;
     },
   ): Promise<TaskDetail & { spawnedTaskId?: string }> {
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+    const result = await this.db.withWorkspace(workspaceId, userId, async (client) => {
       const existing = await this.taskRow(client, id);
       const spaceId = existing.space_id as string;
       await requireSpaceEdit(this.access, client, userId, role, spaceId);
@@ -779,36 +836,66 @@ export class TasksService {
       const params: unknown[] = [];
       let i = 1;
       const auditData: Record<string, unknown> = {};
+      // Per-change activity feed entries, written after the UPDATE succeeds.
+      const activities: { kind: string; data: Record<string, unknown> }[] = [];
 
       const name = optionalName(body?.name);
       if (name !== undefined) {
         sets.push(`name = $${i++}`);
         params.push(name);
         auditData.name = name;
+        if (name !== (existing.name as string)) {
+          activities.push({
+            kind: "name",
+            data: { from: existing.name as string, to: name },
+          });
+        }
       }
       if (body?.description !== undefined) {
+        const description =
+          typeof body.description === "string" ? body.description : "";
         sets.push(`description = $${i++}`);
-        params.push(typeof body.description === "string" ? body.description : "");
+        params.push(description);
+        if (description !== ((existing.description as string) ?? "")) {
+          activities.push({ kind: "description", data: {} });
+        }
       }
       if (body?.priority !== undefined) {
+        const priority = validPriority(body.priority);
         sets.push(`priority = $${i++}`);
-        params.push(validPriority(body.priority));
+        params.push(priority);
+        if (priority !== ((existing.priority as Priority | null) ?? null)) {
+          activities.push({
+            kind: "priority",
+            data: {
+              from: (existing.priority as Priority | null) ?? null,
+              to: priority,
+            },
+          });
+        }
       }
+      let datesTouched = false;
       if (body?.startDate !== undefined) {
         sets.push(`start_date = $${i++}`);
         params.push(parseDate(body.startDate, "startDate"));
+        datesTouched = true;
       }
       if (body?.dueDate !== undefined) {
         sets.push(`due_date = $${i++}`);
         params.push(parseDate(body.dueDate, "dueDate"));
+        datesTouched = true;
       }
       if (body?.timeEstimateMinutes !== undefined) {
         sets.push(`time_estimate_minutes = $${i++}`);
         params.push(this.validEstimate(body.timeEstimateMinutes));
       }
       if (body?.archived !== undefined) {
+        const archived = body.archived === true;
         sets.push(`archived = $${i++}`);
-        params.push(body.archived === true);
+        params.push(archived);
+        if (archived !== (existing.archived as boolean)) {
+          activities.push({ kind: "archived", data: { archived } });
+        }
       }
       if (body?.taskTypeId !== undefined) {
         if (body.taskTypeId === null) {
@@ -843,7 +930,11 @@ export class TasksService {
       }
       let becameDone = false;
       if (body?.statusId !== undefined) {
-        const type = await this.statusType(client, body.statusId, spaceId);
+        const { type, name: statusName } = await this.statusInfo(
+          client,
+          body.statusId,
+          spaceId,
+        );
         sets.push(`status_id = $${i++}`);
         params.push(body.statusId);
         // Entering a 'done' status completes the task; leaving one reopens it.
@@ -853,6 +944,16 @@ export class TasksService {
         auditData.statusId = body.statusId;
         auditData.statusChanged = existing.status_id !== body.statusId;
         becameDone = type === "done" && existing.s_type !== "done";
+        if (existing.status_id !== body.statusId) {
+          activities.push({
+            kind: "status",
+            data: {
+              from: (existing.s_name as string | null) ?? null,
+              to: statusName,
+            },
+          });
+        }
+        if (becameDone) activities.push({ kind: "completed", data: {} });
       }
 
       sets.push(`updated_at = now()`);
@@ -861,6 +962,29 @@ export class TasksService {
         `UPDATE tasks SET ${sets.join(", ")} WHERE id = $${i}`,
         params,
       );
+
+      if (datesTouched) {
+        const after = await client.query(
+          `SELECT start_date, due_date FROM tasks WHERE id = $1`,
+          [id],
+        );
+        activities.push({
+          kind: "dates",
+          data: {
+            startDate: iso(after.rows[0].start_date),
+            dueDate: iso(after.rows[0].due_date),
+          },
+        });
+      }
+      for (const a of activities) {
+        await recordActivity(client, {
+          workspaceId,
+          taskId: id,
+          actorUserId: userId,
+          kind: a.kind,
+          data: a.data,
+        });
+      }
 
       await this.audit.record(client, {
         workspaceId,
@@ -883,6 +1007,8 @@ export class TasksService {
       const detail = await this.buildDetail(client, row);
       return spawnedTaskId ? { ...detail, spawnedTaskId } : detail;
     });
+    this.publishTaskChanged(workspaceId, result.id, result.listId);
+    return result;
   }
 
   // --- Recurrence -----------------------------------------------------------
@@ -992,24 +1118,30 @@ export class TasksService {
     role: Role,
     id: string,
   ): Promise<void> {
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
-      const existing = await this.taskRow(client, id);
-      await requireSpaceEdit(
-        this.access,
-        client,
-        userId,
-        role,
-        existing.space_id as string,
-      );
-      await client.query(`DELETE FROM tasks WHERE id = $1`, [id]);
-      await this.audit.record(client, {
-        workspaceId,
-        actorUserId: userId,
-        action: "task.deleted",
-        entity: "task",
-        entityId: id,
-      });
-    });
+    const listId = await this.db.withWorkspace(
+      workspaceId,
+      userId,
+      async (client) => {
+        const existing = await this.taskRow(client, id);
+        await requireSpaceEdit(
+          this.access,
+          client,
+          userId,
+          role,
+          existing.space_id as string,
+        );
+        await client.query(`DELETE FROM tasks WHERE id = $1`, [id]);
+        await this.audit.record(client, {
+          workspaceId,
+          actorUserId: userId,
+          action: "task.deleted",
+          entity: "task",
+          entityId: id,
+        });
+        return existing.list_id as string;
+      },
+    );
+    this.publishTaskChanged(workspaceId, id, listId);
   }
 
   // --- Reorder --------------------------------------------------------------
@@ -1026,10 +1158,10 @@ export class TasksService {
     if (typeof statusId !== "string" || !statusId) {
       throw new BadRequestException("statusId is required");
     }
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+    await this.db.withWorkspace(workspaceId, userId, async (client) => {
       const spaceId = await this.listSpace(client, listId);
       await requireSpaceEdit(this.access, client, userId, role, spaceId);
-      const type = await this.statusType(client, statusId, spaceId);
+      const { type } = await this.statusInfo(client, statusId, spaceId);
       if (ids.length === 0) return;
 
       // Recurring tasks about to TRANSITION into done via this move spawn
@@ -1065,6 +1197,11 @@ export class TasksService {
         await this.spawnNextOccurrence(client, workspaceId, userId, rid);
       }
     });
+    // One hint for the whole reorder — clients refetch the list anyway.
+    this.events.publish(workspaceId, {
+      type: "task.changed",
+      payload: { taskId: null, listId },
+    });
   }
 
   // --- Assignees ------------------------------------------------------------
@@ -1074,9 +1211,9 @@ export class TasksService {
     userId: string,
     role: Role,
     taskId: string,
-  ): Promise<void> {
+  ): Promise<{ listId: string }> {
     const res = await client.query(
-      `SELECT space_id FROM tasks WHERE id = $1`,
+      `SELECT space_id, list_id FROM tasks WHERE id = $1`,
       [taskId],
     );
     if (!res.rows[0]) throw new NotFoundException("Task not found");
@@ -1087,6 +1224,7 @@ export class TasksService {
       role,
       res.rows[0].space_id as string,
     );
+    return { listId: res.rows[0].list_id as string };
   }
 
   async addAssignee(
@@ -1099,15 +1237,49 @@ export class TasksService {
     if (typeof targetUserId !== "string" || !targetUserId) {
       throw new BadRequestException("userId is required");
     }
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
-      await this.taskSpaceEdit(client, userId, role, taskId);
-      await this.assertWorkspaceMember(client, targetUserId);
-      await client.query(
-        `INSERT INTO task_assignees (workspace_id, task_id, user_id)
-         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-        [workspaceId, taskId, targetUserId],
-      );
-    });
+    const { listId, added } = await this.db.withWorkspace(
+      workspaceId,
+      userId,
+      async (client) => {
+        const ctx = await this.taskSpaceEdit(client, userId, role, taskId);
+        await this.assertWorkspaceMember(client, targetUserId);
+        const ins = await client.query(
+          `INSERT INTO task_assignees (workspace_id, task_id, user_id)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING task_id`,
+          [workspaceId, taskId, targetUserId],
+        );
+        const added = ins.rows.length > 0;
+        if (added) {
+          await recordActivity(client, {
+            workspaceId,
+            taskId,
+            actorUserId: userId,
+            kind: "assignee",
+            data: { userId: targetUserId, action: "added" },
+          });
+          // Being assigned by someone else lands in your inbox; self-assign
+          // stays silent.
+          if (targetUserId !== userId) {
+            await insertNotification(client, {
+              workspaceId,
+              userId: targetUserId,
+              kind: "assigned",
+              taskId,
+              actorUserId: userId,
+              message: "assigned you a task",
+            });
+          }
+        }
+        return { listId: ctx.listId, added };
+      },
+    );
+    this.publishTaskChanged(workspaceId, taskId, listId);
+    if (added && targetUserId !== userId) {
+      this.events.publish(workspaceId, {
+        type: "notification.new",
+        payload: { userId: targetUserId },
+      });
+    }
   }
 
   async removeAssignee(
@@ -1117,13 +1289,29 @@ export class TasksService {
     taskId: string,
     targetUserId: string,
   ): Promise<void> {
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
-      await this.taskSpaceEdit(client, userId, role, taskId);
-      await client.query(
-        `DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2`,
-        [taskId, targetUserId],
-      );
-    });
+    const listId = await this.db.withWorkspace(
+      workspaceId,
+      userId,
+      async (client) => {
+        const ctx = await this.taskSpaceEdit(client, userId, role, taskId);
+        const del = await client.query(
+          `DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2
+           RETURNING task_id`,
+          [taskId, targetUserId],
+        );
+        if (del.rows.length > 0) {
+          await recordActivity(client, {
+            workspaceId,
+            taskId,
+            actorUserId: userId,
+            kind: "assignee",
+            data: { userId: targetUserId, action: "removed" },
+          });
+        }
+        return ctx.listId;
+      },
+    );
+    this.publishTaskChanged(workspaceId, taskId, listId);
   }
 
   // --- Watchers -------------------------------------------------------------
@@ -1138,15 +1326,21 @@ export class TasksService {
     if (typeof targetUserId !== "string" || !targetUserId) {
       throw new BadRequestException("userId is required");
     }
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
-      await this.taskSpaceEdit(client, userId, role, taskId);
-      await this.assertWorkspaceMember(client, targetUserId);
-      await client.query(
-        `INSERT INTO task_watchers (workspace_id, task_id, user_id)
-         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-        [workspaceId, taskId, targetUserId],
-      );
-    });
+    const { listId } = await this.db.withWorkspace(
+      workspaceId,
+      userId,
+      async (client) => {
+        const ctx = await this.taskSpaceEdit(client, userId, role, taskId);
+        await this.assertWorkspaceMember(client, targetUserId);
+        await client.query(
+          `INSERT INTO task_watchers (workspace_id, task_id, user_id)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [workspaceId, taskId, targetUserId],
+        );
+        return ctx;
+      },
+    );
+    this.publishTaskChanged(workspaceId, taskId, listId);
   }
 
   async removeWatcher(
@@ -1156,13 +1350,19 @@ export class TasksService {
     taskId: string,
     targetUserId: string,
   ): Promise<void> {
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
-      await this.taskSpaceEdit(client, userId, role, taskId);
-      await client.query(
-        `DELETE FROM task_watchers WHERE task_id = $1 AND user_id = $2`,
-        [taskId, targetUserId],
-      );
-    });
+    const { listId } = await this.db.withWorkspace(
+      workspaceId,
+      userId,
+      async (client) => {
+        const ctx = await this.taskSpaceEdit(client, userId, role, taskId);
+        await client.query(
+          `DELETE FROM task_watchers WHERE task_id = $1 AND user_id = $2`,
+          [taskId, targetUserId],
+        );
+        return ctx;
+      },
+    );
+    this.publishTaskChanged(workspaceId, taskId, listId);
   }
 
   // --- Task tags ------------------------------------------------------------
@@ -1174,13 +1374,14 @@ export class TasksService {
     taskId: string,
     body: { tagId?: string; name?: string; color?: string },
   ): Promise<Tag> {
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+    const { tag: out, listId } = await this.db.withWorkspace(workspaceId, userId, async (client) => {
       const res = await client.query(
-        `SELECT space_id FROM tasks WHERE id = $1`,
+        `SELECT space_id, list_id FROM tasks WHERE id = $1`,
         [taskId],
       );
       if (!res.rows[0]) throw new NotFoundException("Task not found");
       const spaceId = res.rows[0].space_id as string;
+      const listId = res.rows[0].list_id as string;
       await requireSpaceEdit(this.access, client, userId, role, spaceId);
 
       let tag: Tag;
@@ -1223,8 +1424,10 @@ export class TasksService {
          VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
         [workspaceId, taskId, tag.id],
       );
-      return tag;
+      return { tag, listId };
     });
+    this.publishTaskChanged(workspaceId, taskId, listId);
+    return out;
   }
 
   async removeTag(
@@ -1234,12 +1437,74 @@ export class TasksService {
     taskId: string,
     tagId: string,
   ): Promise<void> {
+    const { listId } = await this.db.withWorkspace(
+      workspaceId,
+      userId,
+      async (client) => {
+        const ctx = await this.taskSpaceEdit(client, userId, role, taskId);
+        await client.query(
+          `DELETE FROM task_tags WHERE task_id = $1 AND tag_id = $2`,
+          [taskId, tagId],
+        );
+        return ctx;
+      },
+    );
+    this.publishTaskChanged(workspaceId, taskId, listId);
+  }
+
+  // --- Activity feed (M6) ---------------------------------------------------
+
+  /** The task's activity feed, newest first, capped at 100 entries. */
+  async listActivity(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+    taskId: string,
+  ): Promise<
+    {
+      id: string;
+      kind: string;
+      data: Record<string, unknown>;
+      actor: UserRef | null;
+      createdAt: string;
+    }[]
+  > {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
-      await this.taskSpaceEdit(client, userId, role, taskId);
-      await client.query(
-        `DELETE FROM task_tags WHERE task_id = $1 AND tag_id = $2`,
-        [taskId, tagId],
+      const res = await client.query(
+        `SELECT space_id FROM tasks WHERE id = $1`,
+        [taskId],
       );
+      if (!res.rows[0]) throw new NotFoundException("Task not found");
+      await requireSpaceVisible(
+        this.access,
+        client,
+        userId,
+        role,
+        res.rows[0].space_id as string,
+      );
+      const rows = await client.query(
+        `SELECT a.id, a.kind, a.data, a.created_at,
+                u.id AS u_id, u.full_name AS u_full_name, u.avatar_url AS u_avatar_url
+         FROM task_activity a
+         LEFT JOIN users u ON u.id = a.actor_user_id
+         WHERE a.task_id = $1
+         ORDER BY a.created_at DESC, a.id DESC
+         LIMIT 100`,
+        [taskId],
+      );
+      return rows.rows.map((r) => ({
+        id: r.id as string,
+        kind: r.kind as string,
+        data: (r.data as Record<string, unknown>) ?? {},
+        actor: r.u_id
+          ? {
+              id: r.u_id as string,
+              fullName: r.u_full_name as string,
+              avatarUrl: (r.u_avatar_url as string | null) ?? null,
+            }
+          : null,
+        createdAt: iso(r.created_at)!,
+      }));
     });
   }
 }

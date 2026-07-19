@@ -32,6 +32,7 @@ import {
   type ViewKind,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
+import { useRealtime } from "@/lib/realtime";
 import { colorFor } from "@/lib/format";
 import { activeFilterCount, applyView } from "@/lib/viewUtils";
 import { useHierarchy } from "@/components/HierarchyProvider";
@@ -108,6 +109,13 @@ function ListShell() {
     const s = tree.find((sp) => sp.id === spaceId);
     // Unknown (private/not-yet-loaded) → optimistic; the API still enforces.
     return s ? permissionAtLeast(s.myPermission, "edit") : true;
+  }, [tree, spaceId]);
+
+  // Comment gating (Module 6): 'comment' or better shows the composer.
+  const canComment = useMemo(() => {
+    if (!spaceId) return false;
+    const s = tree.find((sp) => sp.id === spaceId);
+    return s ? permissionAtLeast(s.myPermission, "comment") : true;
   }, [tree, spaceId]);
 
   /* -- loading ------------------------------------------------------- */
@@ -201,6 +209,35 @@ function ListShell() {
       .then((r) => setMembers(r.members))
       .catch(() => undefined);
   }, []);
+
+  // Deep link (Inbox → task): /list?id=<listId>&task=<taskId> opens the panel.
+  const taskParam = search.get("task");
+  useEffect(() => {
+    if (taskParam) setSelectedTask(taskParam);
+  }, [taskParam]);
+
+  // Module 6 — live: another session changed a task in THIS list →
+  // debounce 400ms, then refetch quietly (no spinner: loadTasks keeps
+  // the current rows until the fresh set lands).
+  const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useRealtime(
+    (e) => {
+      if (e.type === "task.changed" && id && e.payload.listId === id) {
+        if (liveTimer.current) clearTimeout(liveTimer.current);
+        liveTimer.current = setTimeout(() => {
+          liveTimer.current = null;
+          void loadTasks();
+        }, 400);
+      }
+    },
+    [id, loadTasks],
+  );
+  useEffect(
+    () => () => {
+      if (liveTimer.current) clearTimeout(liveTimer.current);
+    },
+    [],
+  );
 
   /* -- view/tab state ------------------------------------------------ */
   const selectBuiltin = (kind: ViewKind): void => {
@@ -579,6 +616,7 @@ function ListShell() {
           statuses={statuses}
           members={members}
           canEdit={canEdit}
+          canComment={canComment}
           onClose={() => setSelectedTask(null)}
           onChanged={() => void loadTasks()}
           onOpenTask={(tid) => setSelectedTask(tid)}

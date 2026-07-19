@@ -3,10 +3,13 @@ import { JwtModule } from "@nestjs/jwt";
 import { AccessModule } from "./access/access.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
+import { CommentsModule } from "./comments/comments.module";
 import { loadConfig } from "./config";
 import { DbModule } from "./db/db.module";
+import { EventsModule } from "./events/events.module";
 import { HealthController } from "./health.controller";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
+import { InboxModule } from "./inbox/inbox.module";
 import { SharingModule } from "./sharing/sharing.module";
 import { TasksModule } from "./tasks/tasks.module";
 import { TeamsModule } from "./teams/teams.module";
@@ -26,6 +29,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
       secret: loadConfig().jwtSecret,
     }),
     DbModule,
+    EventsModule,
     AuditModule,
     AccessModule,
     AuthModule,
@@ -35,6 +39,8 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     SharingModule,
     TasksModule,
     ViewsModule,
+    CommentsModule,
+    InboxModule,
   ],
   controllers: [HealthController],
 })

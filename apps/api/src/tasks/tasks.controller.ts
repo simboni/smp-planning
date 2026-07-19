@@ -224,6 +224,14 @@ export class TasksController {
     await this.tasks.deleteTask(...this.ctx(req), id);
   }
 
+  @Get("tasks/:id/activity")
+  async getActivity(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return { activity: await this.tasks.listActivity(...this.ctx(req), id) };
+  }
+
   @Post("tasks/:id/subtasks")
   async createSubtask(
     @Req() req: AuthedRequest,

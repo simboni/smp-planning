@@ -40,6 +40,8 @@ import { Icons } from "@/components/icons";
 import { colorFor, formatEstimate, initials, toDateInputValue } from "@/lib/format";
 import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChip, TypeIcon } from "@/components/TaskBits";
 import { FieldManager } from "@/components/FieldManager";
+import { CommentsActivity } from "@/components/CommentsActivity";
+import { useRealtime } from "@/lib/realtime";
 
 /* ------------------------------------------------------------------ *
  * A small popover shell that closes on outside click / Esc.
@@ -144,6 +146,7 @@ export function TaskPanel({
   statuses,
   members,
   canEdit,
+  canComment,
   onClose,
   onChanged,
   onOpenTask,
@@ -152,6 +155,8 @@ export function TaskPanel({
   statuses: Status[];
   members: Member[];
   canEdit: boolean;
+  /** Space permission ≥ 'comment' — gates the comment composer. */
+  canComment: boolean;
   onClose: () => void;
   onChanged: () => void;
   onOpenTask: (taskId: string) => void;
@@ -193,6 +198,14 @@ export function TaskPanel({
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
+
+  // Module 6 — live: another session changed this task → quiet refetch.
+  useRealtime(
+    (e) => {
+      if (e.type === "task.changed" && e.payload.taskId === taskId) void reload();
+    },
+    [taskId],
+  );
 
   // Load the space's tags + task types once we know which space the task is in.
   useEffect(() => {
@@ -1084,14 +1097,12 @@ export function TaskPanel({
               )}
             </section>
 
-            {/* Comments placeholder */}
-            <section className="tp-section tp-activity">
-              <h3 className="tp-section-title">Comments &amp; activity</h3>
-              <div className="tp-activity-ph">
-                {Icons.chat}
-                <span>Comments &amp; activity arrive in Module 6.</span>
-              </div>
-            </section>
+            {/* Comments & activity (Module 6) */}
+            <CommentsActivity
+              taskId={detail.id}
+              members={members}
+              canComment={canComment}
+            />
           </div>
         )}
 

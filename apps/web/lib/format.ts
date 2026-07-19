@@ -93,6 +93,40 @@ export function formatEstimate(minutes: number | null | undefined): string {
   return `${m}m`;
 }
 
+/**
+ * Compact relative time — "just now", "2m ago", "3h ago", "5d ago";
+ * falls back to a "Aug 3" style date past a week (Module 6).
+ */
+export function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const secs = Math.round((Date.now() - t) / 1000);
+  if (secs < 45) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const d = new Date(iso);
+  const label = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  return d.getFullYear() === new Date().getFullYear()
+    ? label
+    : `${label}, ${d.getFullYear()}`;
+}
+
+/** "Today, 14:30" / "Aug 3, 09:00" — for reminders (Module 6). */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const day = formatDueDate(iso) || `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  return `${day}, ${hh}:${mm}`;
+}
+
 /** ISO (or date) → "yyyy-mm-dd" for a native date input; "" when empty. */
 export function toDateInputValue(iso: string | null | undefined): string {
   if (!iso) return "";

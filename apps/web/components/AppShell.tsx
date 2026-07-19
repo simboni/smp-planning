@@ -6,18 +6,24 @@ import { Suspense, useEffect, useState } from "react";
 import {
   authApi,
   clearTokens,
+  eventsApi,
   getUser,
   getWorkspace,
+  notificationsApi,
   setUser,
   setWorkspace,
+  tasksApi,
   workspacesApi,
+  type AppNotification,
+  type OnlineUser,
   type PublicUser,
   type WorkspaceSummary,
 } from "@/lib/api";
+import { useRealtime } from "@/lib/realtime";
 import { CommandPalette } from "@/components/CommandPalette";
 import { HierarchyTree } from "@/components/HierarchyTree";
 import { Icons, StackMark, type IconKey } from "@/components/icons";
-import { colorFor, initials } from "@/lib/format";
+import { colorFor, initials, timeAgo } from "@/lib/format";
 
 interface NavItem {
   href: string;
@@ -27,6 +33,7 @@ interface NavItem {
 
 const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
+  { href: "/inbox", label: "Inbox", icon: "inbox" },
   { href: "/members", label: "Members", icon: "members" },
   { href: "/teams", label: "Teams", icon: "team" },
   { href: "/settings", label: "Settings", icon: "settings" },
@@ -49,6 +56,64 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Module 6 — notifications (bell + Inbox badge) and presence.
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [online, setOnline] = useState<OnlineUser[]>([]);
+  const [bellOpen, setBellOpen] = useState(false);
+
+  const loadNotifications = (): void => {
+    notificationsApi
+      .list()
+      .then((r) => {
+        setNotifications(r.notifications);
+        setUnreadCount(r.unreadCount);
+      })
+      .catch(() => undefined);
+  };
+  const loadOnline = (): void => {
+    eventsApi
+      .online()
+      .then((r) => setOnline(r.online))
+      .catch(() => undefined);
+  };
+
+  useEffect(() => {
+    loadNotifications();
+    loadOnline();
+  }, []);
+
+  useRealtime((e) => {
+    if (e.type === "notification.new") loadNotifications();
+    if (e.type === "presence") loadOnline();
+  }, []);
+
+  const markAllRead = (): void => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.readAt ? n : { ...n, readAt: new Date().toISOString() })),
+    );
+    setUnreadCount(0);
+    notificationsApi.markAllRead().catch(() => loadNotifications());
+  };
+
+  /** Mark one read, then jump to the task's list when we can resolve it. */
+  const openNotification = (n: AppNotification): void => {
+    setBellOpen(false);
+    if (!n.readAt) {
+      setNotifications((prev) =>
+        prev.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)),
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
+      notificationsApi.markRead(n.id).catch(() => loadNotifications());
+    }
+    if (n.taskId) {
+      tasksApi
+        .get(n.taskId)
+        .then((r) => router.push(`/list?id=${r.task.listId}&task=${r.task.id}`))
+        .catch(() => undefined);
+    }
+  };
 
   // Hydrate identity + workspace from cache; fetch if missing.
   useEffect(() => {
@@ -93,15 +158,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setDrawerOpen(false);
     setMenuOpen(false);
+    setBellOpen(false);
   }, [pathname]);
 
-  // Click-away closes the account menu.
+  // Click-away closes the account menu / notification panel.
   useEffect(() => {
-    if (!menuOpen) return;
-    const close = (): void => setMenuOpen(false);
+    if (!menuOpen && !bellOpen) return;
+    const close = (): void => {
+      setMenuOpen(false);
+      setBellOpen(false);
+    };
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
-  }, [menuOpen]);
+  }, [menuOpen, bellOpen]);
 
   const signOut = (): void => {
     clearTokens();
@@ -137,6 +206,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   {Icons[item.icon]}
                   {item.label}
+                  {item.href === "/inbox" && unreadCount > 0 && (
+                    <span className="nav-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                  )}
                 </Link>
               );
             })}
@@ -214,10 +286,108 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="topbar-spacer" />
 
           <div className="topbar-tools">
+            {online.length > 0 && (
+              <div className="presence-row" aria-label={`${online.length} online`}>
+                {online.slice(0, 5).map((u) => (
+                  <span
+                    key={u.id}
+                    className="presence-av"
+                    title={`${u.fullName} — online`}
+                    style={{ background: colorFor(u.id) }}
+                  >
+                    {initials(u.fullName)}
+                    <span className="presence-dot" />
+                  </span>
+                ))}
+                {online.length > 5 && (
+                  <span
+                    className="presence-av presence-more"
+                    title={online.slice(5).map((u) => u.fullName).join(", ")}
+                  >
+                    +{online.length - 5}
+                  </span>
+                )}
+              </div>
+            )}
+
             <Link href="/members" className="btn btn-primary btn-sm">
               {Icons.invite}
               <span>Invite</span>
             </Link>
+
+            <div className="bell-wrap">
+              <button
+                type="button"
+                className="icon-btn bell-btn"
+                aria-label={
+                  unreadCount > 0
+                    ? `Notifications — ${unreadCount} unread`
+                    : "Notifications"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  setBellOpen((v) => !v);
+                }}
+              >
+                {Icons.bell}
+                {unreadCount > 0 && (
+                  <span className="bell-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                )}
+              </button>
+              {bellOpen && (
+                <div className="menu bell-panel" onClick={(e) => e.stopPropagation()}>
+                  <div className="bell-panel-head">
+                    <span className="bell-panel-title">Notifications</span>
+                    {unreadCount > 0 && (
+                      <button type="button" className="cm-action" onClick={markAllRead}>
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="bell-panel-list">
+                    {notifications.filter((n) => !n.readAt).length === 0 ? (
+                      <div className="bell-empty">
+                        {Icons.checkCircle}
+                        <span>You're all caught up.</span>
+                      </div>
+                    ) : (
+                      notifications
+                        .filter((n) => !n.readAt)
+                        .slice(0, 8)
+                        .map((n) => (
+                          <button
+                            key={n.id}
+                            type="button"
+                            className="notif-row unread"
+                            onClick={() => openNotification(n)}
+                          >
+                            <span
+                              className="avatar avatar-sm"
+                              style={{ background: colorFor(n.actor?.id ?? "sys") }}
+                            >
+                              {n.actor ? initials(n.actor.fullName) : "•"}
+                            </span>
+                            <span className="notif-body">
+                              <span className="notif-msg">{n.message}</span>
+                              <span className="notif-meta">
+                                {n.taskName && (
+                                  <span className="notif-task">{n.taskName}</span>
+                                )}
+                                <span className="notif-time">{timeAgo(n.createdAt)}</span>
+                              </span>
+                            </span>
+                            <span className="notif-dot" aria-hidden="true" />
+                          </button>
+                        ))
+                    )}
+                  </div>
+                  <Link href="/inbox" className="bell-panel-foot" onClick={() => setBellOpen(false)}>
+                    View all in Inbox {Icons.arrowRight}
+                  </Link>
+                </div>
+              )}
+            </div>
 
             <div className="acct">
               <button
@@ -226,6 +396,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 aria-label="Account"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setBellOpen(false);
                   setMenuOpen((v) => !v);
                 }}
               >

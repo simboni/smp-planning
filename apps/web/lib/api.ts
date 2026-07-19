@@ -1101,6 +1101,146 @@ export const viewsApi = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Module 6 — Real-time collaboration: comments, activity,
+ * notifications, reminders & presence.
+ * ------------------------------------------------------------------ */
+
+/**
+ * A task comment. Mentions are embedded in `body` as `@[userId]` tokens
+ * (the UI renders them as @FullName chips via the workspace member list).
+ * `assignee` non-null makes it an "assigned comment" that can be
+ * resolved/reopened. Replies nest one level via `replies`.
+ */
+export interface TaskComment {
+  id: string;
+  parentCommentId: string | null;
+  author: TaskUser;
+  body: string;
+  assignee: TaskUser | null;
+  resolvedAt: string | null;
+  editedAt: string | null;
+  createdAt: string;
+  replies: TaskComment[];
+}
+
+export type ActivityKind =
+  | "created"
+  | "status"
+  | "priority"
+  | "dates"
+  | "assignee"
+  | "name"
+  | "description"
+  | "archived"
+  | "completed"
+  | "comment";
+
+/** One row of a task's activity feed. `data` shape depends on `kind`. */
+export interface ActivityEntry {
+  id: string;
+  kind: ActivityKind;
+  data: Record<string, unknown>;
+  actor: TaskUser | null;
+  createdAt: string;
+}
+
+export interface AppNotification {
+  id: string;
+  kind: string;
+  message: string;
+  taskId: string | null;
+  taskName: string | null;
+  actor: TaskUser | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface Reminder {
+  id: string;
+  note: string;
+  remindAt: string;
+  taskId: string | null;
+  taskName: string | null;
+  doneAt: string | null;
+}
+
+/** A workspace member currently connected to the event stream. */
+export interface OnlineUser {
+  id: string;
+  fullName: string;
+  avatarUrl: string | null;
+}
+
+export const commentsApi = {
+  list: (taskId: string) =>
+    api<{ comments: TaskComment[] }>(`/tasks/${taskId}/comments`, {
+      auth: "access",
+    }),
+  create: (
+    taskId: string,
+    body: { body: string; parentCommentId?: string; assigneeUserId?: string },
+  ) =>
+    api<{ comment: TaskComment }>(`/tasks/${taskId}/comments`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: { body?: string; assigneeUserId?: string | null; resolved?: boolean },
+  ) =>
+    api<{ comment: TaskComment }>(`/comments/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/comments/${id}`, { method: "DELETE", auth: "access" }),
+  activity: (taskId: string) =>
+    api<{ activity: ActivityEntry[] }>(`/tasks/${taskId}/activity`, {
+      auth: "access",
+    }),
+};
+
+export const notificationsApi = {
+  list: () =>
+    api<{ notifications: AppNotification[]; unreadCount: number }>(
+      "/notifications",
+      { auth: "access" },
+    ),
+  markRead: (id: string) =>
+    api<unknown>(`/notifications/${id}/read`, { method: "POST", auth: "access" }),
+  markAllRead: () =>
+    api<unknown>("/notifications/read-all", { method: "POST", auth: "access" }),
+};
+
+export const remindersApi = {
+  list: () => api<{ reminders: Reminder[] }>("/reminders", { auth: "access" }),
+  create: (body: { note: string; remindAt: string; taskId?: string }) =>
+    api<{ reminder: Reminder }>("/reminders", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: { note?: string; remindAt?: string; done?: boolean },
+  ) =>
+    api<{ reminder: Reminder }>(`/reminders/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/reminders/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+export const eventsApi = {
+  /** Who is connected to the SSE stream right now. */
+  online: () => api<{ online: OnlineUser[] }>("/events/online", { auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
  * Task types — per-space (Module 4). "Task" is the implicit default.
  * ------------------------------------------------------------------ */
 export const taskTypesApi = {

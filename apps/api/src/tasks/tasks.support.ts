@@ -60,6 +60,53 @@ export async function requireSpaceEdit(
   }
 }
 
+/**
+ * Require >= comment on the space (404 if not visible, 403 for view-only).
+ * Edit and full imply comment. Returns the resolved permission so callers
+ * can make finer decisions (e.g. delete-any at 'full').
+ */
+export async function requireSpaceComment(
+  access: AccessService,
+  client: PoolClient,
+  userId: string,
+  role: Role,
+  spaceId: string,
+): Promise<Permission> {
+  const perm = await requireSpaceVisible(access, client, userId, role, spaceId);
+  if (!permAtLeast(perm, "comment")) {
+    throw new ForbiddenException("You need comment access on this space");
+  }
+  return perm;
+}
+
+/**
+ * Append one row to the task's activity feed (M6). Runs on the caller's
+ * withWorkspace client so the activity commits atomically with the change
+ * it describes.
+ */
+export async function recordActivity(
+  client: PoolClient,
+  entry: {
+    workspaceId: string;
+    taskId: string;
+    actorUserId: string | null;
+    kind: string;
+    data?: Record<string, unknown>;
+  },
+): Promise<void> {
+  await client.query(
+    `INSERT INTO task_activity (workspace_id, task_id, actor_user_id, kind, data)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [
+      entry.workspaceId,
+      entry.taskId,
+      entry.actorUserId,
+      entry.kind,
+      JSON.stringify(entry.data ?? {}),
+    ],
+  );
+}
+
 export function requireName(name: unknown, label = "name"): string {
   if (typeof name !== "string" || !name.trim()) {
     throw new BadRequestException(`${label} is required`);
