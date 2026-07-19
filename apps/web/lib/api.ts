@@ -228,6 +228,8 @@ export interface TaskCard {
   taskType: TaskTypeRef | null;
   /** Module 4: milestone flag (renders as a purple diamond). */
   isMilestone: boolean;
+  /** Module 8: total tracked seconds across all users' time entries. */
+  trackedSeconds: number;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1346,6 +1348,171 @@ export const notesApi = {
     api<{ note: Note }>(`/notes/${id}`, { method: "PATCH", body, auth: "access" }),
   remove: (id: string) =>
     api<void>(`/notes/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Module 8 — Time tracking, timesheets & workload.
+ * ------------------------------------------------------------------ */
+
+/** One tracked block of time on a task. `endedAt` null = still running. */
+export interface TimeEntry {
+  id: string;
+  user: TaskUser;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number;
+  billable: boolean;
+  note: string | null;
+}
+
+/** The caller's currently running timer (workspace-wide, one at most). */
+export interface RunningTimer {
+  entry: TimeEntry;
+  task: { id: string; name: string; listId: string };
+}
+
+/** An entry as it appears inside a timesheet day (task denormalized). */
+export interface TimesheetEntry {
+  id: string;
+  taskId: string;
+  taskName: string;
+  listId: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number;
+  billable: boolean;
+  note: string | null;
+}
+
+export interface TimesheetDay {
+  date: string;
+  totalSeconds: number;
+  billableSeconds: number;
+  entries: TimesheetEntry[];
+}
+
+export type TimesheetStatus = "submitted" | "approved" | "rejected";
+
+export interface TimesheetSubmission {
+  status: TimesheetStatus;
+  decidedBy: TaskUser | string | null;
+  decidedAt: string | null;
+}
+
+export interface MyTimesheet {
+  weekStart: string;
+  days: TimesheetDay[];
+  totalSeconds: number;
+  submission: TimesheetSubmission | null;
+}
+
+/** One member's week in the admin "Team" timesheet table. */
+export interface TimesheetRow {
+  user: TaskUser;
+  totalSeconds: number;
+  billableSeconds: number;
+  submission: TimesheetSubmission | null;
+}
+
+/** A task inside a member's workload week. */
+export interface WorkloadTask {
+  id: string;
+  name: string;
+  listId: string;
+  dueDate: string | null;
+  estimateSeconds: number | null;
+}
+
+export interface WorkloadMember {
+  user: TaskUser;
+  capacitySeconds: number;
+  assignedSeconds: number;
+  trackedSeconds: number;
+  tasks: WorkloadTask[];
+}
+
+export interface WorkloadWeek {
+  weekStart: string;
+  /** The 7 dates of the week (Monday-start), YYYY-MM-DD. */
+  days: string[];
+  members: WorkloadMember[];
+}
+
+export const timeApi = {
+  /* timer ------------------------------------------------------------ */
+  /** Start a timer on a task (the server auto-stops any prior one). */
+  startTimer: (taskId: string, body: { note?: string; billable?: boolean } = {}) =>
+    api<{ entry: TimeEntry }>(`/tasks/${taskId}/timer/start`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  stopTimer: () =>
+    api<{ entry: TimeEntry }>("/timer/stop", { method: "POST", auth: "access" }),
+  runningTimer: () =>
+    api<{ running: RunningTimer | null }>("/timer", { auth: "access" }),
+
+  /* entries ---------------------------------------------------------- */
+  listEntries: (taskId: string) =>
+    api<{ entries: TimeEntry[]; totalSeconds: number; billableSeconds: number }>(
+      `/tasks/${taskId}/time-entries`,
+      { auth: "access" },
+    ),
+  createEntry: (
+    taskId: string,
+    body: { startedAt: string; endedAt: string; billable?: boolean; note?: string },
+  ) =>
+    api<{ entry: TimeEntry }>(`/tasks/${taskId}/time-entries`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateEntry: (
+    id: string,
+    body: {
+      startedAt?: string;
+      endedAt?: string;
+      billable?: boolean;
+      note?: string | null;
+    },
+  ) =>
+    api<{ entry: TimeEntry }>(`/time-entries/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  removeEntry: (id: string) =>
+    api<void>(`/time-entries/${id}`, { method: "DELETE", auth: "access" }),
+
+  /* timesheets ------------------------------------------------------- */
+  myTimesheet: (weekStart: string) =>
+    api<MyTimesheet>(`/timesheets/me?weekStart=${encodeURIComponent(weekStart)}`, {
+      auth: "access",
+    }),
+  submitTimesheet: (weekStart: string) =>
+    api<{ submission: TimesheetSubmission }>("/timesheets/submit", {
+      method: "POST",
+      body: { weekStart },
+      auth: "access",
+    }),
+  /** Admin/owner — every member's week totals. */
+  teamTimesheets: (weekStart: string) =>
+    api<{ rows: TimesheetRow[] }>(
+      `/timesheets?weekStart=${encodeURIComponent(weekStart)}`,
+      { auth: "access" },
+    ),
+  decideTimesheet: (userId: string, weekStart: string, decision: "approved" | "rejected") =>
+    api<{ submission: TimesheetSubmission }>(`/timesheets/${userId}/decide`, {
+      method: "POST",
+      body: { weekStart, decision },
+      auth: "access",
+    }),
+
+  /* workload --------------------------------------------------------- */
+  workload: (weekStart: string) =>
+    api<WorkloadWeek>(`/workload?weekStart=${encodeURIComponent(weekStart)}`, {
+      auth: "access",
+    }),
 };
 
 /* ------------------------------------------------------------------ *

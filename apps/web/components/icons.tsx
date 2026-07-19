@@ -490,6 +490,31 @@ export const Icons = {
       <path d="M12 11v6M9 14h6" />
     </svg>
   ),
+  /* ---- Module 8: Time tracking, timesheets & workload ---- */
+  play: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M8 5.5v13a1 1 0 0 0 1.52.86l10.2-6.5a1 1 0 0 0 0-1.72L9.52 4.64A1 1 0 0 0 8 5.5z" />
+    </svg>
+  ),
+  stop: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <rect x="6" y="6" width="12" height="12" rx="2.5" />
+    </svg>
+  ),
+  timer: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="13.5" r="7.5" />
+      <path d="M12 9.5v4l2.6 1.7" />
+      <path d="M9.5 3h5" />
+      <path d="M12 3v3" />
+    </svg>
+  ),
+  workload: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4 4v16" />
+      <path d="M4 7.5h12M4 12h16M4 16.5h8" strokeWidth={2.6} />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;

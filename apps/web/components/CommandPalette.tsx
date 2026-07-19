@@ -18,6 +18,8 @@ const DESTINATIONS: Destination[] = [
   { label: "Settings", href: "/settings", icon: "settings", keywords: "workspace preferences" },
   { label: "Everything", href: "/everything", icon: "spaces", keywords: "spaces folders lists overview" },
   { label: "Docs", href: "/docs", icon: "docs", keywords: "wiki pages notes write document" },
+  { label: "Timesheet", href: "/timesheet", icon: "clock", keywords: "time tracking hours week entries submit approval" },
+  { label: "Workload", href: "/workload", icon: "workload", keywords: "capacity team hours estimates planning" },
   { label: "Tasks", href: "#", icon: "tasks", soon: true },
   { label: "Goals", href: "#", icon: "goals", soon: true },
   { label: "Dashboards", href: "#", icon: "dashboards", soon: true },

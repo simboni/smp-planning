@@ -186,6 +186,16 @@ export default function DashboardPage() {
           <h3>Docs</h3>
           <p>Wikis and collaborative docs — write your first page.</p>
         </Link>
+        <Link href="/timesheet" className="module-tile module-tile-live">
+          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
+            Ready
+          </span>
+          <span className="module-ic" style={{ background: "#E5578C" }}>
+            {Icons.timer}
+          </span>
+          <h3>Time Tracking</h3>
+          <p>Timers, timesheets & team workload — track your week.</p>
+        </Link>
         {MODULES.map((m) => (
           <div className="module-tile" key={m.label}>
             <span className="badge badge-soon">Coming soon</span>

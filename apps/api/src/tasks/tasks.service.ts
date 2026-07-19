@@ -57,6 +57,8 @@ export interface TaskCard {
   isMilestone: boolean;
   /** Unresolved waiting-on tasks (dep status type != 'done'). */
   blockedCount: number;
+  /** M8: total finished tracked time on the task, in seconds. */
+  trackedSeconds: number;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -248,6 +250,7 @@ export class TasksService {
         : null,
       isMilestone: r.is_milestone as boolean,
       blockedCount: 0,
+      trackedSeconds: 0,
       archived: r.archived as boolean,
       createdAt: iso(r.created_at)!,
       updatedAt: iso(r.updated_at)!,
@@ -255,7 +258,7 @@ export class TasksService {
     };
   }
 
-  /** Enrich a set of task rows with assignees/tags/counts in 4 batch queries. */
+  /** Enrich task rows with assignees/tags/counts/tracked time, all batched. */
   private async buildCards(
     client: PoolClient,
     rows: Record<string, unknown>[],
@@ -331,6 +334,19 @@ export class TasksService {
     for (const r of blocked.rows) {
       const c = byId.get(r.task_id as string);
       if (c) c.blockedCount = r.n as number;
+    }
+
+    // M8: total FINISHED tracked seconds per task (running timers excluded).
+    const tracked = await client.query(
+      `SELECT task_id, COALESCE(SUM(duration_seconds), 0)::int AS n
+       FROM time_entries
+       WHERE task_id = ANY($1) AND ended_at IS NOT NULL
+       GROUP BY task_id`,
+      [ids],
+    );
+    for (const r of tracked.rows) {
+      const c = byId.get(r.task_id as string);
+      if (c) c.trackedSeconds = r.n as number;
     }
     return cards;
   }

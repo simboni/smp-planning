@@ -13,10 +13,12 @@ import {
   setUser,
   setWorkspace,
   tasksApi,
+  timeApi,
   workspacesApi,
   type AppNotification,
   type OnlineUser,
   type PublicUser,
+  type RunningTimer,
   type WorkspaceSummary,
 } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
@@ -24,7 +26,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { HierarchyTree } from "@/components/HierarchyTree";
 import { Notepad } from "@/components/Notepad";
 import { Icons, StackMark, type IconKey } from "@/components/icons";
-import { colorFor, initials, timeAgo } from "@/lib/format";
+import { colorFor, elapsedSeconds, formatTimer, initials, timeAgo } from "@/lib/format";
 
 interface NavItem {
   href: string;
@@ -35,6 +37,8 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
+  { href: "/timesheet", label: "Timesheet", icon: "clock" },
+  { href: "/workload", label: "Workload", icon: "workload" },
   { href: "/docs", label: "Docs", icon: "docs" },
   { href: "/members", label: "Members", icon: "members" },
   { href: "/teams", label: "Teams", icon: "team" },
@@ -63,6 +67,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [online, setOnline] = useState<OnlineUser[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
+
+  // Module 8 — the caller's running timer (global topbar chip).
+  const [timer, setTimer] = useState<RunningTimer | null>(null);
+  const [, setTimerTick] = useState(0); // 1s re-render while running
+  const [stoppingTimer, setStoppingTimer] = useState(false);
+
+  const loadTimer = (): void => {
+    timeApi
+      .runningTimer()
+      .then((r) => setTimer(r.running))
+      .catch(() => undefined);
+  };
+
+  useEffect(loadTimer, []);
+
+  useRealtime((e) => {
+    if (e.type === "time.changed") loadTimer();
+  }, []);
+
+  // Local 1s tick keeps the elapsed readout live.
+  useEffect(() => {
+    if (!timer) return;
+    const t = setInterval(() => setTimerTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [timer]);
+
+  const stopTimer = (): void => {
+    if (stoppingTimer) return;
+    setStoppingTimer(true);
+    timeApi
+      .stopTimer()
+      .then(() => setTimer(null))
+      .catch(() => loadTimer())
+      .finally(() => setStoppingTimer(false));
+  };
 
   const loadNotifications = (): void => {
     notificationsApi
@@ -289,6 +328,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="topbar-spacer" />
 
           <div className="topbar-tools">
+            {timer && (
+              <div className="timer-chip" title={`Timing “${timer.task.name}”`}>
+                <span className="timer-chip-dot" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="timer-chip-name"
+                  onClick={() =>
+                    router.push(`/list?id=${timer.task.listId}&task=${timer.task.id}`)
+                  }
+                >
+                  {timer.task.name}
+                </button>
+                <span className="timer-chip-time">
+                  {formatTimer(elapsedSeconds(timer.entry.startedAt))}
+                </span>
+                <button
+                  type="button"
+                  className="timer-chip-stop"
+                  aria-label="Stop timer"
+                  title="Stop timer"
+                  disabled={stoppingTimer}
+                  onClick={stopTimer}
+                >
+                  {Icons.stop}
+                </button>
+              </div>
+            )}
+
             {online.length > 0 && (
               <div className="presence-row" aria-label={`${online.length} online`}>
                 {online.slice(0, 5).map((u) => (

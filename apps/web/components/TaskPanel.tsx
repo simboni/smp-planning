@@ -41,6 +41,7 @@ import { colorFor, formatEstimate, initials, toDateInputValue } from "@/lib/form
 import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChip, TypeIcon } from "@/components/TaskBits";
 import { FieldManager } from "@/components/FieldManager";
 import { CommentsActivity } from "@/components/CommentsActivity";
+import { TimeTracking } from "@/components/TimeTracking";
 import { useRealtime } from "@/lib/realtime";
 
 /* ------------------------------------------------------------------ *
@@ -730,6 +731,14 @@ export function TaskPanel({
                 </div>
               </div>
             </div>
+
+            {/* Time tracking (Module 8) */}
+            <TimeTracking
+              taskId={detail.id}
+              estimateMinutes={detail.timeEstimateMinutes}
+              canTrack={canEdit || canComment}
+              onChanged={onChanged}
+            />
 
             {/* Custom fields */}
             <section className="tp-section">

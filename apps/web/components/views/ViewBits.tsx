@@ -9,7 +9,7 @@
 import { useEffect, useRef } from "react";
 import type { TaskCard } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { colorFor, formatEstimate } from "@/lib/format";
+import { colorFor, formatDuration, formatEstimate } from "@/lib/format";
 import {
   AvatarStack,
   BlockedChip,
@@ -106,6 +106,12 @@ export function BoardCard({ task, onOpen }: { task: TaskCard; onOpen: () => void
           <span className="task-count" title="Time estimate">
             {Icons.clock}
             {est}
+          </span>
+        )}
+        {task.trackedSeconds > 0 && (
+          <span className="task-count tracked" title="Time tracked">
+            {Icons.timer}
+            {formatDuration(task.trackedSeconds)}
           </span>
         )}
         <span className="bv-card-spacer" />

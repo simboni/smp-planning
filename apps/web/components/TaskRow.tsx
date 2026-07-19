@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Status, TaskCard } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { formatEstimate } from "@/lib/format";
+import { formatDuration, formatEstimate } from "@/lib/format";
 import {
   AvatarStack,
   BlockedChip,
@@ -107,6 +107,13 @@ export function TaskRow({
           <span className="task-count" title="Time estimate">
             {Icons.clock}
             {est}
+          </span>
+        )}
+
+        {task.trackedSeconds > 0 && (
+          <span className="task-count tracked" title="Time tracked">
+            {Icons.timer}
+            {formatDuration(task.trackedSeconds)}
           </span>
         )}
 

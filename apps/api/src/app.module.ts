@@ -14,6 +14,7 @@ import { InboxModule } from "./inbox/inbox.module";
 import { SharingModule } from "./sharing/sharing.module";
 import { TasksModule } from "./tasks/tasks.module";
 import { TeamsModule } from "./teams/teams.module";
+import { TimeModule } from "./time/time.module";
 import { ViewsModule } from "./views/views.module";
 import { WorkspacesModule } from "./workspaces/workspaces.module";
 
@@ -43,6 +44,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     CommentsModule,
     InboxModule,
     DocsModule,
+    TimeModule,
   ],
   controllers: [HealthController],
 })

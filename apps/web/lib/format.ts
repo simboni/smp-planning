@@ -128,6 +128,91 @@ export function formatDateTime(iso: string | null | undefined): string {
 }
 
 /* ------------------------------------------------------------------ *
+ * Time tracking (Module 8). Pure — safe anywhere.
+ * ------------------------------------------------------------------ */
+
+/** "1:05", "0:45", "12:00" — h:mm from a second count (totals, chips). */
+export function formatDuration(seconds: number | null | undefined): string {
+  const s = Math.max(0, Math.round(seconds ?? 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  // Rounding minutes can roll over (e.g. 3599s → 60m).
+  if (m === 60) return `${h + 1}:00`;
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+/** "0:04:31", "1:12:05" — h:mm:ss for a live-ticking timer readout. */
+export function formatTimer(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+/** "26h", "3.5h", "0h" — coarse hour label for workload bars. */
+export function formatHours(seconds: number | null | undefined): string {
+  const h = Math.max(0, seconds ?? 0) / 3600;
+  if (h === 0) return "0h";
+  const rounded = Math.round(h * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`;
+}
+
+/** Whole seconds elapsed since an ISO instant (never negative). */
+export function elapsedSeconds(startedAtIso: string): number {
+  const t = new Date(startedAtIso).getTime();
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.floor((Date.now() - t) / 1000));
+}
+
+/** The Monday of the week containing `d`, as YYYY-MM-DD. */
+export function mondayOf(d: Date): string {
+  const day = d.getDay(); // 0=Sun … 6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff);
+  return localYmd(m);
+}
+
+/** Local YYYY-MM-DD for a Date (no timezone surprises). */
+export function localYmd(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Shift a YYYY-MM-DD string by whole days (local calendar math). */
+export function shiftYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map((x) => parseInt(x, 10));
+  return localYmd(new Date(y, (m || 1) - 1, (d || 1) + days));
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "Mon 14" for a YYYY-MM-DD day column header. */
+export function formatDayLabel(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map((x) => parseInt(x, 10));
+  const date = new Date(y, (m || 1) - 1, d || 1);
+  if (Number.isNaN(date.getTime())) return ymd;
+  return `${WEEKDAYS[date.getDay()]} ${date.getDate()}`;
+}
+
+/** "Jul 14 – Jul 20" (or "Jul 28 – Aug 3") for a Monday-start week. */
+export function formatWeekRange(weekStart: string): string {
+  const end = shiftYmd(weekStart, 6);
+  const fmt = (ymd: string): string => {
+    const [y, m, d] = ymd.split("-").map((x) => parseInt(x, 10));
+    const date = new Date(y, (m || 1) - 1, d || 1);
+    return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+  };
+  return `${fmt(weekStart)} – ${fmt(end)}`;
+}
+
+/** True when a YYYY-MM-DD day is today (local). */
+export function isTodayYmd(ymd: string): boolean {
+  return ymd === localYmd(new Date());
+}
+
+/* ------------------------------------------------------------------ *
  * Docs (Module 7).
  * ------------------------------------------------------------------ */
 
