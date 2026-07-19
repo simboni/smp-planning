@@ -113,3 +113,66 @@ export function assertIdArray(ids: unknown): asserts ids is string[] {
     throw new BadRequestException("ids must be an array of strings");
   }
 }
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Require a well-formed uuid (guards raw ids that reach SQL casts). */
+export function requireUuid(v: unknown, label: string): string {
+  if (typeof v !== "string" || !UUID_RE.test(v)) {
+    throw new BadRequestException(`${label} must be a uuid`);
+  }
+  return v.toLowerCase();
+}
+
+// --- Recurrence (M4) --------------------------------------------------------
+
+export const RECURRENCE_FREQS = ["daily", "weekly", "monthly"] as const;
+
+export interface RecurrenceRule {
+  freq: (typeof RECURRENCE_FREQS)[number];
+  interval: number;
+  mode: "on_complete";
+}
+
+/**
+ * Validate a recurrence rule `{freq,interval,mode:'on_complete'}` (M4 supports
+ * only on_complete). Returns the normalized rule, or null to clear.
+ */
+export function validRecurrence(v: unknown): RecurrenceRule | null {
+  if (v === null) return null;
+  if (typeof v !== "object" || Array.isArray(v)) {
+    throw new BadRequestException("recurrence must be an object or null");
+  }
+  const r = v as Record<string, unknown>;
+  if (!RECURRENCE_FREQS.includes(r.freq as RecurrenceRule["freq"])) {
+    throw new BadRequestException(
+      "recurrence.freq must be one of daily, weekly, monthly",
+    );
+  }
+  if (
+    typeof r.interval !== "number" ||
+    !Number.isInteger(r.interval) ||
+    r.interval < 1
+  ) {
+    throw new BadRequestException("recurrence.interval must be an integer >= 1");
+  }
+  if (r.mode !== "on_complete") {
+    throw new BadRequestException("recurrence.mode must be 'on_complete'");
+  }
+  return {
+    freq: r.freq as RecurrenceRule["freq"],
+    interval: r.interval,
+    mode: "on_complete",
+  };
+}
+
+/** Advance a date by one recurrence step (daily/weekly in days, monthly in months). */
+export function advanceByRule(base: Date, rule: RecurrenceRule): Date {
+  const d = new Date(base.getTime());
+  if (rule.freq === "daily") d.setUTCDate(d.getUTCDate() + rule.interval);
+  else if (rule.freq === "weekly") {
+    d.setUTCDate(d.getUTCDate() + 7 * rule.interval);
+  } else d.setUTCMonth(d.getUTCMonth() + rule.interval);
+  return d;
+}

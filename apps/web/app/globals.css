@@ -1981,3 +1981,178 @@ a.crumb:hover { text-decoration: none; color: var(--brand-700); }
   .task-meta { gap: 7px; }
   .stm-row { flex-wrap: wrap; }
 }
+
+/* ============================================================
+   Module 4 — Custom fields, dependencies, task types, recurrence
+   ============================================================ */
+
+/* ---- row atoms: type icon, milestone diamond, blocked chip ---- */
+.task-type-ic {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; color: var(--muted); line-height: 1;
+}
+.task-type-ic svg { width: 100%; height: 100%; }
+.milestone-mark { display: inline-flex; flex-shrink: 0; color: var(--brand); }
+.milestone-mark svg { width: 100%; height: 100%; }
+.task-name.milestone { font-weight: 700; }
+.blocked-chip {
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+  font-size: 0.72rem; font-weight: 700; color: var(--danger);
+  padding: 2px 8px; border-radius: 999px; background: var(--danger-soft);
+  white-space: nowrap;
+}
+.blocked-chip svg { width: 12px; height: 12px; }
+
+/* ---- panel: task type pill + milestone toggle ---- */
+.tp-type-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink-2);
+  border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 0.78rem;
+  font-weight: 650; cursor: pointer;
+}
+.tp-type-btn:hover:not(:disabled) { border-color: var(--brand-soft-2); color: var(--brand-700); }
+.tp-type-btn:disabled { cursor: default; }
+.tp-type-default { display: inline-flex; width: 14px; height: 14px; color: var(--muted); }
+.tp-type-default svg { width: 100%; height: 100%; }
+.tp-mile-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--card); color: var(--muted);
+  border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 0.78rem;
+  font-weight: 650; cursor: pointer;
+}
+.tp-mile-btn svg { width: 12px; height: 12px; }
+.tp-mile-btn:hover { border-color: var(--brand-soft-2); color: var(--brand-700); }
+.tp-mile-btn.on {
+  color: var(--brand-700); background: var(--brand-soft);
+  border-color: color-mix(in srgb, var(--brand) 45%, transparent);
+}
+.tp-mile-btn.ro { cursor: default; }
+
+.tp-title-row { display: flex; align-items: flex-start; gap: 8px; }
+.tp-title-row .milestone-mark { margin-top: 12px; }
+.tp-title-row .tp-title-input, .tp-title-row .tp-title-ro { flex: 1; min-width: 0; }
+
+/* ---- blocked banner ---- */
+.tp-blocked-banner {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 12px; margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: var(--r-md); background: var(--danger-soft);
+  color: var(--danger); font-size: 0.83rem; font-weight: 600;
+}
+.tp-blocked-banner svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+/* ---- recurrence ---- */
+.tp-repeat { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tp-repeat-sel { width: auto; padding: 6px 10px; font-size: 0.84rem; }
+.tp-repeat-num { width: 58px; padding: 6px 8px; font-size: 0.84rem; }
+.tp-repeat-lbl { font-size: 0.82rem; color: var(--muted); font-weight: 600; }
+.tp-repeat-hint {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); background: var(--neutral-soft); border-radius: 999px; padding: 2px 8px;
+}
+.tp-repeat-ro { display: inline-flex; align-items: center; gap: 6px; font-size: 0.86rem; font-weight: 600; }
+.tp-repeat-ro svg { width: 14px; height: 14px; color: var(--muted); }
+
+/* ---- custom fields ---- */
+.tp-field-list {
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 4px 12px;
+}
+.tp-field.tp-prop { min-height: 38px; }
+.tp-field-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-field-input { width: 100%; max-width: 260px; padding: 6px 10px; font-size: 0.86rem; }
+.tp-field-num { max-width: 120px; }
+.tp-field-money { display: inline-flex; align-items: center; gap: 6px; }
+.tp-field-cur {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; color: var(--muted);
+  background: var(--neutral-soft); border-radius: 6px; padding: 3px 6px;
+}
+
+.tp-rating { display: inline-flex; align-items: center; gap: 1px; }
+.tp-star {
+  width: 22px; height: 22px; border: 0; background: transparent; padding: 2px;
+  color: var(--line); cursor: pointer; display: inline-flex;
+  transition: transform 0.08s ease, color 0.08s ease;
+}
+.tp-star svg { width: 100%; height: 100%; }
+.tp-star.on { color: #f5a623; }
+.tp-star:hover:not(:disabled) { transform: scale(1.15); color: #f5a623; }
+.tp-star:disabled { cursor: default; }
+
+.tp-progress { display: inline-flex; align-items: center; gap: 10px; flex: 1; max-width: 280px; }
+.tp-progress-slider { flex: 1; accent-color: var(--brand); cursor: pointer; }
+.tp-progress-slider:disabled { cursor: default; }
+.tp-progress-val {
+  font-size: 0.8rem; font-weight: 700; color: var(--ink-2);
+  min-width: 40px; text-align: right; font-variant-numeric: tabular-nums;
+}
+
+/* ---- dependencies & linked tasks ---- */
+.tp-dep-group { margin-bottom: 10px; }
+.tp-dep-group:last-child { margin-bottom: 0; }
+.tp-dep-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin-bottom: 5px;
+}
+.tp-dep-title svg { width: 13px; height: 13px; }
+.tp-ref { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.tp-ref-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; text-align: left;
+  padding: 7px 10px; border: 1px solid var(--line-soft); border-radius: var(--r-sm);
+  background: var(--card); color: var(--ink); font: inherit; cursor: pointer;
+}
+.tp-ref-main:hover { background: var(--card-2); border-color: var(--brand-soft-2); }
+.tp-ref-name {
+  flex: 1; min-width: 0; font-size: 0.87rem; font-weight: 550;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tp-ref.done .tp-ref-name { color: var(--muted); text-decoration: line-through; }
+.tp-ref-status { font-size: 0.72rem; font-weight: 650; color: var(--muted); flex-shrink: 0; }
+.tp-ref-x { width: 26px; height: 26px; flex-shrink: 0; }
+.tp-ref-x:hover { background: var(--danger-soft); color: var(--danger); }
+
+/* right-aligned popover (section-head "Add" buttons near the panel edge) */
+.tp-pop-right { left: auto; right: 0; }
+
+/* ---- field manager modal ---- */
+.modal.field-mgr { width: min(640px, 100%); }
+.fm-field { display: flex; flex-direction: column; }
+.fm-type-badge {
+  flex-shrink: 0; width: 84px; text-align: center;
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ink-2); background: var(--neutral-soft);
+  border-radius: 999px; padding: 4px 0;
+}
+.fm-config-lbl {
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+  font-size: 0.74rem; font-weight: 600; color: var(--muted);
+}
+.fm-config-input {
+  width: 64px; flex-shrink: 0; text-align: center;
+  padding-top: 7px; padding-bottom: 7px; font-size: 0.82rem;
+}
+.fm-opt-toggle { flex-shrink: 0; white-space: nowrap; }
+.fm-opt-toggle.on { color: var(--brand-700); }
+.fm-opt-caret { display: inline-flex; transition: transform 0.14s ease; }
+.fm-opt-caret svg { width: 13px; height: 13px; }
+.fm-opt-caret.open { transform: rotate(180deg); }
+.fm-options {
+  margin: 6px 0 4px 92px; padding: 8px 10px;
+  border: 1px solid var(--line-soft); border-radius: var(--r-md);
+  background: var(--card-2); display: flex; flex-direction: column; gap: 6px;
+}
+.fm-option { display: flex; align-items: center; gap: 8px; }
+.fm-opt-swatch {
+  width: 20px; height: 20px; border-radius: 6px; cursor: pointer; flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08); padding: 0;
+}
+.fm-opt-swatch.ghost { background: transparent; border: 1.5px dashed var(--line); cursor: default; }
+.fm-option .icon-btn { width: 26px; height: 26px; flex-shrink: 0; }
+.fm-opt-name { flex: 1; min-width: 0; padding-top: 6px; padding-bottom: 6px; font-size: 0.85rem; }
+
+@media (max-width: 560px) {
+  .fm-options { margin-left: 0; }
+  .tp-field-input { max-width: none; }
+}

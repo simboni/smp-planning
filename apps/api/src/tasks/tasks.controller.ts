@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -17,12 +18,16 @@ import {
   WorkspaceGuard,
 } from "../auth/guards";
 import { ChecklistsService } from "./checklists.service";
+import { FieldsService } from "./fields.service";
+import { RelationsService } from "./relations.service";
 import { StatusesService } from "./statuses.service";
 import { TagsService } from "./tags.service";
+import { TaskTypesService } from "./task-types.service";
 import { TasksService } from "./tasks.service";
 
 /**
- * Module 3: Tasks Core. Every route is workspace-scoped (JwtAuthGuard +
+ * Modules 3+4: Tasks Core plus custom fields, dependencies/links, task types
+ * and recurrence. Every route is workspace-scoped (JwtAuthGuard +
  * WorkspaceGuard); intra-workspace permissions are enforced per-space inside
  * the services (404 when the owning space is not visible, 403 when the caller
  * lacks edit). workspaceId/userId/role always come from the access token.
@@ -35,6 +40,9 @@ export class TasksController {
     private readonly statuses: StatusesService,
     private readonly tags: TagsService,
     private readonly checklists: ChecklistsService,
+    private readonly fields: FieldsService,
+    private readonly relations: RelationsService,
+    private readonly taskTypes: TaskTypesService,
   ) {}
 
   private ctx(req: AuthedRequest) {
@@ -199,6 +207,9 @@ export class TasksController {
       dueDate?: string | null;
       timeEstimateMinutes?: number | null;
       archived?: boolean;
+      taskTypeId?: string | null;
+      isMilestone?: boolean;
+      recurrence?: Record<string, unknown> | null;
     },
   ) {
     return { task: await this.tasks.updateTask(...this.ctx(req), id, body ?? {}) };
@@ -361,5 +372,154 @@ export class TasksController {
     @Param("id", ParseUUIDPipe) id: string,
   ) {
     await this.checklists.removeItem(...this.ctx(req), id);
+  }
+
+  // --- Custom fields (M4) ---------------------------------------------------
+
+  @Get("spaces/:id/fields")
+  async getFields(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) spaceId: string,
+  ) {
+    return { fields: await this.fields.listFields(...this.ctx(req), spaceId) };
+  }
+
+  @Post("spaces/:id/fields")
+  async createField(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) spaceId: string,
+    @Body() body: { name?: string; type?: string; config?: unknown },
+  ) {
+    return {
+      field: await this.fields.create(...this.ctx(req), spaceId, body ?? {}),
+    };
+  }
+
+  @Patch("fields/:id")
+  async updateField(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: { name?: string; config?: unknown; position?: number },
+  ) {
+    return { field: await this.fields.update(...this.ctx(req), id, body ?? {}) };
+  }
+
+  @Delete("fields/:id")
+  @HttpCode(204)
+  async deleteField(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    await this.fields.remove(...this.ctx(req), id);
+  }
+
+  @Put("tasks/:id/fields/:fieldId")
+  async setFieldValue(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("fieldId", ParseUUIDPipe) fieldId: string,
+    @Body() body: { value?: unknown },
+  ) {
+    return this.fields.setValue(
+      ...this.ctx(req),
+      id,
+      fieldId,
+      body?.value ?? null,
+    );
+  }
+
+  // --- Dependencies & links (M4) --------------------------------------------
+
+  @Post("tasks/:id/dependencies")
+  @HttpCode(201)
+  async addDependency(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: { dependsOnTaskId?: string },
+  ) {
+    await this.relations.addDependency(
+      ...this.ctx(req),
+      id,
+      body?.dependsOnTaskId,
+    );
+    return { ok: true };
+  }
+
+  @Delete("tasks/:id/dependencies/:dependsOnTaskId")
+  @HttpCode(204)
+  async removeDependency(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("dependsOnTaskId", ParseUUIDPipe) dependsOnTaskId: string,
+  ) {
+    await this.relations.removeDependency(...this.ctx(req), id, dependsOnTaskId);
+  }
+
+  @Post("tasks/:id/links")
+  @HttpCode(201)
+  async addLink(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: { taskId?: string },
+  ) {
+    await this.relations.addLink(...this.ctx(req), id, body?.taskId);
+    return { ok: true };
+  }
+
+  @Delete("tasks/:id/links/:taskId")
+  @HttpCode(204)
+  async removeLink(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("taskId", ParseUUIDPipe) taskId: string,
+  ) {
+    await this.relations.removeLink(...this.ctx(req), id, taskId);
+  }
+
+  // --- Task types (M4) ------------------------------------------------------
+
+  @Get("spaces/:id/task-types")
+  async getTaskTypes(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) spaceId: string,
+  ) {
+    return {
+      taskTypes: await this.taskTypes.listTaskTypes(...this.ctx(req), spaceId),
+    };
+  }
+
+  @Post("spaces/:id/task-types")
+  async createTaskType(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) spaceId: string,
+    @Body() body: { name?: string; icon?: string; isMilestone?: boolean },
+  ) {
+    return {
+      taskType: await this.taskTypes.create(
+        ...this.ctx(req),
+        spaceId,
+        body ?? {},
+      ),
+    };
+  }
+
+  @Patch("task-types/:id")
+  async updateTaskType(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: { name?: string; icon?: string; isMilestone?: boolean },
+  ) {
+    return {
+      taskType: await this.taskTypes.update(...this.ctx(req), id, body ?? {}),
+    };
+  }
+
+  @Delete("task-types/:id")
+  @HttpCode(204)
+  async deleteTaskType(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    await this.taskTypes.remove(...this.ctx(req), id);
   }
 }

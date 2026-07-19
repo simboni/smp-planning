@@ -13,6 +13,8 @@ import { TagsService, Tag } from "./tags.service";
 import { Checklist } from "./checklists.service";
 import {
   Priority,
+  RecurrenceRule,
+  advanceByRule,
   optionalName,
   parseDate,
   requireName,
@@ -20,6 +22,7 @@ import {
   requireSpaceVisible,
   validColor,
   validPriority,
+  validRecurrence,
   assertIdArray,
 } from "./tasks.support";
 
@@ -47,10 +50,31 @@ export interface TaskCard {
   subtaskCount: number;
   checklistTotal: number;
   checklistDone: number;
+  taskType: { id: string; name: string; icon: string; isMilestone: boolean } | null;
+  isMilestone: boolean;
+  /** Unresolved waiting-on tasks (dep status type != 'done'). */
+  blockedCount: number;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+}
+
+/** Lightweight cross-task reference for dependency/link panels. */
+export interface TaskRef {
+  id: string;
+  name: string;
+  status: { id: string; name: string; color: string; type: string } | null;
+  listId: string;
+}
+
+/** A space field projected onto a task (value null when unset). */
+export interface TaskFieldValue {
+  fieldId: string;
+  name: string;
+  type: string;
+  config: Record<string, unknown>;
+  value: Record<string, unknown> | null;
 }
 
 export interface TaskDetail extends TaskCard {
@@ -59,6 +83,11 @@ export interface TaskDetail extends TaskCard {
   subtasks: TaskCard[];
   checklists: Checklist[];
   createdBy: UserRef | null;
+  recurrence: RecurrenceRule | null;
+  fields: TaskFieldValue[];
+  waitingOn: TaskRef[];
+  blocking: TaskRef[];
+  linked: TaskRef[];
   breadcrumb: {
     space: { id: string; name: string; color: string; icon: string | null };
     folder: { id: string; name: string } | null;
@@ -66,12 +95,20 @@ export interface TaskDetail extends TaskCard {
   };
 }
 
-/** Task columns + joined status, as selected everywhere below. */
+/** Task columns + joined status/task type, as selected everywhere below. */
 const TASK_COLS = `
   t.id, t.list_id, t.space_id, t.parent_task_id, t.name, t.description,
   t.status_id, t.priority, t.start_date, t.due_date, t.time_estimate_minutes,
   t.position, t.archived, t.created_by, t.created_at, t.updated_at, t.completed_at,
-  s.id AS s_id, s.name AS s_name, s.color AS s_color, s.type AS s_type`;
+  t.task_type_id, t.is_milestone, t.recurrence,
+  s.id AS s_id, s.name AS s_name, s.color AS s_color, s.type AS s_type,
+  tt.id AS tt_id, tt.name AS tt_name, tt.icon AS tt_icon,
+  tt.is_milestone AS tt_is_milestone`;
+
+/** FROM clause pairing TASK_COLS with its joins. */
+const TASK_FROM = `FROM tasks t
+  LEFT JOIN statuses s ON s.id = t.status_id
+  LEFT JOIN task_types tt ON tt.id = t.task_type_id`;
 
 function iso(v: unknown): string | null {
   if (v === null || v === undefined) return null;
@@ -111,9 +148,7 @@ export class TasksService {
     taskId: string,
   ): Promise<Record<string, unknown>> {
     const res = await client.query(
-      `SELECT ${TASK_COLS} FROM tasks t
-       LEFT JOIN statuses s ON s.id = t.status_id
-       WHERE t.id = $1`,
+      `SELECT ${TASK_COLS} ${TASK_FROM} WHERE t.id = $1`,
       [taskId],
     );
     if (!res.rows[0]) throw new NotFoundException("Task not found");
@@ -187,6 +222,16 @@ export class TasksService {
       subtaskCount: 0,
       checklistTotal: 0,
       checklistDone: 0,
+      taskType: r.tt_id
+        ? {
+            id: r.tt_id as string,
+            name: r.tt_name as string,
+            icon: r.tt_icon as string,
+            isMilestone: r.tt_is_milestone as boolean,
+          }
+        : null,
+      isMilestone: r.is_milestone as boolean,
+      blockedCount: 0,
       archived: r.archived as boolean,
       createdAt: iso(r.created_at)!,
       updatedAt: iso(r.updated_at)!,
@@ -256,7 +301,102 @@ export class TasksService {
         c.checklistDone = r.done as number;
       }
     }
+
+    // Unresolved waiting-on deps (dep task's status type != 'done'), batched.
+    const blocked = await client.query(
+      `SELECT d.task_id, COUNT(*)::int AS n
+       FROM task_dependencies d
+       JOIN tasks dt ON dt.id = d.depends_on_task_id
+       LEFT JOIN statuses ds ON ds.id = dt.status_id
+       WHERE d.task_id = ANY($1) AND ds.type IS DISTINCT FROM 'done'
+       GROUP BY d.task_id`,
+      [ids],
+    );
+    for (const r of blocked.rows) {
+      const c = byId.get(r.task_id as string);
+      if (c) c.blockedCount = r.n as number;
+    }
     return cards;
+  }
+
+  // --- Relations / fields for TaskDetail ------------------------------------
+
+  private taskRef(r: Record<string, unknown>): TaskRef {
+    return {
+      id: r.id as string,
+      name: r.name as string,
+      listId: r.list_id as string,
+      status: r.s_id
+        ? {
+            id: r.s_id as string,
+            name: r.s_name as string,
+            color: r.s_color as string,
+            type: r.s_type as string,
+          }
+        : null,
+    };
+  }
+
+  private async loadRelations(
+    client: PoolClient,
+    taskId: string,
+  ): Promise<{ waitingOn: TaskRef[]; blocking: TaskRef[]; linked: TaskRef[] }> {
+    const refCols = `t.id, t.name, t.list_id,
+      s.id AS s_id, s.name AS s_name, s.color AS s_color, s.type AS s_type`;
+    const waiting = await client.query(
+      `SELECT ${refCols}
+       FROM task_dependencies d
+       JOIN tasks t ON t.id = d.depends_on_task_id
+       LEFT JOIN statuses s ON s.id = t.status_id
+       WHERE d.task_id = $1 ORDER BY d.created_at`,
+      [taskId],
+    );
+    const blocking = await client.query(
+      `SELECT ${refCols}
+       FROM task_dependencies d
+       JOIN tasks t ON t.id = d.task_id
+       LEFT JOIN statuses s ON s.id = t.status_id
+       WHERE d.depends_on_task_id = $1 ORDER BY d.created_at`,
+      [taskId],
+    );
+    const linked = await client.query(
+      `SELECT ${refCols}
+       FROM task_links l
+       JOIN tasks t
+         ON t.id = CASE WHEN l.task_a = $1 THEN l.task_b ELSE l.task_a END
+       LEFT JOIN statuses s ON s.id = t.status_id
+       WHERE l.task_a = $1 OR l.task_b = $1 ORDER BY l.created_at`,
+      [taskId],
+    );
+    return {
+      waitingOn: waiting.rows.map((r) => this.taskRef(r)),
+      blocking: blocking.rows.map((r) => this.taskRef(r)),
+      linked: linked.rows.map((r) => this.taskRef(r)),
+    };
+  }
+
+  /** ALL of the space's fields projected onto the task (unset -> value null). */
+  private async loadFields(
+    client: PoolClient,
+    spaceId: string,
+    taskId: string,
+  ): Promise<TaskFieldValue[]> {
+    const res = await client.query(
+      `SELECT f.id, f.name, f.type, f.config, v.value
+       FROM custom_fields f
+       LEFT JOIN custom_field_values v
+         ON v.field_id = f.id AND v.task_id = $2
+       WHERE f.space_id = $1
+       ORDER BY f.position, f.created_at`,
+      [spaceId, taskId],
+    );
+    return res.rows.map((r) => ({
+      fieldId: r.id as string,
+      name: r.name as string,
+      type: r.type as string,
+      config: r.config as Record<string, unknown>,
+      value: (r.value as Record<string, unknown> | null) ?? null,
+    }));
   }
 
   private async buildDetail(
@@ -274,8 +414,7 @@ export class TasksService {
     );
 
     const subRows = await client.query(
-      `SELECT ${TASK_COLS} FROM tasks t
-       LEFT JOIN statuses s ON s.id = t.status_id
+      `SELECT ${TASK_COLS} ${TASK_FROM}
        WHERE t.parent_task_id = $1 AND t.archived = false
        ORDER BY s.position NULLS LAST, t.position, t.created_at`,
       [taskId],
@@ -347,6 +486,9 @@ export class TasksService {
       }
     }
 
+    const relations = await this.loadRelations(client, taskId);
+    const fields = await this.loadFields(client, card.spaceId, taskId);
+
     return {
       ...card,
       description: (row.description as string) ?? "",
@@ -354,6 +496,9 @@ export class TasksService {
       subtasks,
       checklists,
       createdBy,
+      recurrence: (row.recurrence as RecurrenceRule | null) ?? null,
+      fields,
+      ...relations,
       breadcrumb: {
         space: {
           id: spaceRes.rows[0].id as string,
@@ -382,8 +527,7 @@ export class TasksService {
       const spaceId = await this.listSpace(client, listId);
       await requireSpaceVisible(this.access, client, userId, role, spaceId);
       const rows = await client.query(
-        `SELECT ${TASK_COLS} FROM tasks t
-         LEFT JOIN statuses s ON s.id = t.status_id
+        `SELECT ${TASK_COLS} ${TASK_FROM}
          WHERE t.list_id = $1 AND t.parent_task_id IS NULL AND t.archived = false
          ORDER BY s.position NULLS LAST, t.position, t.created_at`,
         [listId],
@@ -621,8 +765,11 @@ export class TasksService {
       dueDate?: string | null;
       timeEstimateMinutes?: number | null;
       archived?: boolean;
+      taskTypeId?: string | null;
+      isMilestone?: boolean;
+      recurrence?: Record<string, unknown> | null;
     },
-  ): Promise<TaskDetail> {
+  ): Promise<TaskDetail & { spawnedTaskId?: string }> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       const existing = await this.taskRow(client, id);
       const spaceId = existing.space_id as string;
@@ -663,15 +810,49 @@ export class TasksService {
         sets.push(`archived = $${i++}`);
         params.push(body.archived === true);
       }
+      if (body?.taskTypeId !== undefined) {
+        if (body.taskTypeId === null) {
+          sets.push(`task_type_id = NULL`);
+        } else {
+          const tt = await client.query(
+            `SELECT 1 FROM task_types WHERE id = $1 AND space_id = $2`,
+            [body.taskTypeId, spaceId],
+          );
+          if (!tt.rows[0]) {
+            throw new BadRequestException(
+              "taskTypeId must reference a task type in this space",
+            );
+          }
+          sets.push(`task_type_id = $${i++}`);
+          params.push(body.taskTypeId);
+        }
+        auditData.taskTypeId = body.taskTypeId;
+      }
+      if (body?.isMilestone !== undefined) {
+        if (typeof body.isMilestone !== "boolean") {
+          throw new BadRequestException("isMilestone must be a boolean");
+        }
+        sets.push(`is_milestone = $${i++}`);
+        params.push(body.isMilestone);
+      }
+      if (body?.recurrence !== undefined) {
+        const rule = validRecurrence(body.recurrence);
+        sets.push(`recurrence = $${i++}`);
+        params.push(rule ? JSON.stringify(rule) : null);
+        auditData.recurrence = rule;
+      }
+      let becameDone = false;
       if (body?.statusId !== undefined) {
         const type = await this.statusType(client, body.statusId, spaceId);
         sets.push(`status_id = $${i++}`);
         params.push(body.statusId);
         // Entering a 'done' status completes the task; leaving one reopens it.
+        // Being blocked never hard-rejects a done move (ClickUp only warns).
         sets.push(`completed_at = $${i++}`);
         params.push(type === "done" ? new Date() : null);
         auditData.statusId = body.statusId;
         auditData.statusChanged = existing.status_id !== body.statusId;
+        becameDone = type === "done" && existing.s_type !== "done";
       }
 
       sets.push(`updated_at = now()`);
@@ -690,9 +871,119 @@ export class TasksService {
         data: auditData,
       });
 
+      // A recurring task completing clones itself to the next occurrence.
+      let spawnedTaskId: string | undefined;
+      if (becameDone) {
+        spawnedTaskId =
+          (await this.spawnNextOccurrence(client, workspaceId, userId, id)) ??
+          undefined;
+      }
+
       const row = await this.taskRow(client, id);
-      return this.buildDetail(client, row);
+      const detail = await this.buildDetail(client, row);
+      return spawnedTaskId ? { ...detail, spawnedTaskId } : detail;
     });
+  }
+
+  // --- Recurrence -----------------------------------------------------------
+
+  /**
+   * Clone a just-completed recurring task forward: same list, content, tags,
+   * assignees, custom field values, type and rule; status = the space's first
+   * not-done status; start/due advanced one step from the ORIGINAL due date
+   * (from now when it had none), preserving the start->due gap. The completed
+   * original's rule is cleared so history never re-fires. Returns the new
+   * task id, or null when the task carries no rule.
+   */
+  private async spawnNextOccurrence(
+    client: PoolClient,
+    workspaceId: string,
+    userId: string,
+    taskId: string,
+  ): Promise<string | null> {
+    const res = await client.query(
+      `SELECT list_id, space_id, start_date, due_date, recurrence
+       FROM tasks WHERE id = $1`,
+      [taskId],
+    );
+    const t = res.rows[0];
+    if (!t?.recurrence) return null;
+    const rule = t.recurrence as RecurrenceRule;
+    const listId = t.list_id as string;
+    const spaceId = t.space_id as string;
+
+    // First not-done status by position (fall back to the very first).
+    const st = await client.query(
+      `SELECT id FROM statuses WHERE space_id = $1 AND type <> 'done'
+       ORDER BY position, created_at LIMIT 1`,
+      [spaceId],
+    );
+    const statusId =
+      (st.rows[0]?.id as string | undefined) ??
+      (await this.statuses.firstStatus(client, spaceId))?.id ??
+      null;
+
+    const due = t.due_date ? new Date(t.due_date as string | Date) : null;
+    const start = t.start_date ? new Date(t.start_date as string | Date) : null;
+    const newDue = advanceByRule(due ?? new Date(), rule);
+    let newStart: Date | null = null;
+    if (start) {
+      newStart = due
+        ? new Date(newDue.getTime() - (due.getTime() - start.getTime()))
+        : advanceByRule(start, rule);
+    }
+
+    const posRes = await client.query(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS n FROM tasks
+       WHERE list_id = $1 AND status_id IS NOT DISTINCT FROM $2`,
+      [listId, statusId],
+    );
+    const ins = await client.query(
+      `INSERT INTO tasks
+         (workspace_id, list_id, space_id, parent_task_id, name, description,
+          status_id, priority, start_date, due_date, time_estimate_minutes,
+          position, created_by, task_type_id, is_milestone, recurrence)
+       SELECT workspace_id, list_id, space_id, parent_task_id, name, description,
+              $2, priority, $3, $4, time_estimate_minutes,
+              $5, $6, task_type_id, is_milestone, recurrence
+       FROM tasks WHERE id = $1
+       RETURNING id`,
+      [taskId, statusId, newStart, newDue, posRes.rows[0].n as number, userId],
+    );
+    const newId = ins.rows[0].id as string;
+
+    await client.query(
+      `INSERT INTO task_assignees (workspace_id, task_id, user_id)
+       SELECT workspace_id, $2, user_id FROM task_assignees WHERE task_id = $1`,
+      [taskId, newId],
+    );
+    await client.query(
+      `INSERT INTO task_tags (workspace_id, task_id, tag_id)
+       SELECT workspace_id, $2, tag_id FROM task_tags WHERE task_id = $1`,
+      [taskId, newId],
+    );
+    await client.query(
+      `INSERT INTO custom_field_values (workspace_id, task_id, field_id, value)
+       SELECT workspace_id, $2, field_id, value
+       FROM custom_field_values WHERE task_id = $1`,
+      [taskId, newId],
+    );
+
+    // The completed original keeps its history but never re-fires.
+    await client.query(
+      `UPDATE tasks SET recurrence = NULL, updated_at = now() WHERE id = $1`,
+      [taskId],
+    );
+
+    await this.audit.record(client, {
+      workspaceId,
+      actorUserId: userId,
+      action: "task.recurred",
+      entity: "task",
+      entityId: taskId,
+      data: { spawnedTaskId: newId, listId, rule: { ...rule } },
+    });
+    return newId;
   }
 
   async deleteTask(
@@ -740,6 +1031,22 @@ export class TasksService {
       await requireSpaceEdit(this.access, client, userId, role, spaceId);
       const type = await this.statusType(client, statusId, spaceId);
       if (ids.length === 0) return;
+
+      // Recurring tasks about to TRANSITION into done via this move spawn
+      // their next occurrence after the update below.
+      let recurring: string[] = [];
+      if (type === "done") {
+        const rec = await client.query(
+          `SELECT t.id FROM tasks t
+           LEFT JOIN statuses s ON s.id = t.status_id
+           WHERE t.id = ANY($1) AND t.list_id = $2
+             AND t.recurrence IS NOT NULL
+             AND s.type IS DISTINCT FROM 'done'`,
+          [ids, listId],
+        );
+        recurring = rec.rows.map((r) => r.id as string);
+      }
+
       // Move the listed tasks into this status at positions 0..n-1. Preserve a
       // prior completion time; complete freshly moved-in tasks; reopen others.
       await client.query(
@@ -753,6 +1060,10 @@ export class TasksService {
          WHERE t.id = v.id AND t.list_id = $4`,
         [ids, statusId, type === "done", listId],
       );
+
+      for (const rid of recurring) {
+        await this.spawnNextOccurrence(client, workspaceId, userId, rid);
+      }
     });
   }
 

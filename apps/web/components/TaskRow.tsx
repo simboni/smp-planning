@@ -15,7 +15,16 @@ import { useEffect, useRef, useState } from "react";
 import type { Status, TaskCard } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { formatEstimate } from "@/lib/format";
-import { AvatarStack, DueChip, PriorityFlag, StatusCircle, TagChip } from "@/components/TaskBits";
+import {
+  AvatarStack,
+  BlockedChip,
+  DueChip,
+  MilestoneMark,
+  PriorityFlag,
+  StatusCircle,
+  TagChip,
+  TypeIcon,
+} from "@/components/TaskBits";
 
 export function TaskRow({
   task,
@@ -56,9 +65,16 @@ export function TaskRow({
         onPick={onChangeStatus}
       />
 
-      <span className="task-name">{task.name}</span>
+      {task.isMilestone ? (
+        <MilestoneMark />
+      ) : task.taskType ? (
+        <TypeIcon type={task.taskType} />
+      ) : null}
+
+      <span className={`task-name${task.isMilestone ? " milestone" : ""}`}>{task.name}</span>
 
       <span className="task-meta">
+        <BlockedChip count={task.blockedCount} />
         {task.tags.length > 0 && (
           <span className="task-tags">
             {task.tags.slice(0, 3).map((t) => (

@@ -222,6 +222,121 @@ export interface TaskCard {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  /** Module 4: number of unresolved tasks this task is waiting on. */
+  blockedCount: number;
+  /** Module 4: the task's type ("Task" when null). */
+  taskType: TaskTypeRef | null;
+  /** Module 4: milestone flag (renders as a purple diamond). */
+  isMilestone: boolean;
+}
+
+/* ------------------------------------------------------------------ *
+ * Module 4 — Custom fields, dependencies, task types & recurrence.
+ * ------------------------------------------------------------------ */
+export type CustomFieldType =
+  | "text"
+  | "number"
+  | "money"
+  | "date"
+  | "dropdown"
+  | "labels"
+  | "checkbox"
+  | "url"
+  | "email"
+  | "phone"
+  | "rating"
+  | "progress";
+
+/** Human labels for the field types (pickers, manager rows). */
+export const FIELD_TYPE_LABEL: Record<CustomFieldType, string> = {
+  text: "Text",
+  number: "Number",
+  money: "Money",
+  date: "Date",
+  dropdown: "Dropdown",
+  labels: "Labels",
+  checkbox: "Checkbox",
+  url: "URL",
+  email: "Email",
+  phone: "Phone",
+  rating: "Rating",
+  progress: "Progress",
+};
+
+export interface FieldOption {
+  id: string;
+  name: string;
+  color: string;
+}
+
+/** Per-type config: dropdown/labels carry options, money a currency, rating a max. */
+export interface CustomFieldConfig {
+  options?: FieldOption[];
+  currency?: string;
+  max?: number;
+}
+
+export interface CustomFieldDef {
+  id: string;
+  name: string;
+  type: CustomFieldType;
+  config: CustomFieldConfig;
+  position: number;
+}
+
+/**
+ * A field value payload. Shape follows the field type:
+ * text/url/email/phone → {text}; number/money/rating/progress → {number};
+ * date → {date}; checkbox → {checked}; dropdown → {optionId};
+ * labels → {optionIds}. `null` means unset.
+ */
+export type FieldValue =
+  | { text: string }
+  | { number: number }
+  | { date: string }
+  | { checked: boolean }
+  | { optionId: string }
+  | { optionIds: string[] };
+
+/** A space field merged with this task's value (on TaskDetail.fields). */
+export interface TaskFieldEntry {
+  fieldId: string;
+  name: string;
+  type: CustomFieldType;
+  config: CustomFieldConfig;
+  value: FieldValue | null;
+}
+
+/** A lightweight reference to another task (dependencies & links). */
+export interface TaskRef {
+  id: string;
+  name: string;
+  status: TaskStatusRef | null;
+  listId: string;
+}
+
+/** The denormalized task type carried on cards & detail. */
+export interface TaskTypeRef {
+  id: string;
+  name: string;
+  icon: string | null;
+  isMilestone: boolean;
+}
+
+/** A space-level task type definition. */
+export interface TaskType {
+  id: string;
+  name: string;
+  icon: string | null;
+  isMilestone: boolean;
+}
+
+export type RecurrenceFreq = "daily" | "weekly" | "monthly";
+
+export interface Recurrence {
+  freq: RecurrenceFreq;
+  interval: number;
+  mode: "on_complete";
 }
 
 export interface ChecklistItem {
@@ -252,6 +367,16 @@ export interface TaskDetail extends TaskCard {
   checklists: Checklist[];
   createdBy: TaskUser | null;
   breadcrumb: TaskBreadcrumb;
+  /** Module 4: every space field with this task's value (null = unset). */
+  fields: TaskFieldEntry[];
+  /** Module 4: tasks this task waits on (its blockers). */
+  waitingOn: TaskRef[];
+  /** Module 4: tasks that wait on this task. */
+  blocking: TaskRef[];
+  /** Module 4: symmetric linked tasks. */
+  linked: TaskRef[];
+  /** Module 4: recurrence rule (spawns a clone on completion). */
+  recurrence: Recurrence | null;
 }
 
 /** Body for creating a task (top-level or subtask). */
@@ -278,6 +403,9 @@ export interface TaskUpdateBody {
   timeEstimateMinutes?: number | null;
   description?: string | null;
   archived?: boolean;
+  taskTypeId?: string | null;
+  isMilestone?: boolean;
+  recurrence?: Recurrence | null;
 }
 
 /** Human labels + accent colors for the four priorities. */
@@ -743,7 +871,7 @@ export const tasksApi = {
   get: (id: string) =>
     api<{ task: TaskDetail }>(`/tasks/${id}`, { auth: "access" }),
   update: (id: string, body: TaskUpdateBody) =>
-    api<{ task: TaskDetail }>(`/tasks/${id}`, {
+    api<{ task: TaskDetail; spawnedTaskId?: string }>(`/tasks/${id}`, {
       method: "PATCH",
       body,
       auth: "access",
@@ -830,4 +958,101 @@ export const tasksApi = {
     }),
   removeChecklistItem: (id: string) =>
     api<void>(`/checklist-items/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Custom fields — per-space definitions + per-task values (Module 4).
+ * ------------------------------------------------------------------ */
+export const fieldsApi = {
+  spaceFields: (spaceId: string) =>
+    api<{ fields: CustomFieldDef[] }>(`/spaces/${spaceId}/fields`, {
+      auth: "access",
+    }),
+  createField: (
+    spaceId: string,
+    body: { name: string; type: CustomFieldType; config?: CustomFieldConfig },
+  ) =>
+    api<{ field: CustomFieldDef }>(`/spaces/${spaceId}/fields`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateField: (
+    id: string,
+    body: { name?: string; config?: CustomFieldConfig; position?: number },
+  ) =>
+    api<{ field: CustomFieldDef }>(`/fields/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  deleteField: (id: string) =>
+    api<void>(`/fields/${id}`, { method: "DELETE", auth: "access" }),
+  /** Set (or clear with null) a task's value for one field. */
+  setTaskField: (taskId: string, fieldId: string, value: FieldValue | null) =>
+    api<unknown>(`/tasks/${taskId}/fields/${fieldId}`, {
+      method: "PUT",
+      body: { value },
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Dependencies & links between tasks (Module 4).
+ * ------------------------------------------------------------------ */
+export const relationsApi = {
+  /** Make `taskId` wait on `dependsOnTaskId`. */
+  addDependency: (taskId: string, dependsOnTaskId: string) =>
+    api<unknown>(`/tasks/${taskId}/dependencies`, {
+      method: "POST",
+      body: { dependsOnTaskId },
+      auth: "access",
+    }),
+  removeDependency: (taskId: string, depId: string) =>
+    api<void>(`/tasks/${taskId}/dependencies/${depId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
+  /** Symmetric link between two tasks. */
+  addLink: (taskId: string, otherTaskId: string) =>
+    api<unknown>(`/tasks/${taskId}/links`, {
+      method: "POST",
+      body: { taskId: otherTaskId },
+      auth: "access",
+    }),
+  removeLink: (taskId: string, otherTaskId: string) =>
+    api<void>(`/tasks/${taskId}/links/${otherTaskId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Task types — per-space (Module 4). "Task" is the implicit default.
+ * ------------------------------------------------------------------ */
+export const taskTypesApi = {
+  list: (spaceId: string) =>
+    api<{ taskTypes: TaskType[] }>(`/spaces/${spaceId}/task-types`, {
+      auth: "access",
+    }),
+  create: (
+    spaceId: string,
+    body: { name: string; icon?: string | null; isMilestone?: boolean },
+  ) =>
+    api<{ taskType: TaskType }>(`/spaces/${spaceId}/task-types`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: { name?: string; icon?: string | null; isMilestone?: boolean },
+  ) =>
+    api<{ taskType: TaskType }>(`/task-types/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/task-types/${id}`, { method: "DELETE", auth: "access" }),
 };

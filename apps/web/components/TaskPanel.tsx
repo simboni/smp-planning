@@ -14,21 +14,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
+  fieldsApi,
   getUser,
+  relationsApi,
   tagsApi,
   tasksApi,
+  taskTypesApi,
   type Checklist,
+  type CustomFieldType,
+  type FieldValue,
   type Member,
   type Priority,
+  type Recurrence,
+  type RecurrenceFreq,
   type Status,
   type Tag,
   type TaskCard,
   type TaskDetail,
+  type TaskFieldEntry,
+  type TaskRef,
+  type TaskType,
 } from "@/lib/api";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { colorFor, formatEstimate, initials, toDateInputValue } from "@/lib/format";
-import { AvatarStack, DueChip, PriorityFlag, StatusCircle, TagChip } from "@/components/TaskBits";
+import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChip, TypeIcon } from "@/components/TaskBits";
+import { FieldManager } from "@/components/FieldManager";
 
 /* ------------------------------------------------------------------ *
  * A small popover shell that closes on outside click / Esc.
@@ -149,6 +160,8 @@ export function TaskPanel({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
+  const [managingFields, setManagingFields] = useState(false);
 
   // Local editable drafts.
   const [titleDraft, setTitleDraft] = useState("");
@@ -181,12 +194,16 @@ export function TaskPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
-  // Load the space's tags once we know which space the task is in.
+  // Load the space's tags + task types once we know which space the task is in.
   useEffect(() => {
     if (!detail) return;
     tagsApi
       .list(detail.spaceId)
       .then((r) => setTags(r.tags))
+      .catch(() => undefined);
+    taskTypesApi
+      .list(detail.spaceId)
+      .then((r) => setTaskTypes(r.taskTypes))
       .catch(() => undefined);
   }, [detail?.spaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -245,6 +262,42 @@ export function TaskPanel({
   const setEstimate = (minutes: number | null): void => {
     if (!detail) return;
     void run(() => tasksApi.update(detail.id, { timeEstimateMinutes: minutes }));
+  };
+
+  /* -- Module 4 mutations -------------------------------------------- */
+  const setTaskType = (taskTypeId: string | null): void => {
+    setPop(null);
+    if (!detail) return;
+    void run(() => tasksApi.update(detail.id, { taskTypeId }));
+  };
+  const toggleMilestone = (): void => {
+    if (!detail) return;
+    void run(() => tasksApi.update(detail.id, { isMilestone: !detail.isMilestone }));
+  };
+  const setRecurrence = (recurrence: Recurrence | null): void => {
+    if (!detail) return;
+    void run(() => tasksApi.update(detail.id, { recurrence }));
+  };
+  const saveField = (fieldId: string, value: FieldValue | null): void => {
+    if (!detail) return;
+    void run(() => fieldsApi.setTaskField(detail.id, fieldId, value));
+  };
+  const addDependency = (depTaskId: string): void => {
+    setPop(null);
+    if (!detail) return;
+    void run(() => relationsApi.addDependency(detail.id, depTaskId));
+  };
+  const removeDependency = (taskId: string, depId: string): void => {
+    void run(() => relationsApi.removeDependency(taskId, depId));
+  };
+  const addLink = (otherTaskId: string): void => {
+    setPop(null);
+    if (!detail) return;
+    void run(() => relationsApi.addLink(detail.id, otherTaskId));
+  };
+  const removeLink = (otherTaskId: string): void => {
+    if (!detail) return;
+    void run(() => relationsApi.removeLink(detail.id, otherTaskId));
   };
 
   const toggleAssignee = (userId: string): void => {
@@ -338,6 +391,24 @@ export function TaskPanel({
 
   /* -- render -------------------------------------------------------- */
   const bc = detail?.breadcrumb;
+  // Blocked = waiting on tasks that aren't done yet.
+  const unresolvedCount = useMemo(
+    () => (detail?.waitingOn ?? []).filter((t) => t.status?.type !== "done").length,
+    [detail],
+  );
+  const depExclude = useMemo(
+    () =>
+      new Set([
+        ...(detail ? [detail.id] : []),
+        ...(detail?.waitingOn ?? []).map((t) => t.id),
+        ...(detail?.blocking ?? []).map((t) => t.id),
+      ]),
+    [detail],
+  );
+  const linkExclude = useMemo(
+    () => new Set([...(detail ? [detail.id] : []), ...(detail?.linked ?? []).map((t) => t.id)]),
+    [detail],
+  );
 
   return (
     <div className="tp-scrim" onClick={onClose}>
@@ -407,6 +478,28 @@ export function TaskPanel({
                   setStatus(id);
                 }}
               />
+              <TypeSelector
+                taskType={detail.taskType}
+                taskTypes={taskTypes}
+                canEdit={canEdit}
+                open={pop === "tasktype"}
+                onOpen={() => setPop(pop === "tasktype" ? null : "tasktype")}
+                onPick={setTaskType}
+              />
+              {canEdit ? (
+                <button
+                  type="button"
+                  className={`tp-mile-btn${detail.isMilestone ? " on" : ""}`}
+                  title={detail.isMilestone ? "Unmark milestone" : "Mark as milestone"}
+                  onClick={toggleMilestone}
+                >
+                  {Icons.diamondFill} Milestone
+                </button>
+              ) : (
+                detail.isMilestone && (
+                  <span className="tp-mile-btn on ro">{Icons.diamondFill} Milestone</span>
+                )
+              )}
               {detail.parentTaskId && (
                 <button
                   type="button"
@@ -428,25 +521,39 @@ export function TaskPanel({
               )}
             </div>
 
-            {/* title */}
-            {canEdit ? (
-              <textarea
-                className="tp-title-input"
-                rows={1}
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onBlur={saveTitle}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    (e.target as HTMLTextAreaElement).blur();
-                  }
-                }}
-                placeholder="Task name"
-              />
-            ) : (
-              <h1 className="tp-title-ro">{detail.name}</h1>
+            {/* blocked warning */}
+            {unresolvedCount > 0 && (
+              <div className="tp-blocked-banner">
+                {Icons.ban}
+                <span>
+                  Blocked by {unresolvedCount} task{unresolvedCount === 1 ? "" : "s"} — this task
+                  is waiting on unresolved work.
+                </span>
+              </div>
             )}
+
+            {/* title */}
+            <div className="tp-title-row">
+              {detail.isMilestone && <MilestoneMark size={16} />}
+              {canEdit ? (
+                <textarea
+                  className="tp-title-input"
+                  rows={1}
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={saveTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      (e.target as HTMLTextAreaElement).blur();
+                    }
+                  }}
+                  placeholder="Task name"
+                />
+              ) : (
+                <h1 className="tp-title-ro">{detail.name}</h1>
+              )}
+            </div>
 
             {/* properties */}
             <div className="tp-props">
@@ -566,6 +673,18 @@ export function TaskPanel({
                 </div>
               </div>
 
+              {/* Recurrence */}
+              <div className="tp-prop">
+                <span className="tp-prop-label">{Icons.repeat} Repeat</span>
+                <div className="tp-prop-val">
+                  <RecurrenceControl
+                    value={detail.recurrence}
+                    canEdit={canEdit}
+                    onSave={setRecurrence}
+                  />
+                </div>
+              </div>
+
               {/* Tags */}
               <div className="tp-prop">
                 <span className="tp-prop-label">{Icons.tag} Tags</span>
@@ -598,6 +717,41 @@ export function TaskPanel({
                 </div>
               </div>
             </div>
+
+            {/* Custom fields */}
+            <section className="tp-section">
+              <div className="tp-section-head">
+                <h3 className="tp-section-title">
+                  Custom Fields
+                  {detail.fields.length > 0 && (
+                    <span className="tp-count-badge">{detail.fields.length}</span>
+                  )}
+                </h3>
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setManagingFields(true)}
+                  >
+                    {Icons.sliders} Manage fields
+                  </button>
+                )}
+              </div>
+              {detail.fields.length === 0 ? (
+                <div className="tp-empty tp-empty-pad">No custom fields in this space yet.</div>
+              ) : (
+                <div className="tp-field-list">
+                  {detail.fields.map((f) => (
+                    <FieldRow
+                      key={f.fieldId}
+                      entry={f}
+                      canEdit={canEdit}
+                      onSave={(v) => saveField(f.fieldId, v)}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
 
             {/* Description */}
             <section className="tp-section">
@@ -661,6 +815,122 @@ export function TaskPanel({
                   </button>
                 )}
               </div>
+            </section>
+
+            {/* Dependencies */}
+            <section className="tp-section">
+              <div className="tp-section-head">
+                <h3 className="tp-section-title">
+                  Dependencies
+                  {detail.waitingOn.length + detail.blocking.length > 0 && (
+                    <span className="tp-count-badge">
+                      {detail.waitingOn.length + detail.blocking.length}
+                    </span>
+                  )}
+                </h3>
+                {canEdit && (
+                  <div className="tp-pop-anchor">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setPop(pop === "dep" ? null : "dep")}
+                    >
+                      {Icons.plus} Add
+                    </button>
+                    {pop === "dep" && (
+                      <TaskPickerPop
+                        listId={detail.listId}
+                        excludeIds={depExclude}
+                        placeholder="Wait on a task in this list…"
+                        onPick={addDependency}
+                        onClose={() => setPop(null)}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+              {detail.waitingOn.length === 0 && detail.blocking.length === 0 ? (
+                <div className="tp-empty tp-empty-pad">No dependencies.</div>
+              ) : (
+                <>
+                  {detail.waitingOn.length > 0 && (
+                    <div className="tp-dep-group">
+                      <div className="tp-dep-title">{Icons.ban} Waiting on</div>
+                      {detail.waitingOn.map((r) => (
+                        <RefRow
+                          key={r.id}
+                          r={r}
+                          onOpen={() => onOpenTask(r.id)}
+                          onRemove={
+                            canEdit ? () => removeDependency(detail.id, r.id) : undefined
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {detail.blocking.length > 0 && (
+                    <div className="tp-dep-group">
+                      <div className="tp-dep-title">{Icons.bolt} Blocking</div>
+                      {detail.blocking.map((r) => (
+                        <RefRow
+                          key={r.id}
+                          r={r}
+                          onOpen={() => onOpenTask(r.id)}
+                          onRemove={
+                            canEdit ? () => removeDependency(r.id, detail.id) : undefined
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+
+            {/* Linked tasks */}
+            <section className="tp-section">
+              <div className="tp-section-head">
+                <h3 className="tp-section-title">
+                  Linked tasks
+                  {detail.linked.length > 0 && (
+                    <span className="tp-count-badge">{detail.linked.length}</span>
+                  )}
+                </h3>
+                {canEdit && (
+                  <div className="tp-pop-anchor">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setPop(pop === "link" ? null : "link")}
+                    >
+                      {Icons.link} Link
+                    </button>
+                    {pop === "link" && (
+                      <TaskPickerPop
+                        listId={detail.listId}
+                        excludeIds={linkExclude}
+                        placeholder="Link a task in this list…"
+                        onPick={addLink}
+                        onClose={() => setPop(null)}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+              {detail.linked.length === 0 ? (
+                <div className="tp-empty tp-empty-pad">No linked tasks.</div>
+              ) : (
+                <div className="tp-dep-group">
+                  {detail.linked.map((r) => (
+                    <RefRow
+                      key={r.id}
+                      r={r}
+                      onOpen={() => onOpenTask(r.id)}
+                      onRemove={canEdit ? () => removeLink(r.id) : undefined}
+                    />
+                  ))}
+                </div>
+              )}
             </section>
 
             {/* Checklists */}
@@ -823,6 +1093,18 @@ export function TaskPanel({
               </div>
             </section>
           </div>
+        )}
+
+        {managingFields && detail && (
+          <FieldManager
+            spaceId={detail.spaceId}
+            spaceName={bc?.space.name}
+            onClose={() => setManagingFields(false)}
+            onChanged={() => {
+              void reload();
+              onChanged();
+            }}
+          />
         )}
       </aside>
     </div>
@@ -1031,6 +1313,572 @@ function EstimateInput({
       />
       <span className="tp-est-unit">m</span>
     </span>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Task-type selector — a pill next to the status ("Task" when null).
+ * ------------------------------------------------------------------ */
+function TypeSelector({
+  taskType,
+  taskTypes,
+  canEdit,
+  open,
+  onOpen,
+  onPick,
+}: {
+  taskType: TaskDetail["taskType"];
+  taskTypes: TaskType[];
+  canEdit: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onPick: (taskTypeId: string | null) => void;
+}) {
+  return (
+    <div className="tp-pop-anchor">
+      <button
+        type="button"
+        className="tp-type-btn"
+        title="Task type"
+        disabled={!canEdit}
+        onClick={onOpen}
+      >
+        {taskType ? <TypeIcon type={taskType} /> : <span className="tp-type-default">{Icons.checkSquare}</span>}
+        {taskType ? taskType.name : "Task"}
+        {canEdit && <span className="tp-caret">{Icons.chevronDown}</span>}
+      </button>
+      {open && (
+        <Popover onClose={onOpen} className="tp-pop-menu">
+          <button
+            type="button"
+            className={`tp-menu-opt${!taskType ? " on" : ""}`}
+            onClick={() => onPick(null)}
+          >
+            <span className="tp-type-default">{Icons.checkSquare}</span>
+            <span>Task</span>
+            {!taskType && <span className="tp-menu-check">{Icons.check}</span>}
+          </button>
+          {taskTypes.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`tp-menu-opt${taskType?.id === t.id ? " on" : ""}`}
+              onClick={() => onPick(t.id)}
+            >
+              <TypeIcon type={t} />
+              <span>{t.name}</span>
+              {taskType?.id === t.id && <span className="tp-menu-check">{Icons.check}</span>}
+            </button>
+          ))}
+          {taskTypes.length === 0 && (
+            <div className="tp-pop-empty">No custom types in this space yet.</div>
+          )}
+        </Popover>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Recurrence control — None / Daily / Weekly / Monthly + "every N".
+ * Always saves mode "on_complete": completing the task spawns a clone.
+ * ------------------------------------------------------------------ */
+const FREQ_UNIT: Record<RecurrenceFreq, [string, string]> = {
+  daily: ["day", "days"],
+  weekly: ["week", "weeks"],
+  monthly: ["month", "months"],
+};
+
+function RecurrenceControl({
+  value,
+  canEdit,
+  onSave,
+}: {
+  value: Recurrence | null;
+  canEdit: boolean;
+  onSave: (r: Recurrence | null) => void;
+}) {
+  if (!canEdit) {
+    if (!value) return <span className="tp-empty">None</span>;
+    const [one, many] = FREQ_UNIT[value.freq];
+    return (
+      <span className="tp-repeat-ro">
+        {Icons.repeat} Every {value.interval > 1 ? `${value.interval} ${many}` : one}
+      </span>
+    );
+  }
+  const interval = value?.interval ?? 1;
+  return (
+    <span className="tp-repeat">
+      <select
+        className="input tp-repeat-sel"
+        value={value?.freq ?? ""}
+        aria-label="Repeat frequency"
+        onChange={(e) => {
+          const f = e.target.value as RecurrenceFreq | "";
+          onSave(f ? { freq: f, interval, mode: "on_complete" } : null);
+        }}
+      >
+        <option value="">None</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+      {value && (
+        <>
+          <span className="tp-repeat-lbl">every</span>
+          <input
+            type="number"
+            min={1}
+            max={99}
+            className="input tp-repeat-num"
+            key={interval}
+            defaultValue={interval}
+            aria-label="Repeat interval"
+            onBlur={(e) => {
+              const n = Math.max(1, Math.min(99, parseInt(e.target.value, 10) || 1));
+              if (n !== interval) onSave({ freq: value.freq, interval: n, mode: "on_complete" });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+          />
+          <span className="tp-repeat-lbl">
+            {interval > 1 ? FREQ_UNIT[value.freq][1] : FREQ_UNIT[value.freq][0]}
+          </span>
+          <span className="tp-repeat-hint">on complete</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Custom field row — a type-appropriate inline editor per field.
+ * ------------------------------------------------------------------ */
+const FIELD_ICON: Record<CustomFieldType, React.ReactNode> = {
+  text: Icons.edit,
+  number: Icons.hash,
+  money: Icons.coin,
+  date: Icons.calendar,
+  dropdown: Icons.list,
+  labels: Icons.tag,
+  checkbox: Icons.checkSquare,
+  url: Icons.link,
+  email: Icons.mail,
+  phone: Icons.phone,
+  rating: Icons.star,
+  progress: Icons.goals,
+};
+
+function FieldRow({
+  entry,
+  canEdit,
+  onSave,
+}: {
+  entry: TaskFieldEntry;
+  canEdit: boolean;
+  onSave: (value: FieldValue | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const v = entry.value;
+  const text = v && "text" in v ? v.text : "";
+  const num = v && "number" in v ? v.number : null;
+  const date = v && "date" in v ? v.date : null;
+  const checked = v !== null && v !== undefined && "checked" in v ? v.checked : false;
+  const optionId = v && "optionId" in v ? v.optionId : null;
+  const optionIds = v && "optionIds" in v ? v.optionIds : [];
+  const opts = entry.config.options ?? [];
+
+  let control: React.ReactNode;
+  switch (entry.type) {
+    case "text":
+    case "url":
+    case "email":
+    case "phone": {
+      const inputType =
+        entry.type === "text" ? "text" : entry.type === "phone" ? "tel" : entry.type;
+      control = (
+        <input
+          type={inputType}
+          className="input tp-field-input"
+          key={text}
+          defaultValue={text}
+          placeholder="Empty"
+          disabled={!canEdit}
+          onBlur={(e) => {
+            const nv = e.target.value.trim();
+            if (nv !== text) onSave(nv ? { text: nv } : null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+        />
+      );
+      break;
+    }
+    case "number":
+    case "money":
+      control = (
+        <span className="tp-field-money">
+          {entry.type === "money" && (
+            <span className="tp-field-cur">{entry.config.currency ?? "USD"}</span>
+          )}
+          <input
+            type="number"
+            className="input tp-field-input tp-field-num"
+            key={num ?? "unset"}
+            defaultValue={num ?? ""}
+            placeholder="Empty"
+            disabled={!canEdit}
+            onBlur={(e) => {
+              const raw = e.target.value.trim();
+              const nv = raw === "" ? null : Number(raw);
+              if (nv !== null && Number.isNaN(nv)) return;
+              if (nv !== num) onSave(nv === null ? null : { number: nv });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+          />
+        </span>
+      );
+      break;
+    case "date":
+      control = (
+        <input
+          type="date"
+          className="input tp-date-input"
+          value={toDateInputValue(date)}
+          disabled={!canEdit}
+          onChange={(e) => onSave(e.target.value ? { date: e.target.value } : null)}
+        />
+      );
+      break;
+    case "checkbox":
+      control = (
+        <button
+          type="button"
+          className={`tp-item-check${checked ? " on" : ""}`}
+          aria-label={checked ? "Uncheck" : "Check"}
+          disabled={!canEdit}
+          onClick={() => onSave({ checked: !checked })}
+        >
+          {checked && Icons.check}
+        </button>
+      );
+      break;
+    case "dropdown": {
+      const cur = opts.find((o) => o.id === optionId) ?? null;
+      control = (
+        <div className="tp-pop-anchor">
+          <button
+            type="button"
+            className="tp-select-btn"
+            disabled={!canEdit}
+            onClick={() => canEdit && setOpen((x) => !x)}
+          >
+            {cur ? (
+              <>
+                <span className="status-dot" style={{ background: cur.color }} />
+                {cur.name}
+              </>
+            ) : (
+              <span className="tp-empty">None</span>
+            )}
+            {canEdit && <span className="tp-caret">{Icons.chevronDown}</span>}
+          </button>
+          {open && (
+            <Popover onClose={() => setOpen(false)} className="tp-pop-menu">
+              {opts.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className={`tp-menu-opt${o.id === optionId ? " on" : ""}`}
+                  onClick={() => {
+                    setOpen(false);
+                    onSave(o.id === optionId ? null : { optionId: o.id });
+                  }}
+                >
+                  <span className="status-dot" style={{ background: o.color }} />
+                  <span>{o.name}</span>
+                  {o.id === optionId && <span className="tp-menu-check">{Icons.check}</span>}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={`tp-menu-opt${!optionId ? " on" : ""}`}
+                onClick={() => {
+                  setOpen(false);
+                  onSave(null);
+                }}
+              >
+                <span className="tp-empty">None</span>
+              </button>
+              {opts.length === 0 && (
+                <div className="tp-pop-empty">No options — add some via Manage fields.</div>
+              )}
+            </Popover>
+          )}
+        </div>
+      );
+      break;
+    }
+    case "labels": {
+      const sel = opts.filter((o) => optionIds.includes(o.id));
+      const toggle = (id: string): void => {
+        const next = optionIds.includes(id)
+          ? optionIds.filter((x) => x !== id)
+          : [...optionIds, id];
+        onSave(next.length > 0 ? { optionIds: next } : null);
+      };
+      control = (
+        <>
+          {sel.map((o) => (
+            <span
+              key={o.id}
+              className="tag-chip"
+              style={{
+                color: o.color,
+                borderColor: `color-mix(in srgb, ${o.color} 40%, transparent)`,
+                background: `color-mix(in srgb, ${o.color} 12%, transparent)`,
+              }}
+            >
+              <span className="tag-chip-name">{o.name}</span>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="tag-chip-x"
+                  aria-label={`Remove ${o.name}`}
+                  onClick={() => toggle(o.id)}
+                >
+                  {Icons.close}
+                </button>
+              )}
+            </span>
+          ))}
+          {sel.length === 0 && !canEdit && <span className="tp-empty">None</span>}
+          {canEdit && (
+            <div className="tp-pop-anchor">
+              <button
+                type="button"
+                className="tp-add-btn"
+                aria-label={`Edit ${entry.name}`}
+                onClick={() => setOpen((x) => !x)}
+              >
+                {Icons.plus}
+              </button>
+              {open && (
+                <Popover onClose={() => setOpen(false)} className="tp-pop-menu">
+                  {opts.map((o) => {
+                    const on = optionIds.includes(o.id);
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        className={`tp-menu-opt${on ? " on" : ""}`}
+                        onClick={() => toggle(o.id)}
+                      >
+                        <span className="status-dot" style={{ background: o.color }} />
+                        <span>{o.name}</span>
+                        <span className={`tp-check${on ? " on" : ""}`}>{on && Icons.check}</span>
+                      </button>
+                    );
+                  })}
+                  {opts.length === 0 && (
+                    <div className="tp-pop-empty">No labels — add some via Manage fields.</div>
+                  )}
+                </Popover>
+              )}
+            </div>
+          )}
+        </>
+      );
+      break;
+    }
+    case "rating": {
+      const max = Math.max(1, entry.config.max ?? 5);
+      const val = num ?? 0;
+      control = (
+        <span className="tp-rating" role="group" aria-label={`${entry.name} rating`}>
+          {Array.from({ length: max }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={`tp-star${n <= val ? " on" : ""}`}
+              title={`${n} / ${max}`}
+              disabled={!canEdit}
+              onClick={() => onSave(n === val ? null : { number: n })}
+            >
+              {n <= val ? Icons.starFill : Icons.star}
+            </button>
+          ))}
+        </span>
+      );
+      break;
+    }
+    case "progress":
+      control = <ProgressEditor value={num} canEdit={canEdit} onSave={onSave} />;
+      break;
+  }
+
+  return (
+    <div className="tp-prop tp-field">
+      <span className="tp-prop-label" title={entry.name}>
+        {FIELD_ICON[entry.type]} <span className="tp-field-name">{entry.name}</span>
+      </span>
+      <div className="tp-prop-val">{control}</div>
+    </div>
+  );
+}
+
+/* Progress: slider + live % — commits when the drag/keyboard edit ends. */
+function ProgressEditor({
+  value,
+  canEdit,
+  onSave,
+}: {
+  value: number | null;
+  canEdit: boolean;
+  onSave: (v: FieldValue | null) => void;
+}) {
+  const [draft, setDraft] = useState<number | null>(null);
+  const shown = draft ?? value ?? 0;
+  const commit = (): void => {
+    if (draft !== null && draft !== (value ?? 0)) onSave({ number: draft });
+    setDraft(null);
+  };
+  return (
+    <span className="tp-progress">
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        className="tp-progress-slider"
+        value={shown}
+        disabled={!canEdit}
+        onChange={(e) => setDraft(parseInt(e.target.value, 10))}
+        onPointerUp={commit}
+        onKeyUp={(e) => {
+          if (e.key.startsWith("Arrow")) commit();
+        }}
+        onBlur={commit}
+      />
+      <span className="tp-progress-val">{shown}%</span>
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * A referenced task row (dependencies & links): dot + name, click to
+ * open, ✕ to remove the relation.
+ * ------------------------------------------------------------------ */
+function RefRow({
+  r,
+  onOpen,
+  onRemove,
+}: {
+  r: TaskRef;
+  onOpen: () => void;
+  onRemove?: () => void;
+}) {
+  const done = r.status?.type === "done";
+  return (
+    <div className={`tp-ref${done ? " done" : ""}`}>
+      <button type="button" className="tp-ref-main" onClick={onOpen}>
+        <span
+          className="status-dot lg"
+          style={{
+            background: r.status ? r.status.color || colorFor(r.status.id) : "var(--line)",
+          }}
+        />
+        <span className="tp-ref-name">{r.name}</span>
+        {r.status && <span className="tp-ref-status">{r.status.name}</span>}
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          className="icon-btn tp-ref-x"
+          title="Remove"
+          onClick={onRemove}
+        >
+          {Icons.close}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Task picker — searches the current list's tasks (dependencies/links).
+ * ------------------------------------------------------------------ */
+function TaskPickerPop({
+  listId,
+  excludeIds,
+  placeholder,
+  onPick,
+  onClose,
+}: {
+  listId: string;
+  excludeIds: Set<string>;
+  placeholder: string;
+  onPick: (taskId: string) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [tasks, setTasks] = useState<TaskCard[] | null>(null);
+
+  useEffect(() => {
+    tasksApi
+      .listForList(listId)
+      .then((r) => setTasks(r.tasks))
+      .catch(() => setTasks([]));
+  }, [listId]);
+
+  const needle = q.trim().toLowerCase();
+  const hits = (tasks ?? []).filter(
+    (t) => !excludeIds.has(t.id) && (!needle || t.name.toLowerCase().includes(needle)),
+  );
+
+  return (
+    <Popover onClose={onClose} className="tp-pop-people tp-pop-right">
+      <div className="tp-pop-search">
+        {Icons.search}
+        <input
+          autoFocus
+          className="tp-pop-input"
+          placeholder={placeholder}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+      <div className="tp-pop-list">
+        {tasks === null ? (
+          <div className="tp-pop-empty">Loading tasks…</div>
+        ) : hits.length === 0 ? (
+          <div className="tp-pop-empty">No matching tasks in this list.</div>
+        ) : (
+          hits.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="tp-pop-opt"
+              onClick={() => onPick(t.id)}
+            >
+              <span
+                className="status-dot lg"
+                style={{ background: t.status.color || colorFor(t.status.id) }}
+              />
+              <span className="tp-pop-opt-body">
+                <span className="tp-pop-opt-name">{t.name}</span>
+                <span className="tp-pop-opt-sub">{t.status.name}</span>
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+    </Popover>
   );
 }
 

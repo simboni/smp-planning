@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { Priority, Status, Tag, TaskStatusRef, TaskUser } from "@/lib/api";
+import type { Priority, Status, Tag, TaskStatusRef, TaskTypeRef, TaskUser } from "@/lib/api";
 import { PRIORITY_META } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { colorFor, formatDueDate, initials, isOverdue } from "@/lib/format";
@@ -156,6 +156,49 @@ export function DueChip({ due }: { due: string | null }) {
     <span className={`due-chip${overdue ? " overdue" : ""}`} title={overdue ? "Overdue" : "Due date"}>
       {Icons.calendar}
       {formatDueDate(due)}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Milestone diamond — the purple ◆ marking milestone tasks (Module 4).
+ * ------------------------------------------------------------------ */
+export function MilestoneMark({ size = 13 }: { size?: number }) {
+  return (
+    <span className="milestone-mark" style={{ width: size, height: size }} title="Milestone">
+      {Icons.diamondFill}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Task-type icon — emoji when the type defines one, else a bolt glyph.
+ * Milestone types get the diamond instead (Module 4).
+ * ------------------------------------------------------------------ */
+export function TypeIcon({ type, size = 14 }: { type: TaskTypeRef; size?: number }) {
+  return (
+    <span
+      className="task-type-ic"
+      style={{ width: size, height: size, fontSize: size - 1 }}
+      title={`Type: ${type.name}`}
+    >
+      {type.icon ? type.icon : type.isMilestone ? Icons.diamond : Icons.bolt}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Blocked chip — shown when a task is waiting on unresolved tasks.
+ * ------------------------------------------------------------------ */
+export function BlockedChip({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="blocked-chip"
+      title={`Waiting on ${count} task${count === 1 ? "" : "s"}`}
+    >
+      {Icons.ban}
+      Blocked
     </span>
   );
 }

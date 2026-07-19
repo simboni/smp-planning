@@ -331,6 +331,76 @@ export const Icons = {
       <path d="M8.5 12.2 11 14.7 15.7 9.7" />
     </svg>
   ),
+  diamond: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M12 3.5 20.5 12 12 20.5 3.5 12z" />
+    </svg>
+  ),
+  diamondFill: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M12 3.5 20.5 12 12 20.5 3.5 12z" />
+    </svg>
+  ),
+  link: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M10.3 13.7a4.2 4.2 0 0 0 6 0l3.2-3.2a4.24 4.24 0 1 0-6-6l-1.6 1.6" />
+      <path d="M13.7 10.3a4.2 4.2 0 0 0-6 0l-3.2 3.2a4.24 4.24 0 1 0 6 6l1.6-1.6" />
+    </svg>
+  ),
+  ban: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M6 6l12 12" />
+    </svg>
+  ),
+  repeat: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4.5 12a7.5 7.5 0 0 1 7.5-7.5 7.5 7.5 0 0 1 6.4 3.6" />
+      <path d="M18.9 3.6v4.5h-4.5" />
+      <path d="M19.5 12A7.5 7.5 0 0 1 12 19.5a7.5 7.5 0 0 1-6.4-3.6" />
+      <path d="M5.1 20.4v-4.5h4.5" />
+    </svg>
+  ),
+  sliders: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4 7h9M17.5 7H20M4 12h3M11.5 12H20M4 17h9M17.5 17H20" />
+      <circle cx="15" cy="7" r="2.2" />
+      <circle cx="9" cy="12" r="2.2" />
+      <circle cx="15" cy="17" r="2.2" />
+    </svg>
+  ),
+  star: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="m12 3.6 2.5 5.2 5.7.8-4.2 4 1 5.7-5-2.7-5 2.7 1-5.7-4.2-4 5.7-.8z" />
+    </svg>
+  ),
+  starFill: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="m12 3.6 2.5 5.2 5.7.8-4.2 4 1 5.7-5-2.7-5 2.7 1-5.7-4.2-4 5.7-.8z" />
+    </svg>
+  ),
+  mail: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <path d="m4.5 7.5 7.5 5.5 7.5-5.5" />
+    </svg>
+  ),
+  phone: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M5 4h4l1.5 4.5-2.2 1.7a13 13 0 0 0 5.5 5.5l1.7-2.2L20 15v4a1.5 1.5 0 0 1-1.6 1.5C10.6 20 4 13.4 3.5 5.6A1.5 1.5 0 0 1 5 4z" />
+    </svg>
+  ),
+  hash: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M9.2 4 7.6 20M16.4 4l-1.6 16M4.5 9h16M3.5 15h16" />
+    </svg>
+  ),
+  coin: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M14.8 9.3c-.5-.9-1.6-1.5-2.8-1.5-1.7 0-3 .9-3 2.2s1.3 1.8 3 2c1.7.2 3 .7 3 2s-1.3 2.2-3 2.2c-1.2 0-2.3-.6-2.8-1.5M12 6v1.8M12 16.2V18" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;
