@@ -475,6 +475,21 @@ export const Icons = {
       <path d="M20.5 3.5 14 20.5l-3.2-7.3L3.5 10z" />
     </svg>
   ),
+  /* ---- Module 7: Docs & Notepad ---- */
+  note: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M4.5 4.5h15v10.5L15 19.5H4.5z" />
+      <path d="M15 19.5V15h4.5" />
+      <path d="M8 9h8M8 12.5h5" />
+    </svg>
+  ),
+  pageAdd: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M6 3h8l4 4v14H6z" />
+      <path d="M14 3v4h4" />
+      <path d="M12 11v6M9 14h6" />
+    </svg>
+  ),
 } as const;
 
 export type IconKey = keyof typeof Icons;

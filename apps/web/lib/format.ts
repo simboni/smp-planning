@@ -127,6 +127,13 @@ export function formatDateTime(iso: string | null | undefined): string {
   return `${day}, ${hh}:${mm}`;
 }
 
+/* ------------------------------------------------------------------ *
+ * Docs (Module 7).
+ * ------------------------------------------------------------------ */
+
+/** Preset emoji row for doc icons (Docs home modal + editor header). */
+export const DOC_EMOJI = ["📄", "📘", "📗", "📕", "🧠", "💡", "🗺️", "🚀", "📌", "✨"] as const;
+
 /** ISO (or date) → "yyyy-mm-dd" for a native date input; "" when empty. */
 export function toDateInputValue(iso: string | null | undefined): string {
   if (!iso) return "";

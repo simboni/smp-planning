@@ -22,7 +22,8 @@ export type RealtimeEvent =
   | { type: "task.changed"; payload: { taskId: string; listId: string } }
   | { type: "comment.changed"; payload: { taskId: string } }
   | { type: "notification.new"; payload: { userId: string } }
-  | { type: "presence"; payload: { online: string[] } };
+  | { type: "presence"; payload: { online: string[] } }
+  | { type: "doc.changed"; payload: { docId: string; pageId: string } };
 
 export type RealtimeHandler = (event: RealtimeEvent) => void;
 

@@ -6,6 +6,7 @@ import { AuthModule } from "./auth/auth.module";
 import { CommentsModule } from "./comments/comments.module";
 import { loadConfig } from "./config";
 import { DbModule } from "./db/db.module";
+import { DocsModule } from "./docs/docs.module";
 import { EventsModule } from "./events/events.module";
 import { HealthController } from "./health.controller";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
@@ -41,6 +42,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     ViewsModule,
     CommentsModule,
     InboxModule,
+    DocsModule,
   ],
   controllers: [HealthController],
 })

@@ -22,6 +22,7 @@ import {
 import { useRealtime } from "@/lib/realtime";
 import { CommandPalette } from "@/components/CommandPalette";
 import { HierarchyTree } from "@/components/HierarchyTree";
+import { Notepad } from "@/components/Notepad";
 import { Icons, StackMark, type IconKey } from "@/components/icons";
 import { colorFor, initials, timeAgo } from "@/lib/format";
 
@@ -34,6 +35,7 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
+  { href: "/docs", label: "Docs", icon: "docs" },
   { href: "/members", label: "Members", icon: "members" },
   { href: "/teams", label: "Teams", icon: "team" },
   { href: "/settings", label: "Settings", icon: "settings" },
@@ -41,7 +43,6 @@ const PRIMARY_NAV: NavItem[] = [
 
 const COMING_SOON: NavItem[] = [
   { href: "#", label: "Tasks", icon: "tasks" },
-  { href: "#", label: "Docs", icon: "docs" },
   { href: "#", label: "Goals", icon: "goals" },
   { href: "#", label: "Dashboards", icon: "dashboards" },
   { href: "#", label: "Chat", icon: "chat" },
@@ -197,7 +198,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="nav-section">
             {PRIMARY_NAV.map((item) => {
               const active =
-                pathname === item.href || pathname.startsWith(`${item.href}/`);
+                pathname === item.href ||
+                pathname.startsWith(`${item.href}/`) ||
+                (item.href === "/docs" && pathname === "/doc");
               return (
                 <Link
                   key={item.href}
@@ -432,6 +435,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <Notepad />
     </div>
   );
 }

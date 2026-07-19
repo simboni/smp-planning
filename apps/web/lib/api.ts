@@ -1241,6 +1241,114 @@ export const eventsApi = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Module 7 — Docs, Wikis & Notepad.
+ * ------------------------------------------------------------------ */
+
+/** A doc as listed on the Docs home (page contents come separately). */
+export interface Doc {
+  id: string;
+  name: string;
+  icon: string | null;
+  /** Space the doc is attached to; null = workspace-level (or private). */
+  spaceId: string | null;
+  spaceName: string | null;
+  /** Only meaningful when unattached — a private doc is visible to its creator. */
+  isPrivate: boolean;
+  createdBy: string;
+  pageCount: number;
+  updatedAt: string;
+}
+
+/** A page as it appears in the doc's flat page list (no content). */
+export interface DocPageMeta {
+  id: string;
+  parentPageId: string | null;
+  title: string;
+  position: number;
+  updatedAt: string;
+}
+
+/** A full page including its sanitized HTML content. */
+export interface DocPage {
+  id: string;
+  docId: string;
+  parentPageId: string | null;
+  title: string;
+  /** Sanitized HTML (the server strips scripts). */
+  content: string;
+  position: number;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+/** A personal scratch note (Notepad widget). */
+export interface Note {
+  id: string;
+  content: string;
+  updatedAt: string;
+}
+
+export const docsApi = {
+  list: () => api<{ docs: Doc[] }>("/docs", { auth: "access" }),
+  create: (body: {
+    name: string;
+    icon?: string | null;
+    spaceId?: string | null;
+    isPrivate?: boolean;
+  }) => api<{ doc: Doc }>("/docs", { method: "POST", body, auth: "access" }),
+  /** The doc plus its flat page list — build the tree client-side. */
+  get: (id: string) =>
+    api<{ doc: Doc; pages: DocPageMeta[] }>(`/docs/${id}`, { auth: "access" }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      icon?: string | null;
+      spaceId?: string | null;
+      isPrivate?: boolean;
+    },
+  ) => api<{ doc: Doc }>(`/docs/${id}`, { method: "PATCH", body, auth: "access" }),
+  remove: (id: string) =>
+    api<void>(`/docs/${id}`, { method: "DELETE", auth: "access" }),
+
+  getPage: (pageId: string) =>
+    api<{ page: DocPage }>(`/pages/${pageId}`, { auth: "access" }),
+  createPage: (docId: string, body: { title?: string; parentPageId?: string | null }) =>
+    api<{ page: DocPage }>(`/docs/${docId}/pages`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updatePage: (
+    pageId: string,
+    body: {
+      title?: string;
+      content?: string;
+      parentPageId?: string | null;
+      position?: number;
+    },
+  ) =>
+    api<{ page: DocPage }>(`/pages/${pageId}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  /** 400 when it's the doc's last page — a doc always keeps one. */
+  removePage: (pageId: string) =>
+    api<void>(`/pages/${pageId}`, { method: "DELETE", auth: "access" }),
+};
+
+export const notesApi = {
+  list: () => api<{ notes: Note[] }>("/notes", { auth: "access" }),
+  create: (body: { content: string }) =>
+    api<{ note: Note }>("/notes", { method: "POST", body, auth: "access" }),
+  update: (id: string, body: { content: string }) =>
+    api<{ note: Note }>(`/notes/${id}`, { method: "PATCH", body, auth: "access" }),
+  remove: (id: string) =>
+    api<void>(`/notes/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
  * Task types — per-space (Module 4). "Task" is the implicit default.
  * ------------------------------------------------------------------ */
 export const taskTypesApi = {

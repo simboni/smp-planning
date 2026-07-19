@@ -21,7 +21,6 @@ interface ModuleTile {
 }
 
 const MODULES: ModuleTile[] = [
-  { label: "Docs", desc: "Wikis and collaborative docs", icon: "docs", color: "#00B8D9" },
   { label: "Goals", desc: "Targets that roll up", icon: "goals", color: "#36B37E" },
   { label: "Dashboards", desc: "Reporting at a glance", icon: "dashboards", color: "#FFAB00" },
 ];
@@ -176,6 +175,16 @@ export default function DashboardPage() {
           </span>
           <h3>Tasks</h3>
           <p>Lists, statuses & task detail — open a list to start.</p>
+        </Link>
+        <Link href="/docs" className="module-tile module-tile-live">
+          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
+            Ready
+          </span>
+          <span className="module-ic" style={{ background: "#00B8D9" }}>
+            {Icons.docs}
+          </span>
+          <h3>Docs</h3>
+          <p>Wikis and collaborative docs — write your first page.</p>
         </Link>
         {MODULES.map((m) => (
           <div className="module-tile" key={m.label}>
