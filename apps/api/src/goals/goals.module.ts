@@ -16,5 +16,8 @@ import { GoalsService } from "./goals.service";
   imports: [AccessModule, AuditModule],
   controllers: [GoalsController],
   providers: [GoalsService],
+  // Exported so the M10 dashboards goalProgress card reuses the exact
+  // progress math instead of duplicating the aggregate query.
+  exports: [GoalsService],
 })
 export class GoalsModule {}

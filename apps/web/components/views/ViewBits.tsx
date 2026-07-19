@@ -114,6 +114,11 @@ export function BoardCard({ task, onOpen }: { task: TaskCard; onOpen: () => void
             {formatDuration(task.trackedSeconds)}
           </span>
         )}
+        {task.sprintPoints !== null && task.sprintPoints !== undefined && (
+          <span className="pts-chip" title="Sprint points">
+            {task.sprintPoints} pts
+          </span>
+        )}
         <span className="bv-card-spacer" />
         <AvatarStack users={task.assignees} size={20} />
       </div>

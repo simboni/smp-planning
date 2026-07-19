@@ -117,6 +117,12 @@ export function TaskRow({
           </span>
         )}
 
+        {task.sprintPoints !== null && task.sprintPoints !== undefined && (
+          <span className="pts-chip" title="Sprint points">
+            {task.sprintPoints} pts
+          </span>
+        )}
+
         <PriorityFlag priority={task.priority} />
         <DueChip due={task.dueDate} />
         <AvatarStack users={task.assignees} />

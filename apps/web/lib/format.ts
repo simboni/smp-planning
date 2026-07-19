@@ -245,6 +245,45 @@ export function formatMetric(value: unknown): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+/* ------------------------------------------------------------------ *
+ * Dashboards & sprints (Module 10). Pure — safe anywhere.
+ * ------------------------------------------------------------------ */
+
+/** "Jul 14" (or "Jul 14, 2025" when not this year) from an ISO date. */
+export function formatShortDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const label = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  return d.getFullYear() === new Date().getFullYear()
+    ? label
+    : `${label}, ${d.getFullYear()}`;
+}
+
+/** "Jul 14 – Jul 27" from two ISO dates (either side may be empty). */
+export function formatDateRange(
+  startIso: string | null | undefined,
+  endIso: string | null | undefined,
+): string {
+  const a = formatShortDate(startIso);
+  const b = formatShortDate(endIso);
+  if (a && b) return `${a} – ${b}`;
+  return a || b;
+}
+
+/** Where a sprint sits relative to today (dates are inclusive). */
+export function sprintPhase(
+  startIso: string,
+  endIso: string,
+): "active" | "upcoming" | "past" {
+  const today = localYmd(new Date());
+  const start = toDateInputValue(startIso) || startIso.slice(0, 10);
+  const end = toDateInputValue(endIso) || endIso.slice(0, 10);
+  if (today < start) return "upcoming";
+  if (today > end) return "past";
+  return "active";
+}
+
 /** ISO (or date) → "yyyy-mm-dd" for a native date input; "" when empty. */
 export function toDateInputValue(iso: string | null | undefined): string {
   if (!iso) return "";

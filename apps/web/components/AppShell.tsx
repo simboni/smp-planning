@@ -37,6 +37,7 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
+  { href: "/dashboards", label: "Dashboards", icon: "dashboards" },
   { href: "/timesheet", label: "Timesheet", icon: "clock" },
   { href: "/workload", label: "Workload", icon: "workload" },
   { href: "/docs", label: "Docs", icon: "docs" },
@@ -49,7 +50,6 @@ const PRIMARY_NAV: NavItem[] = [
 
 const COMING_SOON: NavItem[] = [
   { href: "#", label: "Tasks", icon: "tasks" },
-  { href: "#", label: "Dashboards", icon: "dashboards" },
   { href: "#", label: "Chat", icon: "chat" },
 ];
 
@@ -242,7 +242,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 pathname.startsWith(`${item.href}/`) ||
                 (item.href === "/docs" && pathname === "/doc") ||
                 (item.href === "/goals" && pathname === "/goal") ||
-                (item.href === "/portfolios" && pathname === "/portfolio");
+                (item.href === "/portfolios" && pathname === "/portfolio") ||
+                (item.href === "/dashboards" && pathname === "/dashboard-view");
               return (
                 <Link
                   key={item.href}

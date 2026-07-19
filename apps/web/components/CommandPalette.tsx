@@ -22,8 +22,8 @@ const DESTINATIONS: Destination[] = [
   { label: "Workload", href: "/workload", icon: "workload", keywords: "capacity team hours estimates planning" },
   { label: "Goals", href: "/goals", icon: "goals", keywords: "okr okrs objectives key results targets progress tracking" },
   { label: "Portfolios", href: "/portfolios", icon: "briefcase", keywords: "rollup roll-up lists projects overview progress" },
+  { label: "Dashboards", href: "/dashboards", icon: "dashboards", keywords: "reporting charts cards widgets burndown sprint donut analytics" },
   { label: "Tasks", href: "#", icon: "tasks", soon: true },
-  { label: "Dashboards", href: "#", icon: "dashboards", soon: true },
   { label: "Chat", href: "#", icon: "chat", soon: true },
 ];
 

@@ -277,6 +277,10 @@ export function TaskPanel({
     if (!detail) return;
     void run(() => tasksApi.update(detail.id, { timeEstimateMinutes: minutes }));
   };
+  const setSprintPoints = (points: number | null): void => {
+    if (!detail) return;
+    void run(() => tasksApi.update(detail.id, { sprintPoints: points }));
+  };
 
   /* -- Module 4 mutations -------------------------------------------- */
   const setTaskType = (taskTypeId: string | null): void => {
@@ -683,6 +687,18 @@ export function TaskPanel({
                     minutes={detail.timeEstimateMinutes}
                     canEdit={canEdit}
                     onSave={setEstimate}
+                  />
+                </div>
+              </div>
+
+              {/* Sprint points (Module 10) */}
+              <div className="tp-prop">
+                <span className="tp-prop-label">{Icons.bolt} Sprint points</span>
+                <div className="tp-prop-val">
+                  <SprintPointsInput
+                    points={detail.sprintPoints}
+                    canEdit={canEdit}
+                    onSave={setSprintPoints}
                   />
                 </div>
               </div>
@@ -1332,6 +1348,74 @@ function EstimateInput({
         onKeyDown={(e) => e.key === "Enter" && commit()}
       />
       <span className="tp-est-unit">m</span>
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Sprint-points input (Module 10) — a small 0..999 number field.
+ * ------------------------------------------------------------------ */
+function SprintPointsInput({
+  points,
+  canEdit,
+  onSave,
+}: {
+  points: number | null;
+  canEdit: boolean;
+  onSave: (points: number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+
+  const begin = (): void => {
+    setVal(points === null ? "" : String(points));
+    setEditing(true);
+  };
+  const commit = (): void => {
+    setEditing(false);
+    const trimmed = val.trim();
+    if (trimmed === "") {
+      if (points !== null) onSave(null);
+      return;
+    }
+    const n = parseInt(trimmed, 10);
+    if (!Number.isFinite(n)) return;
+    const clamped = Math.min(Math.max(n, 0), 999);
+    if (clamped !== points) onSave(clamped);
+  };
+
+  if (!canEdit) {
+    return points !== null ? (
+      <span className="tp-est-val">{points} pts</span>
+    ) : (
+      <span className="tp-empty">None</span>
+    );
+  }
+  if (!editing) {
+    return (
+      <button type="button" className="tp-select-btn" onClick={begin}>
+        {points !== null ? `${points} pts` : <span className="tp-empty">Add points</span>}
+      </button>
+    );
+  }
+  return (
+    <span className="tp-est-edit">
+      <input
+        type="number"
+        min={0}
+        max={999}
+        className="input tp-est-num"
+        placeholder="0"
+        value={val}
+        autoFocus
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+      <span className="tp-est-unit">pts</span>
     </span>
   );
 }

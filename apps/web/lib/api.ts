@@ -230,6 +230,8 @@ export interface TaskCard {
   isMilestone: boolean;
   /** Module 8: total tracked seconds across all users' time entries. */
   trackedSeconds: number;
+  /** Module 10: sprint/story points (0..999, null = unset). */
+  sprintPoints: number | null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -408,6 +410,8 @@ export interface TaskUpdateBody {
   taskTypeId?: string | null;
   isMilestone?: boolean;
   recurrence?: Recurrence | null;
+  /** Module 10: sprint/story points (0..999, null clears). */
+  sprintPoints?: number | null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1736,4 +1740,243 @@ export const taskTypesApi = {
     }),
   remove: (id: string) =>
     api<void>(`/task-types/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Module 10 — Dashboards, reporting & sprints.
+ * Numeric aggregates may arrive as strings (decimal columns) — always
+ * coerce with Number() at the point of display/math.
+ * ------------------------------------------------------------------ */
+
+/** The eight card visualizations a dashboard can hold. */
+export type DashboardCardKind =
+  | "statusBreakdown"
+  | "assigneeLoad"
+  | "priorityBreakdown"
+  | "timeTracked"
+  | "goalProgress"
+  | "sprintBurndown"
+  | "recentActivity"
+  | "text";
+
+export type DashboardCardWidth = "half" | "full";
+
+/** Client-owned card scope/config blob (the API stores it opaquely). */
+export interface DashboardCardConfig {
+  spaceId?: string;
+  listId?: string;
+  goalId?: string;
+  sprintId?: string;
+  days?: number;
+  text?: string;
+}
+
+export interface DashboardSummary {
+  id: string;
+  name: string;
+  cardCount: number;
+  updatedAt: string;
+}
+
+export interface DashboardCard {
+  id: string;
+  kind: DashboardCardKind;
+  title: string;
+  config: DashboardCardConfig;
+  position: number;
+  width: DashboardCardWidth;
+}
+
+/* ---- per-kind data payloads (GET /cards/:id/data) ----------------- */
+
+/** One slice of a status/priority breakdown. */
+export interface CardSlice {
+  label: string;
+  color: string;
+  count: number;
+}
+
+export interface BreakdownCardData {
+  slices: CardSlice[];
+}
+
+export interface AssigneeLoadRow {
+  user: TaskUser;
+  open: number;
+  done: number;
+}
+
+export interface AssigneeLoadCardData {
+  rows: AssigneeLoadRow[];
+}
+
+export interface TimeTrackedCardData {
+  days: { date: string; seconds: number }[];
+  totalSeconds: number;
+}
+
+export interface GoalProgressCardData {
+  /** progress is 0..1 (may arrive as a string — Number() it). */
+  goals: { id: string; name: string; progress: number }[];
+}
+
+/** One point of a burndown series (remaining null = day not reached). */
+export interface BurndownDay {
+  date: string;
+  remainingPoints: number | null;
+  idealRemaining: number;
+}
+
+export interface SprintBurndownCardData {
+  sprint: { id: string; name: string; startDate: string; endDate: string };
+  totalPoints: number;
+  days: BurndownDay[];
+}
+
+export interface RecentActivityItem {
+  taskId: string;
+  taskName: string;
+  kind: string;
+  /** The API may denormalize the actor as a user object or a plain name. */
+  actor: TaskUser | string | null;
+  createdAt: string;
+}
+
+export interface RecentActivityCardData {
+  items: RecentActivityItem[];
+}
+
+export interface TextCardData {
+  text: string;
+}
+
+/** Whatever `/cards/:id/data` returns — narrow by the card's kind. */
+export type DashboardCardData =
+  | BreakdownCardData
+  | AssigneeLoadCardData
+  | TimeTrackedCardData
+  | GoalProgressCardData
+  | SprintBurndownCardData
+  | RecentActivityCardData
+  | TextCardData;
+
+export const dashboardsApi = {
+  list: () =>
+    api<{ dashboards: DashboardSummary[] }>("/dashboards", { auth: "access" }),
+  create: (body: { name: string }) =>
+    api<{ dashboard: DashboardSummary }>("/dashboards", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  get: (id: string) =>
+    api<{ dashboard: DashboardSummary; cards: DashboardCard[] }>(
+      `/dashboards/${id}`,
+      { auth: "access" },
+    ),
+  update: (id: string, body: { name?: string }) =>
+    api<{ dashboard: DashboardSummary }>(`/dashboards/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/dashboards/${id}`, { method: "DELETE", auth: "access" }),
+
+  /* cards ------------------------------------------------------------ */
+  createCard: (
+    dashboardId: string,
+    body: {
+      kind: DashboardCardKind;
+      title?: string;
+      config?: DashboardCardConfig;
+      width?: DashboardCardWidth;
+    },
+  ) =>
+    api<{ card: DashboardCard }>(`/dashboards/${dashboardId}/cards`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateCard: (
+    cardId: string,
+    body: {
+      title?: string;
+      config?: DashboardCardConfig;
+      width?: DashboardCardWidth;
+      position?: number;
+    },
+  ) =>
+    api<{ card: DashboardCard }>(`/cards/${cardId}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  removeCard: (cardId: string) =>
+    api<void>(`/cards/${cardId}`, { method: "DELETE", auth: "access" }),
+  /** The card's visualization payload — shape depends on its kind. */
+  cardData: (cardId: string) =>
+    api<DashboardCardData>(`/cards/${cardId}/data`, { auth: "access" }),
+};
+
+/* ---- sprints ------------------------------------------------------ */
+
+/** A sprint IS a list (listId) with dates and a points rollup. */
+export interface Sprint {
+  id: string;
+  listId: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  archived: boolean;
+  totalPoints: number;
+  completedPoints: number;
+}
+
+export interface SprintVelocityEntry {
+  sprintId: string;
+  name: string;
+  completedPoints: number;
+}
+
+export interface SprintReport {
+  sprint: Sprint;
+  totalPoints: number;
+  completedPoints: number;
+  velocity: SprintVelocityEntry[];
+  burndown: { days: BurndownDay[] };
+}
+
+export const sprintsApi = {
+  list: (spaceId: string) =>
+    api<{ sprints: Sprint[] }>(`/spaces/${spaceId}/sprints`, {
+      auth: "access",
+    }),
+  create: (
+    spaceId: string,
+    body: { name?: string; startDate: string; endDate: string },
+  ) =>
+    api<{ sprint: Sprint }>(`/spaces/${spaceId}/sprints`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      startDate?: string;
+      endDate?: string;
+      archived?: boolean;
+    },
+  ) =>
+    api<{ sprint: Sprint }>(`/sprints/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/sprints/${id}`, { method: "DELETE", auth: "access" }),
+  report: (id: string) =>
+    api<SprintReport>(`/sprints/${id}/report`, { auth: "access" }),
 };

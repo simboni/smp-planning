@@ -59,6 +59,8 @@ export interface TaskCard {
   blockedCount: number;
   /** M8: total finished tracked time on the task, in seconds. */
   trackedSeconds: number;
+  /** M10: story points for sprint math (0..999, null = unestimated). */
+  sprintPoints: number | null;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -105,7 +107,7 @@ const TASK_COLS = `
   t.id, t.list_id, t.space_id, t.parent_task_id, t.name, t.description,
   t.status_id, t.priority, t.start_date, t.due_date, t.time_estimate_minutes,
   t.position, t.archived, t.created_by, t.created_at, t.updated_at, t.completed_at,
-  t.task_type_id, t.is_milestone, t.recurrence,
+  t.task_type_id, t.is_milestone, t.recurrence, t.sprint_points,
   s.id AS s_id, s.name AS s_name, s.color AS s_color, s.type AS s_type,
   tt.id AS tt_id, tt.name AS tt_name, tt.icon AS tt_icon,
   tt.is_milestone AS tt_is_milestone`;
@@ -251,6 +253,7 @@ export class TasksService {
       isMilestone: r.is_milestone as boolean,
       blockedCount: 0,
       trackedSeconds: 0,
+      sprintPoints: (r.sprint_points as number | null) ?? null,
       archived: r.archived as boolean,
       createdAt: iso(r.created_at)!,
       updatedAt: iso(r.updated_at)!,
@@ -841,6 +844,7 @@ export class TasksService {
       taskTypeId?: string | null;
       isMilestone?: boolean;
       recurrence?: Record<string, unknown> | null;
+      sprintPoints?: number | null;
     },
   ): Promise<TaskDetail & { spawnedTaskId?: string }> {
     const result = await this.db.withWorkspace(workspaceId, userId, async (client) => {
@@ -937,6 +941,20 @@ export class TasksService {
         }
         sets.push(`is_milestone = $${i++}`);
         params.push(body.isMilestone);
+      }
+      if (body?.sprintPoints !== undefined) {
+        const sp = body.sprintPoints;
+        if (
+          sp !== null &&
+          (typeof sp !== "number" || !Number.isInteger(sp) || sp < 0 || sp > 999)
+        ) {
+          throw new BadRequestException(
+            "sprintPoints must be an integer between 0 and 999, or null",
+          );
+        }
+        sets.push(`sprint_points = $${i++}`);
+        params.push(sp);
+        auditData.sprintPoints = sp;
       }
       if (body?.recurrence !== undefined) {
         const rule = validRecurrence(body.recurrence);
