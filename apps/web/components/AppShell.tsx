@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import {
   authApi,
+  chatApi,
   clearTokens,
   eventsApi,
   getUser,
@@ -38,6 +39,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
   { href: "/dashboards", label: "Dashboards", icon: "dashboards" },
+  { href: "/chat", label: "Chat", icon: "chat" },
   { href: "/timesheet", label: "Timesheet", icon: "clock" },
   { href: "/workload", label: "Workload", icon: "workload" },
   { href: "/docs", label: "Docs", icon: "docs" },
@@ -52,7 +54,6 @@ const PRIMARY_NAV: NavItem[] = [
 
 const COMING_SOON: NavItem[] = [
   { href: "#", label: "Tasks", icon: "tasks" },
-  { href: "#", label: "Chat", icon: "chat" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -70,6 +71,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [online, setOnline] = useState<OnlineUser[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
+
+  // Module 13 — total unread chat messages across all channels & DMs.
+  const [chatUnread, setChatUnread] = useState(0);
 
   // Module 8 — the caller's running timer (global topbar chip).
   const [timer, setTimer] = useState<RunningTimer | null>(null);
@@ -121,16 +125,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .then((r) => setOnline(r.online))
       .catch(() => undefined);
   };
+  const loadChatUnread = (): void => {
+    chatApi
+      .list()
+      .then((r) => setChatUnread(r.channels.reduce((sum, c) => sum + (c.unread || 0), 0)))
+      .catch(() => undefined);
+  };
 
   useEffect(() => {
     loadNotifications();
     loadOnline();
+    loadChatUnread();
   }, []);
 
   useRealtime((e) => {
     if (e.type === "notification.new") loadNotifications();
     if (e.type === "presence") loadOnline();
+    if (e.type === "chat.message") loadChatUnread();
   }, []);
+
+  // Refresh the chat badge when returning to any non-chat page (a channel
+  // marks itself read on open, which lowers the total).
+  useEffect(() => {
+    if (!pathname.startsWith("/chat")) loadChatUnread();
+  }, [pathname]);
 
   const markAllRead = (): void => {
     setNotifications((prev) =>
@@ -259,6 +277,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {item.label}
                   {item.href === "/inbox" && unreadCount > 0 && (
                     <span className="nav-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                  )}
+                  {item.href === "/chat" && chatUnread > 0 && (
+                    <span className="nav-badge">{chatUnread > 99 ? "99+" : chatUnread}</span>
                   )}
                 </Link>
               );

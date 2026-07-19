@@ -27,7 +27,8 @@ export type RealtimeEvent =
   | { type: "time.changed"; payload: { taskId: string } }
   | { type: "goal.changed"; payload: { goalId: string } }
   | { type: "board.changed"; payload: { whiteboardId: string } }
-  | { type: "mindmap.changed"; payload: { mindmapId: string } };
+  | { type: "mindmap.changed"; payload: { mindmapId: string } }
+  | { type: "chat.message"; payload: { channelId: string } };
 
 export type RealtimeHandler = (event: RealtimeEvent) => void;
 

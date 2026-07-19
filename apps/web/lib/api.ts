@@ -2428,3 +2428,204 @@ export const annotationsApi = {
   remove: (id: string) =>
     api<void>(`/annotations/${id}`, { method: "DELETE", auth: "access" }),
 };
+
+/* ================================================================== *
+ * Module 13 — Chat (channels, DMs, messages, threads, reactions,
+ * SyncUp) + task Email log. Slack-like messaging, workspace-scoped.
+ *
+ * Mentions travel as `@[userId]` tokens in a message body and are
+ * resolved to @Name chips against the workspace member list (see
+ * `renderMentions` in CommentsActivity).
+ * ================================================================== */
+
+/** A person as embedded in chat payloads (author, member, SyncUp starter). */
+export interface ChatUser {
+  id: string;
+  fullName: string;
+  avatarUrl: string | null;
+}
+
+/** A channel row in the left rail (from GET /channels). */
+export interface Channel {
+  id: string;
+  name: string;
+  /** True for a 1:1 direct message; the "name" is the other person's name. */
+  isDm: boolean;
+  members: ChatUser[];
+  memberCount: number;
+  /** Unread message count for the current user. */
+  unread: number;
+  /** ISO timestamp of the most recent message, or null when empty. */
+  lastMessageAt: string | null;
+}
+
+/** A public channel as listed in the Browse modal (GET /channels/public). */
+export interface PublicChannel {
+  id: string;
+  name: string;
+  description: string | null;
+  memberCount: number;
+  /** Whether the current user has already joined. */
+  joined: boolean;
+}
+
+/** One reaction bucket on a message. */
+export interface Reaction {
+  emoji: string;
+  count: number;
+  /** Whether the current user is part of this reaction. */
+  mine: boolean;
+}
+
+/** A chat message (channel message or thread reply). */
+export interface ChatMessage {
+  id: string;
+  /** Set when this message is a threaded reply. */
+  parentMessageId: string | null;
+  author: ChatUser;
+  body: string;
+  /** ISO timestamp of the last edit, or null when never edited. */
+  editedAt: string | null;
+  createdAt: string;
+  reactions: Reaction[];
+  /** Number of threaded replies (only meaningful on a parent message). */
+  replyCount: number;
+}
+
+/** An active SyncUp (lightweight "we're talking now" presence). */
+export interface Syncup {
+  id: string;
+  startedBy: ChatUser;
+  startedAt: string;
+}
+
+export const chatApi = {
+  /** Channels + DMs the current user belongs to (newest activity first). */
+  list: () => api<{ channels: Channel[] }>("/channels", { auth: "access" }),
+
+  /** Public channels available to browse & join. */
+  listPublic: () =>
+    api<{ channels: PublicChannel[] }>("/channels/public", { auth: "access" }),
+
+  /** Create a new (public) channel. */
+  create: (body: { name: string; description?: string }) =>
+    api<{ channel: Channel }>("/channels", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+
+  join: (id: string) =>
+    api<{ channel?: Channel }>(`/channels/${id}/join`, {
+      method: "POST",
+      auth: "access",
+    }),
+
+  leave: (id: string) =>
+    api<unknown>(`/channels/${id}/leave`, { method: "POST", auth: "access" }),
+
+  /** Mark a channel read up to now (clears its unread badge). */
+  markRead: (id: string) =>
+    api<unknown>(`/channels/${id}/read`, { method: "POST", auth: "access" }),
+
+  /** Find-or-create the DM channel with another workspace member. */
+  openDm: (userId: string) =>
+    api<{ channel: Channel }>("/dms", {
+      method: "POST",
+      body: { userId },
+      auth: "access",
+    }),
+
+  /**
+   * A page of messages, newest-first. Pass `before` (an ISO timestamp) to
+   * page backwards through history for infinite scroll-up.
+   */
+  messages: (id: string, opts: { before?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.before) q.set("before", opts.before);
+    q.set("limit", String(opts.limit ?? 50));
+    return api<{ messages: ChatMessage[] }>(
+      `/channels/${id}/messages?${q.toString()}`,
+      { auth: "access" },
+    );
+  },
+
+  /** A thread: its parent message plus all replies (oldest-first). */
+  thread: (messageId: string) =>
+    api<{ parent: ChatMessage; replies: ChatMessage[] }>(
+      `/messages/${messageId}/thread`,
+      { auth: "access" },
+    ),
+
+  /** Post a message (top-level, or a reply when parentMessageId is set). */
+  send: (id: string, body: { body: string; parentMessageId?: string }) =>
+    api<{ message: ChatMessage }>(`/channels/${id}/messages`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+
+  edit: (messageId: string, body: { body: string }) =>
+    api<{ message: ChatMessage }>(`/messages/${messageId}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+
+  remove: (messageId: string) =>
+    api<void>(`/messages/${messageId}`, { method: "DELETE", auth: "access" }),
+
+  /** Toggle a reaction on a message; returns the updated reaction buckets. */
+  react: (messageId: string, emoji: string) =>
+    api<{ reactions: Reaction[] }>(`/messages/${messageId}/reactions`, {
+      method: "POST",
+      body: { emoji },
+      auth: "access",
+    }),
+
+  /** The active SyncUp for a channel, if any. */
+  getSyncup: (id: string) =>
+    api<{ active: Syncup | null }>(`/channels/${id}/syncup`, { auth: "access" }),
+
+  /** Start a SyncUp in a channel. */
+  startSyncup: (id: string) =>
+    api<{ syncup: Syncup }>(`/channels/${id}/syncup/start`, {
+      method: "POST",
+      auth: "access",
+    }),
+
+  /** End a SyncUp. */
+  endSyncup: (syncupId: string) =>
+    api<{ ok: boolean }>(`/syncups/${syncupId}/end`, {
+      method: "POST",
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Task email — a per-task email log sent via the workspace's
+ * configured mail adapter (mounted in the Task panel).
+ * ------------------------------------------------------------------ */
+export interface TaskEmailRecord {
+  id: string;
+  /** "outbound" (we sent it) or "inbound" (a reply arrived). */
+  direction: "outbound" | "inbound";
+  fromAddr: string;
+  toAddr: string;
+  subject: string;
+  body: string;
+  createdAt: string;
+}
+
+export const emailApi = {
+  list: (taskId: string) =>
+    api<{ emails: TaskEmailRecord[] }>(`/tasks/${taskId}/emails`, {
+      auth: "access",
+    }),
+  send: (taskId: string, body: { to: string; subject: string; body: string }) =>
+    api<{ email: TaskEmailRecord }>(`/tasks/${taskId}/emails`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+};

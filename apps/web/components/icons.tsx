@@ -475,6 +475,13 @@ export const Icons = {
       <path d="M20.5 3.5 14 20.5l-3.2-7.3L3.5 10z" />
     </svg>
   ),
+  smile: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M8.5 14.5a4.4 4.4 0 0 0 7 0" />
+      <path d="M9 9.5h.01M15 9.5h.01" strokeWidth={2.4} />
+    </svg>
+  ),
   /* ---- Module 7: Docs & Notepad ---- */
   note: (
     <svg viewBox="0 0 24 24" {...s}>

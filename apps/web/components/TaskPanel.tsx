@@ -42,6 +42,7 @@ import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChi
 import { FieldManager } from "@/components/FieldManager";
 import { CommentsActivity } from "@/components/CommentsActivity";
 import { Attachments } from "@/components/Attachments";
+import { TaskEmail } from "@/components/TaskEmail";
 import { TimeTracking } from "@/components/TimeTracking";
 import { useRealtime } from "@/lib/realtime";
 
@@ -1125,6 +1126,9 @@ export function TaskPanel({
 
             {/* Attachments & proofing (Module 12) */}
             <Attachments taskId={detail.id} canEdit={canEdit} />
+
+            {/* Email log & compose (Module 13) */}
+            <TaskEmail taskId={detail.id} canEdit={canEdit} />
 
             {/* Comments & activity (Module 6) */}
             <CommentsActivity

@@ -26,8 +26,8 @@ const DESTINATIONS: Destination[] = [
   { label: "Goals", href: "/goals", icon: "goals", keywords: "okr okrs objectives key results targets progress tracking" },
   { label: "Portfolios", href: "/portfolios", icon: "briefcase", keywords: "rollup roll-up lists projects overview progress" },
   { label: "Dashboards", href: "/dashboards", icon: "dashboards", keywords: "reporting charts cards widgets burndown sprint donut analytics" },
+  { label: "Chat", href: "/chat", icon: "chat", keywords: "messages channels dm direct message slack conversation syncup mention" },
   { label: "Tasks", href: "#", icon: "tasks", soon: true },
-  { label: "Chat", href: "#", icon: "chat", soon: true },
 ];
 
 export function CommandPalette({
