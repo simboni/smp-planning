@@ -25,6 +25,7 @@ import {
 import { useRealtime } from "@/lib/realtime";
 import { CommandPalette } from "@/components/CommandPalette";
 import { HierarchyTree } from "@/components/HierarchyTree";
+import { FavoritesNav } from "@/components/FavoritesNav";
 import { Notepad } from "@/components/Notepad";
 import { Icons, StackMark, type IconKey } from "@/components/icons";
 import { colorFor, elapsedSeconds, formatTimer, initials, timeAgo } from "@/lib/format";
@@ -37,7 +38,9 @@ interface NavItem {
 
 const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
+  { href: "/my-work", label: "My Work", icon: "checkCircle" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
+  { href: "/templates", label: "Templates", icon: "copy" },
   { href: "/dashboards", label: "Dashboards", icon: "dashboards" },
   { href: "/chat", label: "Chat", icon: "chat" },
   { href: "/timesheet", label: "Timesheet", icon: "clock" },
@@ -285,6 +288,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </div>
+
+          <Suspense fallback={null}>
+            <FavoritesNav />
+          </Suspense>
 
           <Suspense
             fallback={

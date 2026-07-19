@@ -106,7 +106,7 @@ export interface TaskDetail extends TaskCard {
 }
 
 /** Task columns + joined status/task type, as selected everywhere below. */
-const TASK_COLS = `
+export const TASK_COLS = `
   t.id, t.list_id, t.space_id, t.parent_task_id, t.name, t.description,
   t.status_id, t.priority, t.start_date, t.due_date, t.time_estimate_minutes,
   t.position, t.archived, t.created_by, t.created_at, t.updated_at, t.completed_at,
@@ -116,7 +116,7 @@ const TASK_COLS = `
   tt.is_milestone AS tt_is_milestone`;
 
 /** FROM clause pairing TASK_COLS with its joins. */
-const TASK_FROM = `FROM tasks t
+export const TASK_FROM = `FROM tasks t
   LEFT JOIN statuses s ON s.id = t.status_id
   LEFT JOIN task_types tt ON tt.id = t.task_type_id`;
 
@@ -370,6 +370,19 @@ export class TasksService {
       if (c) c.attachmentCount = r.n as number;
     }
     return cards;
+  }
+
+  /**
+   * Public wrapper over the batched card assembler so sibling modules (Home /
+   * My Work in M14) can render the exact same TaskCard shape from their own
+   * task-row queries without duplicating the enrichment logic. `rows` must be
+   * selected with TASK_COLS + TASK_FROM, on an open withWorkspace client.
+   */
+  async assembleCards(
+    client: PoolClient,
+    rows: Record<string, unknown>[],
+  ): Promise<TaskCard[]> {
+    return this.buildCards(client, rows);
   }
 
   // --- Relations / fields for TaskDetail ------------------------------------

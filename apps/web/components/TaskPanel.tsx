@@ -44,6 +44,7 @@ import { CommentsActivity } from "@/components/CommentsActivity";
 import { Attachments } from "@/components/Attachments";
 import { TaskEmail } from "@/components/TaskEmail";
 import { TimeTracking } from "@/components/TimeTracking";
+import { saveEntityAsTemplate } from "@/lib/toast";
 import { useRealtime } from "@/lib/realtime";
 
 /* ------------------------------------------------------------------ *
@@ -527,6 +528,17 @@ export function TaskPanel({
                   onClick={() => onOpenTask(detail.parentTaskId!)}
                 >
                   {Icons.subtask} Parent task
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title="Save as template"
+                  aria-label="Save task as template"
+                  onClick={() => void saveEntityAsTemplate("task", detail.id, `${detail.name} template`)}
+                >
+                  {Icons.copy}
                 </button>
               )}
               {canEdit && (

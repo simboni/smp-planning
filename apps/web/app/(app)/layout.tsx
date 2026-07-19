@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
 import { HierarchyProvider } from "@/components/HierarchyProvider";
+import { FavoritesProvider } from "@/components/FavoritesProvider";
 import { StackMark } from "@/components/icons";
 
 export default function AppLayout({
@@ -36,7 +37,9 @@ export default function AppLayout({
 
   return (
     <HierarchyProvider>
-      <AppShell>{children}</AppShell>
+      <FavoritesProvider>
+        <AppShell>{children}</AppShell>
+      </FavoritesProvider>
     </HierarchyProvider>
   );
 }

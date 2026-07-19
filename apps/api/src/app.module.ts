@@ -15,14 +15,18 @@ import { FormsModule } from "./forms/forms.module";
 import { GoalsModule } from "./goals/goals.module";
 import { HealthController } from "./health.controller";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
+import { HomeModule } from "./home/home.module";
 import { InboxModule } from "./inbox/inbox.module";
+import { SearchModule } from "./search/search.module";
 import { SharingModule } from "./sharing/sharing.module";
 import { SprintsModule } from "./sprints/sprints.module";
 import { TasksModule } from "./tasks/tasks.module";
+import { TemplatesModule } from "./templates/templates.module";
 import { VisualModule } from "./visual/visual.module";
 import { TeamsModule } from "./teams/teams.module";
 import { TimeModule } from "./time/time.module";
 import { ViewsModule } from "./views/views.module";
+import { WorkspaceExtrasModule } from "./workspace-extras/workspace-extras.module";
 import { WorkspacesModule } from "./workspaces/workspaces.module";
 
 /**
@@ -59,6 +63,10 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     AutomationsModule,
     VisualModule,
     ChatModule,
+    SearchModule,
+    HomeModule,
+    TemplatesModule,
+    WorkspaceExtrasModule,
   ],
   controllers: [HealthController],
 })

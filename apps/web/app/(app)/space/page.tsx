@@ -21,6 +21,9 @@ import {
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { ShareDialog } from "@/components/ShareDialog";
+import { ClickAppsModal } from "@/components/ClickAppsModal";
+import { FavoriteStar } from "@/components/FavoriteStar";
+import { saveEntityAsTemplate } from "@/lib/toast";
 import {
   actionSummary,
   AutomationBuilder,
@@ -608,6 +611,15 @@ function SpaceView() {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [clickapps, setClickapps] = useState(false);
+  const [headMenu, setHeadMenu] = useState(false);
+
+  useEffect(() => {
+    if (!headMenu) return;
+    const close = (): void => setHeadMenu(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [headMenu]);
 
   const load = (): void => {
     if (!id) return;
@@ -694,7 +706,10 @@ function SpaceView() {
           {space.icon ?? Icons.spaces}
         </span>
         <div className="sp-head-body">
-          <h1 style={{ color }}>{space.name}</h1>
+          <div className="sp-head-title">
+            <h1 style={{ color }}>{space.name}</h1>
+            <FavoriteStar type="space" id={space.id} name={space.name} />
+          </div>
           <div className="sp-head-meta">
             {space.isPrivate && (
               <span className="badge sp-private">{Icons.lock} Private</span>
@@ -721,8 +736,42 @@ function SpaceView() {
               </button>
             </>
           )}
+          <span className="dp-menu-wrap">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Space options"
+              onClick={(e) => { e.stopPropagation(); setHeadMenu((v) => !v); }}
+            >
+              {Icons.more}
+            </button>
+            {headMenu && (
+              <div className="menu dp-menu" onClick={(e) => e.stopPropagation()}>
+                {canManage && (
+                  <button type="button" onClick={() => { setHeadMenu(false); setClickapps(true); }}>
+                    {Icons.sliders} ClickApps
+                  </button>
+                )}
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => { setHeadMenu(false); void saveEntityAsTemplate("space", space.id, `${space.name} template`); }}
+                  >
+                    {Icons.copy} Save as template
+                  </button>
+                )}
+                {!canManage && !canEdit && (
+                  <span className="dp-menu-note">You have view access to this space.</span>
+                )}
+              </div>
+            )}
+          </span>
         </div>
       </div>
+
+      {clickapps && (
+        <ClickAppsModal spaceId={space.id} spaceName={space.name} onClose={() => setClickapps(false)} />
+      )}
 
       {sharing && (
         <ShareDialog

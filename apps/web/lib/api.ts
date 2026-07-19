@@ -2629,3 +2629,219 @@ export const emailApi = {
       auth: "access",
     }),
 };
+
+/* ================================================================== *
+ * Module 14 — Universal Search, Home / My Work, Template Center,
+ * ClickApps & Favorites. Workspace-scoped (access token).
+ * ================================================================== */
+
+/* ---- Universal search (Command Center) ---------------------------- */
+
+/** A task hit — `subtitle` is a denormalized breadcrumb ("Space · List"). */
+export interface SearchTaskHit {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  listId: string;
+  spaceId: string | null;
+}
+export interface SearchListHit {
+  id: string;
+  name: string;
+  spaceId: string | null;
+  spaceName: string | null;
+}
+export interface SearchSpaceHit {
+  id: string;
+  name: string;
+  icon: string | null;
+}
+export interface SearchNamedHit {
+  id: string;
+  name: string;
+  icon?: string | null;
+}
+
+/** The grouped payload of `GET /search`. Any group may be empty. */
+export interface SearchResults {
+  tasks: SearchTaskHit[];
+  lists: SearchListHit[];
+  spaces: SearchSpaceHit[];
+  docs: SearchNamedHit[];
+  goals: SearchNamedHit[];
+  whiteboards: SearchNamedHit[];
+  channels: SearchNamedHit[];
+}
+
+const EMPTY_SEARCH: SearchResults = {
+  tasks: [],
+  lists: [],
+  spaces: [],
+  docs: [],
+  goals: [],
+  whiteboards: [],
+  channels: [],
+};
+
+export const searchApi = {
+  /** Live universal search. Tolerant of partial payloads (missing groups). */
+  search: (q: string, limit = 8) =>
+    api<{ results: Partial<SearchResults> }>(
+      `/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+      { auth: "access" },
+    ).then((r) => ({ ...EMPTY_SEARCH, ...(r.results ?? {}) })),
+};
+
+/* ---- Home / My Work ----------------------------------------------- */
+
+/** A "recently touched" entry on the Home feed. */
+export interface HomeRecent {
+  taskId: string;
+  taskName: string;
+  listId: string;
+  kind: string;
+  createdAt: string;
+}
+
+/** A reminder as surfaced on Home (a superset shape of Reminder). */
+export interface HomeReminder {
+  id: string;
+  note: string;
+  remindAt: string;
+  taskId: string | null;
+  taskName: string | null;
+}
+
+/** The `GET /home` payload — the personal "My Work" dashboard. */
+export interface HomeData {
+  assignedOpen: number;
+  overdue: TaskCard[];
+  dueToday: TaskCard[];
+  upcoming: TaskCard[];
+  unscheduled: TaskCard[];
+  reminders: HomeReminder[];
+  recent: HomeRecent[];
+}
+
+export const homeApi = {
+  get: () => api<HomeData>("/home", { auth: "access" }),
+};
+
+/* ---- Template Center ---------------------------------------------- */
+
+/** The four things that can be saved as (and applied from) a template. */
+export type TemplateKind = "task" | "list" | "doc" | "space";
+
+export const TEMPLATE_KIND_LABEL: Record<TemplateKind, string> = {
+  task: "Task",
+  list: "List",
+  doc: "Doc",
+  space: "Space",
+};
+
+export interface Template {
+  id: string;
+  kind: TemplateKind;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  createdAt: string;
+}
+
+export const templatesApi = {
+  list: (kind?: TemplateKind) =>
+    api<{ templates: Template[] }>(
+      `/templates${kind ? `?kind=${kind}` : ""}`,
+      { auth: "access" },
+    ),
+  /** Snapshot an existing entity (task/list/doc/space) as a new template. */
+  createFrom: (
+    kind: TemplateKind,
+    id: string,
+    body: { name: string; description?: string; icon?: string | null },
+  ) =>
+    api<{ template: Template }>(`/templates/from/${kind}/${id}`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  /** Instantiate a template into the chosen target; returns the new entity id. */
+  apply: (
+    id: string,
+    body: { targetListId?: string; targetSpaceId?: string; name?: string },
+  ) =>
+    api<{ createdId: string; kind: TemplateKind }>(`/templates/${id}/apply`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/templates/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ---- ClickApps (per-space feature toggles) ------------------------ */
+
+export interface SpaceClickApps {
+  timeTracking: boolean;
+  sprints: boolean;
+  customFields: boolean;
+  priorities: boolean;
+  tags: boolean;
+  dependencies: boolean;
+  milestones: boolean;
+  points: boolean;
+}
+
+/** Display metadata for the eight ClickApp toggles (label + blurb). */
+export const CLICKAPP_META: {
+  key: keyof SpaceClickApps;
+  label: string;
+  desc: string;
+}[] = [
+  { key: "timeTracking", label: "Time tracking", desc: "Timers & timesheets on tasks." },
+  { key: "sprints", label: "Sprints", desc: "Time-boxed sprint lists & burndown." },
+  { key: "customFields", label: "Custom fields", desc: "Add typed fields to tasks." },
+  { key: "priorities", label: "Priorities", desc: "Urgent → Low priority flags." },
+  { key: "tags", label: "Tags", desc: "Colored labels across tasks." },
+  { key: "dependencies", label: "Dependencies", desc: "Blocking & waiting-on links." },
+  { key: "milestones", label: "Milestones", desc: "Mark tasks as milestones." },
+  { key: "points", label: "Points", desc: "Sprint / story point estimates." },
+];
+
+export const clickappsApi = {
+  get: (spaceId: string) =>
+    api<{ clickapps: SpaceClickApps }>(`/spaces/${spaceId}/clickapps`, {
+      auth: "access",
+    }),
+  update: (spaceId: string, clickapps: SpaceClickApps) =>
+    api<{ clickapps: SpaceClickApps }>(`/spaces/${spaceId}/clickapps`, {
+      method: "PUT",
+      body: { clickapps },
+      auth: "access",
+    }),
+};
+
+/* ---- Favorites ---------------------------------------------------- */
+
+export type FavoriteType = "space" | "list" | "doc";
+
+export interface Favorite {
+  entityType: FavoriteType;
+  entityId: string;
+  name: string;
+}
+
+export const favoritesApi = {
+  list: () => api<{ favorites: Favorite[] }>("/favorites", { auth: "access" }),
+  add: (entityType: FavoriteType, entityId: string) =>
+    api<{ favorite?: Favorite }>("/favorites", {
+      method: "POST",
+      body: { entityType, entityId },
+      auth: "access",
+    }),
+  remove: (entityType: FavoriteType, entityId: string) =>
+    api<void>(`/favorites/${entityType}/${entityId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
+};

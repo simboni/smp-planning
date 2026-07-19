@@ -45,6 +45,8 @@ import { BoardView } from "@/components/views/BoardView";
 import { CalendarView } from "@/components/views/CalendarView";
 import { TableView } from "@/components/views/TableView";
 import { GanttView } from "@/components/views/GanttView";
+import { FavoriteStar } from "@/components/FavoriteStar";
+import { saveEntityAsTemplate } from "@/lib/toast";
 
 interface ListMeta {
   list: List;
@@ -500,9 +502,17 @@ function ListShell() {
       <div className="list-head">
         <span className="list-head-dot" style={{ background: listColor }} />
         <h1>{list.name}</h1>
+        <FavoriteStar type="list" id={list.id} name={list.name} />
         <div className="list-head-actions">
           {canEdit && (
             <>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => void saveEntityAsTemplate("list", list.id, `${list.name} template`)}
+              >
+                {Icons.copy} Save as template
+              </button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setManagingStatuses(true)}>
                 {Icons.settings} Statuses
               </button>

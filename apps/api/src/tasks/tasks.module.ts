@@ -31,5 +31,8 @@ import { TasksService } from "./tasks.service";
     RelationsService,
     TaskTypesService,
   ],
+  // M14 (Home / My Work) reuses TasksService.assembleCards and
+  // StatusesService.ensureDefaults/firstStatus for template apply.
+  exports: [TasksService, StatusesService],
 })
 export class TasksModule {}

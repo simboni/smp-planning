@@ -60,7 +60,11 @@ export default function DashboardPage() {
           together as StackUp grows.
         </p>
         <div className="hero-actions">
-          <Link href="/members" className="btn btn-primary">
+          <Link href="/my-work" className="btn btn-primary">
+            {Icons.checkCircle}
+            My Work
+          </Link>
+          <Link href="/members" className="btn btn-soft">
             {Icons.invite}
             Invite teammates
           </Link>
