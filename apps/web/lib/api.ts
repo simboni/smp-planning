@@ -1916,7 +1916,9 @@ export const dashboardsApi = {
     api<void>(`/cards/${cardId}`, { method: "DELETE", auth: "access" }),
   /** The card's visualization payload — shape depends on its kind. */
   cardData: (cardId: string) =>
-    api<DashboardCardData>(`/cards/${cardId}/data`, { auth: "access" }),
+    api<{ data: DashboardCardData }>(`/cards/${cardId}/data`, {
+      auth: "access",
+    }).then((r) => r.data),
 };
 
 /* ---- sprints ------------------------------------------------------ */
