@@ -422,9 +422,9 @@ function CommentItem({
           />
         )}
 
-        {c.replies.length > 0 && (
+        {(c.replies?.length ?? 0) > 0 && (
           <div className="cm-replies">
-            {c.replies.map((r) => (
+            {(c.replies ?? []).map((r) => (
               <CommentItem
                 key={r.id}
                 c={r}
@@ -652,7 +652,7 @@ export function CommentsActivity({
 
   const commentCount = useMemo(() => {
     let n = 0;
-    for (const c of comments ?? []) n += 1 + c.replies.length;
+    for (const c of comments ?? []) n += 1 + (c.replies?.length ?? 0);
     return n;
   }, [comments]);
 

@@ -1120,7 +1120,7 @@ export interface TaskComment {
   resolvedAt: string | null;
   editedAt: string | null;
   createdAt: string;
-  replies: TaskComment[];
+  replies?: TaskComment[];
 }
 
 export type ActivityKind =
