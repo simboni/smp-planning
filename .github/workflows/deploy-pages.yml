@@ -1,0 +1,70 @@
+name: Deploy web to GitHub Pages
+
+# Builds the Next.js static export (apps/web) and publishes it to GitHub Pages.
+# For the org page repo `stackup/stackup.github.io` this serves at the root
+# https://stackup.github.io/ — so no basePath is needed and the PWA/service
+# worker work as-is.
+#
+# Set the API origin once, in the repo:
+#   Settings → Secrets and variables → Actions → Variables →
+#     NEXT_PUBLIC_API_URL = https://<your-api-host>   (e.g. a Fly app URL)
+# and add that same origin to the API's WEB_ORIGINS env so CORS allows it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/shared/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel an in-flight deploy; queue instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web (static export)
+        env:
+          # Baked into the bundle at build time; points the client at the API.
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+        run: pnpm --filter @stackup/web... build
+
+      - name: Disable Jekyll (keep _next/ assets)
+        run: touch apps/web/out/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
