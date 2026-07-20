@@ -232,10 +232,11 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
+                  className={`pw-toggle${showPw ? " on" : ""}`}
                   aria-label={showPw ? "Hide password" : "Show password"}
                   onClick={() => setShowPw((v) => !v)}
                 >
-                  {showPw ? "🙈" : "👁"}
+                  {Icons.eye}
                 </button>
               </div>
             </div>

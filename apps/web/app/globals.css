@@ -230,6 +230,9 @@ select.input { cursor: pointer; appearance: none;
 .input-affix button {
   position: absolute;
   right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -238,6 +241,10 @@ select.input { cursor: pointer; appearance: none;
   font-size: 1rem;
   line-height: 1;
 }
+/* SVG eye icon in the password affix (no intrinsic size on inline svg) */
+.input-affix button svg { width: 18px; height: 18px; display: block; }
+.input-affix .pw-toggle:hover { color: var(--ink-2); }
+.input-affix .pw-toggle.on { color: var(--brand-700); }
 
 .err {
   color: var(--danger);
@@ -362,16 +369,23 @@ select.input { cursor: pointer; appearance: none;
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: 1.05fr 1fr;
+  /* brand panel a touch narrower than the form panel; minmax(0,…) keeps
+     columns from overflowing so there's never a horizontal scrollbar */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
 }
 .auth-brandside {
   position: relative;
   overflow: hidden;
   background: var(--brand-grad);
   color: #fff;
-  padding: 48px 52px;
+  /* fluid frame: comfortable inner gutter toward the center seam,
+     capped so ultrawide screens don't sprawl */
+  padding: clamp(44px, 6vh, 76px) clamp(36px, 5vw, 72px);
   display: flex;
   flex-direction: column;
+  /* pull the capped content column toward the center seam so both
+     panels share a vertical axis instead of hugging the outer edges */
+  align-items: flex-end;
 }
 .auth-brandside::before,
 .auth-brandside::after {
@@ -383,9 +397,9 @@ select.input { cursor: pointer; appearance: none;
 }
 .auth-brandside::before { width: 420px; height: 420px; right: -140px; top: -120px; }
 .auth-brandside::after { width: 300px; height: 300px; left: -120px; bottom: -110px; background: rgba(255,255,255,0.08); }
-.auth-brand-logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.3rem; position: relative; z-index: 1; }
+.auth-brand-logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.3rem; position: relative; z-index: 1; width: 100%; max-width: 440px; }
 .auth-brand-logo .brand-mark { background: rgba(255,255,255,0.18); box-shadow: none; }
-.auth-brand-body { margin-top: auto; margin-bottom: auto; position: relative; z-index: 1; max-width: 440px; }
+.auth-brand-body { margin-top: auto; margin-bottom: auto; position: relative; z-index: 1; width: 100%; max-width: 440px; }
 .auth-brand-body h2 {
   font-size: 2.05rem;
   line-height: 1.15;
@@ -404,13 +418,15 @@ select.input { cursor: pointer; appearance: none;
   flex-shrink: 0;
 }
 .auth-feature-ic svg { width: 18px; height: 18px; }
-.auth-brand-foot { position: relative; z-index: 1; opacity: 0.8; font-size: 0.82rem; margin-top: 30px; }
+.auth-brand-foot { position: relative; z-index: 1; opacity: 0.8; font-size: 0.82rem; margin-top: 30px; width: 100%; max-width: 440px; }
 
 .auth-formside {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 40px 24px;
+  /* card sits toward the center seam, mirroring the brand column, so the
+     two content blocks straddle a shared vertical axis */
+  justify-content: flex-start;
+  padding: clamp(44px, 6vh, 76px) clamp(36px, 5vw, 72px);
   background: var(--bg);
 }
 .auth-card { width: 100%; max-width: 400px; }
@@ -457,6 +473,8 @@ select.input { cursor: pointer; appearance: none;
 @media (max-width: 860px) {
   .auth-wrap { grid-template-columns: 1fr; }
   .auth-brandside { display: none; }
+  /* single column: recentre the card and trim side padding */
+  .auth-formside { justify-content: center; padding: 40px 20px; }
   .auth-card-logo { display: flex; justify-content: center; margin-bottom: 24px; }
 }
 
