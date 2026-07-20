@@ -7,7 +7,7 @@
  *   - Same-origin static assets (_next, icons, css/js): stale-while-revalidate.
  *   - API calls (cross-origin to :3000, or /api/): never cached — always live.
  */
-const VERSION = "stackup-v1";
+const VERSION = "stackup-v2";
 const STATIC_CACHE = `${VERSION}-static`;
 const OFFLINE_URL = "/offline.html";
 
@@ -38,12 +38,12 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
-  // Never intercept API traffic — it must always be live and authenticated.
-  const isApi =
-    url.pathname.startsWith("/api/") ||
-    url.port === "3000" ||
-    req.headers.get("accept")?.includes("text/event-stream");
-  if (isApi) return;
+  // Never intercept live API traffic — it must always be fresh and
+  // authenticated. In single-origin deploys the API shares this origin, so we
+  // never cache by path prefix; instead we ONLY cache known static assets
+  // below and let everything else (API JSON, SSE) pass straight to network.
+  const isEventStream = req.headers.get("accept")?.includes("text/event-stream");
+  if (isEventStream) return;
 
   // App navigations: network-first with an offline fallback.
   if (req.mode === "navigate") {
@@ -62,8 +62,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Same-origin static assets: stale-while-revalidate.
-  if (url.origin === self.location.origin) {
+  // Same-origin STATIC assets only (build output + public files):
+  // stale-while-revalidate. API responses share this origin in single-origin
+  // deploys, so we allowlist by asset shape and never cache anything else —
+  // API JSON falls through to a normal, uncached network fetch.
+  const isStatic =
+    url.origin === self.location.origin &&
+    (url.pathname.startsWith("/_next/") ||
+      /\.(?:js|css|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|webmanifest|txt)$/.test(
+        url.pathname,
+      ));
+  if (isStatic) {
     event.respondWith(
       caches.match(req).then((cached) => {
         const network = fetch(req)

@@ -15,18 +15,23 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY . .
-# Install only the API and its workspace deps (shared) — not the web app.
-RUN pnpm install --frozen-lockfile --filter @stackup/api...
-# Shared must be built before the API (the API imports its types + roleAtLeast).
+# Install the whole workspace (api, web, shared) so we can build all three.
+RUN pnpm install --frozen-lockfile
+# Shared first (api + web both import it). The web is built with an EMPTY API
+# base so the browser calls the API on the SAME origin that serves the app —
+# single-origin deploy, no CORS. The API then serves apps/web/out via WEB_DIST.
 RUN pnpm --filter @stackup/shared build \
+ && NEXT_PUBLIC_API_URL="" pnpm --filter @stackup/web build \
  && pnpm --filter @stackup/api build
 
 # ---- runtime --------------------------------------------------------------
 FROM node:22-slim AS runtime
-ENV NODE_ENV=production PORT=3000
+# WEB_DIST points main.ts at the static export so one service serves both the
+# API and the web app at a single URL.
+ENV NODE_ENV=production PORT=3000 WEB_DIST=/app/apps/web/out
 WORKDIR /app
 # Copy the whole built tree so pnpm's workspace symlinks (@stackup/shared)
-# resolve unchanged at runtime.
+# resolve unchanged at runtime, and the web export is present.
 COPY --from=build /app /app
 WORKDIR /app/apps/api
 EXPOSE 3000
