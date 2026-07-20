@@ -92,6 +92,7 @@ function FieldCard({
   field,
   index,
   count,
+  priorFields,
   dragIdx,
   overIdx,
   onChange,
@@ -106,6 +107,8 @@ function FieldCard({
   field: FormField;
   index: number;
   count: number;
+  /** Fields before this one — the only valid conditional controllers. */
+  priorFields: FormField[];
   dragIdx: number | null;
   overIdx: number | null;
   onChange: (patch: Partial<FormField>) => void;
@@ -120,6 +123,27 @@ function FieldCard({
   const [dragArmed, setDragArmed] = useState(false);
   const isSelect = field.type === "select";
   const titleCapable = TITLE_CAPABLE.includes(field.type);
+
+  // Only select/checkbox fields earlier in the list make good controllers.
+  const controllers = priorFields.filter(
+    (f) => f.type === "select" || f.type === "checkbox",
+  );
+  const cond = field.visibleIf;
+  const controller = cond ? priorFields.find((f) => f.id === cond.fieldId) : undefined;
+
+  const setCondField = (fieldId: string): void => {
+    if (!fieldId) {
+      onChange({ visibleIf: undefined });
+      return;
+    }
+    const cf = priorFields.find((f) => f.id === fieldId);
+    const equals = cf?.type === "checkbox" ? "true" : cf?.options?.[0] ?? "";
+    onChange({ visibleIf: { fieldId, equals } });
+  };
+  const setCondValue = (equals: string): void => {
+    if (!cond) return;
+    onChange({ visibleIf: { fieldId: cond.fieldId, equals } });
+  };
 
   const setOption = (i: number, value: string): void => {
     const opts = [...(field.options ?? [])];
@@ -229,6 +253,51 @@ function FieldCard({
           <button type="button" className="btn btn-ghost btn-sm" onClick={addOption}>
             {Icons.plus} Add option
           </button>
+        </div>
+      )}
+
+      {controllers.length > 0 && (
+        <div className="fb-cond">
+          <span className="fb-cond-label">
+            {Icons.eye} Show only if
+          </span>
+          <select
+            className="input fb-cond-select"
+            value={cond?.fieldId ?? ""}
+            onChange={(e) => setCondField(e.target.value)}
+          >
+            <option value="">Always show</option>
+            {controllers.map((cf) => (
+              <option key={cf.id} value={cf.id}>
+                {cf.label || "Untitled question"}
+              </option>
+            ))}
+          </select>
+          {cond && controller && (
+            controller.type === "checkbox" ? (
+              <select
+                className="input fb-cond-select"
+                value={cond.equals}
+                onChange={(e) => setCondValue(e.target.value)}
+              >
+                <option value="true">is checked</option>
+                <option value="false">is unchecked</option>
+              </select>
+            ) : (
+              <select
+                className="input fb-cond-select"
+                value={cond.equals}
+                onChange={(e) => setCondValue(e.target.value)}
+              >
+                <option value="">Choose a value…</option>
+                {(controller.options ?? []).map((opt, i) => (
+                  <option key={`${opt}-${i}`} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            )
+          )}
         </div>
       )}
 
@@ -573,6 +642,7 @@ function FormBuilderView() {
                   field={f}
                   index={i}
                   count={draft.fields.length}
+                  priorFields={draft.fields.slice(0, i)}
                   dragIdx={dragIdx}
                   overIdx={overIdx}
                   onChange={(patch) => patchField(f.id, patch)}

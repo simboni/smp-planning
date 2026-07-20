@@ -257,6 +257,53 @@ describe("forms", () => {
       .expect(400); // Subject required
   });
 
+  it("conditional fields (visibleIf) gate required-ness at submit (M21)", async () => {
+    const { owner, list } = await fixture();
+    // Explicit ids so the condition can reference an earlier field.
+    const fields = [
+      { id: "subj", label: "Subject", type: "text", required: true, asTitle: true },
+      { id: "cat", label: "Category", type: "select", required: true, options: ["Bug", "Feature"] },
+      {
+        id: "bug",
+        label: "Bug details",
+        type: "textarea",
+        required: true,
+        visibleIf: { fieldId: "cat", equals: "Bug" },
+      },
+    ];
+    // A condition pointing at a LATER field is rejected.
+    await http
+      .post("/forms")
+      .set(auth(owner.accessToken))
+      .send({
+        name: "Bad cond",
+        listId: list.id,
+        fields: [
+          { id: "a", label: "A", type: "text", required: false, visibleIf: { fieldId: "b", equals: "x" } },
+          { id: "b", label: "B", type: "text", required: false },
+        ],
+      })
+      .expect(400);
+
+    const form = await makeForm(owner.accessToken, list.id, { fields });
+    const pub = await http.get(`/public/forms/${form.publicToken}`).expect(200);
+    // The public schema exposes the condition for the client to evaluate.
+    const bugField = (pub.body.form.fields as { id: string; visibleIf?: unknown }[]).find(
+      (f) => f.id === "bug",
+    );
+    expect(bugField?.visibleIf).toEqual({ fieldId: "cat", equals: "Bug" });
+
+    const submit = (values: Record<string, unknown>) =>
+      http.post(`/public/forms/${form.publicToken}/submit`).send({ values });
+
+    // Category=Feature hides Bug details, so omitting it is fine.
+    await submit({ subj: "Nice idea", cat: "Feature" }).expect(201);
+    // Category=Bug makes Bug details visible + required → omitting it is 400.
+    await submit({ subj: "It broke", cat: "Bug" }).expect(400);
+    // Providing it passes.
+    await submit({ subj: "It broke", cat: "Bug", bug: "NPE on save" }).expect(201);
+  });
+
   it("validates required fields and types on submit (400)", async () => {
     const { owner, list } = await fixture();
     const form = await makeForm(owner.accessToken, list.id);

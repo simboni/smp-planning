@@ -24,6 +24,19 @@ function emptyValues(fields: FormField[]): Values {
   return v;
 }
 
+/**
+ * Conditional visibility (M21): a field with `visibleIf` shows only when
+ * the referenced field's current answer — stringified ("true"/"false"
+ * for checkboxes) — equals the configured value.
+ */
+function isVisible(field: FormField, values: Values): boolean {
+  const cond = field.visibleIf;
+  if (!cond) return true;
+  const raw = values[cond.fieldId];
+  const asString = typeof raw === "boolean" ? (raw ? "true" : "false") : String(raw ?? "");
+  return asString === cond.equals;
+}
+
 /** Per-field validation message, or null when the value is fine. */
 function validateField(field: FormField, value: string | boolean): string | null {
   if (field.type === "checkbox") {
@@ -61,9 +74,16 @@ export function FormRenderer({
   // Fields can change under a live preview — keep unknown ids harmless.
   const fields = form.fields;
 
+  // Only currently-visible fields render, validate and submit — recomputed
+  // live as answers change so conditions react in real time.
+  const visibleFields = useMemo(
+    () => fields.filter((f) => isVisible(f, values)),
+    [fields, values],
+  );
+
   const requiredCount = useMemo(
-    () => fields.filter((f) => f.required).length,
-    [fields],
+    () => visibleFields.filter((f) => f.required).length,
+    [visibleFields],
   );
 
   const setValue = (id: string, v: string | boolean): void => {
@@ -88,7 +108,7 @@ export function FormRenderer({
     if (busy) return;
 
     const problems: Record<string, string> = {};
-    for (const f of fields) {
+    for (const f of visibleFields) {
       const msg = validateField(f, values[f.id] ?? (f.type === "checkbox" ? false : ""));
       if (msg) problems[f.id] = msg;
     }
@@ -96,7 +116,7 @@ export function FormRenderer({
     if (Object.keys(problems).length > 0) return;
 
     const payload: Record<string, unknown> = {};
-    for (const f of fields) {
+    for (const f of visibleFields) {
       const raw = values[f.id];
       if (f.type === "checkbox") payload[f.id] = raw === true;
       else {
@@ -155,7 +175,7 @@ export function FormRenderer({
       {fields.length === 0 ? (
         <p className="pub-no-fields">This form doesn't have any questions yet.</p>
       ) : (
-        fields.map((f) => {
+        visibleFields.map((f) => {
           const err = errors[f.id];
           const value = values[f.id] ?? (f.type === "checkbox" ? false : "");
           const inputId = `pf-${f.id}`;

@@ -31,6 +31,9 @@ export const CARD_KINDS = [
   "sprintBurndown",
   "recentActivity",
   "text",
+  // M21 — advanced analytics cards.
+  "completionTrend",
+  "overdueByAssignee",
 ] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
 
@@ -585,6 +588,10 @@ export class DashboardsService {
           return this.sprintBurndown(client, userId, role, card.config);
         case "recentActivity":
           return this.recentActivity(client, scope);
+        case "completionTrend":
+          return this.completionTrend(client, scope, card.config);
+        case "overdueByAssignee":
+          return this.overdueByAssignee(client, scope);
         default:
           throw new BadRequestException("Unsupported card kind");
       }
@@ -677,6 +684,116 @@ export class DashboardsService {
   }
 
   /** Finished tracked seconds per day over the last N days (default 7). */
+  /**
+   * M21: tasks completed per ISO week over the last N weeks (default 8), plus
+   * how many were created in each week — a lightweight throughput / burn-up
+   * signal. Uses completed_at (set when a task enters a 'done' status).
+   */
+  private async completionTrend(
+    client: PoolClient,
+    scope: { spaceIds: string[]; listId: string | null },
+    config: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    let weeks = 8;
+    if (config.weeks !== undefined) {
+      if (
+        typeof config.weeks !== "number" ||
+        !Number.isInteger(config.weeks) ||
+        config.weeks < 1 ||
+        config.weeks > 26
+      ) {
+        throw new BadRequestException(
+          "config.weeks must be an integer between 1 and 26",
+        );
+      }
+      weeks = config.weeks;
+    }
+    const params: unknown[] = [];
+    const where = this.scopeSql(scope, params);
+    params.push(weeks - 1);
+    // Monday of the week `weeks-1` weeks ago (inclusive of the current week).
+    const startExpr = `date_trunc('week', now()) - ($${params.length}::int * interval '1 week')`;
+    // Single query: a generated week axis with correlated counts, so every
+    // parameter is referenced (Postgres can't type an unused $N) and empty
+    // weeks come back as zero.
+    const res = await client.query(
+      `SELECT w.week::text AS week,
+              (SELECT COUNT(*) FROM tasks t
+                WHERE t.completed_at IS NOT NULL
+                  AND date_trunc('week', t.completed_at)::date = w.week
+                  AND ${where})::int AS completed,
+              (SELECT COUNT(*) FROM tasks t
+                WHERE date_trunc('week', t.created_at)::date = w.week
+                  AND ${where})::int AS created
+         FROM (
+           SELECT generate_series(
+                    ${startExpr},
+                    date_trunc('week', now()),
+                    interval '1 week'
+                  )::date AS week
+         ) w
+        ORDER BY w.week`,
+      params,
+    );
+    let totalCompleted = 0;
+    const series = res.rows.map((r) => {
+      const completed = r.completed as number;
+      totalCompleted += completed;
+      return { week: r.week as string, completed, created: r.created as number };
+    });
+    return { weeks: series, totalCompleted };
+  }
+
+  /**
+   * M21: overdue open tasks (past due_date, not in a 'done' status) grouped by
+   * assignee, plus an unassigned bucket — a "who is behind" board.
+   */
+  private async overdueByAssignee(
+    client: PoolClient,
+    scope: { spaceIds: string[]; listId: string | null },
+  ): Promise<Record<string, unknown>> {
+    const params: unknown[] = [];
+    const where = this.scopeSql(scope, params);
+    const assigned = await client.query(
+      `SELECT u.id, u.full_name, u.avatar_url, COUNT(*)::int AS overdue
+         FROM tasks t
+         JOIN task_assignees ta ON ta.task_id = t.id
+         JOIN users u ON u.id = ta.user_id
+         LEFT JOIN statuses s ON s.id = t.status_id
+        WHERE t.archived = false
+          AND t.due_date IS NOT NULL
+          AND t.due_date < now()
+          AND s.type IS DISTINCT FROM 'done'
+          AND ${where}
+        GROUP BY u.id, u.full_name, u.avatar_url
+        ORDER BY overdue DESC, u.full_name, u.id`,
+      params,
+    );
+    const unassigned = await client.query(
+      `SELECT COUNT(*)::int AS overdue
+         FROM tasks t
+         LEFT JOIN statuses s ON s.id = t.status_id
+        WHERE t.archived = false
+          AND t.due_date IS NOT NULL
+          AND t.due_date < now()
+          AND s.type IS DISTINCT FROM 'done'
+          AND NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id)
+          AND ${where}`,
+      params,
+    );
+    return {
+      rows: assigned.rows.map((r) => ({
+        user: {
+          id: r.id as string,
+          fullName: r.full_name as string,
+          avatarUrl: (r.avatar_url as string | null) ?? null,
+        } satisfies UserRef,
+        overdue: r.overdue as number,
+      })),
+      unassigned: (unassigned.rows[0]?.overdue as number) ?? 0,
+    };
+  }
+
   private async timeTracked(
     client: PoolClient,
     scope: { spaceIds: string[]; listId: string | null },

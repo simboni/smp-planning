@@ -25,6 +25,7 @@ import {
   sprintsApi,
   type AssigneeLoadCardData,
   type BreakdownCardData,
+  type CompletionTrendCardData,
   type DashboardCard,
   type DashboardCardConfig,
   type DashboardCardData,
@@ -32,6 +33,7 @@ import {
   type DashboardSummary,
   type GoalProgressCardData,
   type GoalSummary,
+  type OverdueByAssigneeCardData,
   type RecentActivityCardData,
   type RecentActivityItem,
   type Sprint,
@@ -111,6 +113,18 @@ const KIND_META: Record<
     icon: "bolt",
     scoped: true,
   },
+  completionTrend: {
+    label: "Completion trend",
+    desc: "Completed vs created, by week.",
+    icon: "trendUp",
+    scoped: true,
+  },
+  overdueByAssignee: {
+    label: "Overdue by assignee",
+    desc: "Who's carrying overdue tasks.",
+    icon: "clock",
+    scoped: true,
+  },
   text: {
     label: "Text",
     desc: "A note, heading or context block.",
@@ -127,6 +141,8 @@ const KIND_ORDER: DashboardCardKind[] = [
   "goalProgress",
   "sprintBurndown",
   "recentActivity",
+  "completionTrend",
+  "overdueByAssignee",
   "text",
 ];
 
@@ -157,6 +173,7 @@ function CardModal({
   const [goalId, setGoalId] = useState(cfg.goalId ?? "");
   const [sprintId, setSprintId] = useState(cfg.sprintId ?? "");
   const [days, setDays] = useState(cfg.days ?? 7);
+  const [weeks, setWeeks] = useState(cfg.weeks ?? 8);
   const [text, setText] = useState(cfg.text ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -220,6 +237,7 @@ function CardModal({
     if (scope === "space" && spaceId) c.spaceId = spaceId;
     if (scope === "list" && listId) c.listId = listId;
     if (kind === "timeTracked") c.days = days;
+    if (kind === "completionTrend") c.weeks = weeks;
     return c;
   };
 
@@ -385,6 +403,24 @@ function CardModal({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* completionTrend — how many weeks back */}
+              {kind === "completionTrend" && (
+                <div className="field">
+                  <label className="label" htmlFor="dbc-weeks">Weeks</label>
+                  <input
+                    id="dbc-weeks"
+                    className="input dbv-weeks-input"
+                    type="number"
+                    min={1}
+                    max={26}
+                    value={weeks}
+                    onChange={(e) =>
+                      setWeeks(Math.min(26, Math.max(1, Number(e.target.value) || 1)))
+                    }
+                  />
                 </div>
               )}
 
@@ -693,6 +729,93 @@ function ActivityBody({ data }: { data: RecentActivityCardData }) {
   );
 }
 
+function CompletionTrendBody({ data }: { data: CompletionTrendCardData }) {
+  const weeks = (data.weeks ?? []).map((w) => ({
+    week: w.week,
+    completed: Number(w.completed) || 0,
+    created: Number(w.created) || 0,
+  }));
+  const totalCompleted = Number(data.totalCompleted) || 0;
+  if (weeks.length === 0 || weeks.every((w) => w.completed === 0 && w.created === 0)) {
+    return <ChartEmpty>No completed or created tasks in this window.</ChartEmpty>;
+  }
+  const max = Math.max(...weeks.map((w) => Math.max(w.completed, w.created)), 1);
+  const n = weeks.length;
+  // Which week labels fit: all when few, first/middle/last otherwise.
+  const labelIdx = new Set<number>(
+    n <= 9 ? weeks.map((_, i) => i) : [0, Math.floor((n - 1) / 2), n - 1],
+  );
+  return (
+    <div className="dbc-trend">
+      <span className="dbc-corner-stat" title="Completed in window">
+        {Icons.check}
+        {totalCompleted} completed
+      </span>
+      <div className="dbc-trend-bars">
+        {weeks.map((w, i) => (
+          <div
+            key={w.week}
+            className="dbc-trend-week"
+            title={`Week of ${formatShortDate(w.week)} — ${w.completed} completed · ${w.created} created`}
+          >
+            <span className="dbc-trend-cols">
+              <span
+                className="dbc-trend-bar dbc-trend-completed"
+                style={{ height: `${Math.max((w.completed / max) * 100, w.completed > 0 ? 4 : 0)}%` }}
+              />
+              <span
+                className="dbc-trend-bar dbc-trend-created"
+                style={{ height: `${Math.max((w.created / max) * 100, w.created > 0 ? 4 : 0)}%` }}
+              />
+            </span>
+            <span className="dbc-trend-label">
+              {labelIdx.has(i) ? formatShortDate(w.week).replace(/,.*/, "") : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+      <ChartLegend
+        items={[
+          { label: "Completed", color: "var(--brand)" },
+          { label: "Created", color: "var(--brand-soft-2)" },
+        ]}
+      />
+    </div>
+  );
+}
+
+function OverdueByAssigneeBody({ data }: { data: OverdueByAssigneeCardData }) {
+  const rows = (data.rows ?? []).map((r) => ({ ...r, overdue: Number(r.overdue) || 0 }));
+  const unassigned = Number(data.unassigned) || 0;
+  if (rows.length === 0 && unassigned === 0) {
+    return <ChartEmpty>Nothing overdue 🎉</ChartEmpty>;
+  }
+  return (
+    <div className="dbc-overdue">
+      {rows.map((r) => (
+        <div
+          key={r.user.id}
+          className="dbc-overdue-row"
+          title={`${r.user.fullName} — ${r.overdue} overdue`}
+        >
+          <span className="avatar avatar-sm" style={{ background: colorFor(r.user.id) }}>
+            {initials(r.user.fullName)}
+          </span>
+          <span className="dbc-overdue-name">{r.user.fullName}</span>
+          <span className="dbc-overdue-badge">{r.overdue}</span>
+        </div>
+      ))}
+      {unassigned > 0 && (
+        <div className="dbc-overdue-row" title={`Unassigned — ${unassigned} overdue`}>
+          <span className="avatar avatar-sm dbc-overdue-none">{Icons.members}</span>
+          <span className="dbc-overdue-name">Unassigned</span>
+          <span className="dbc-overdue-badge">{unassigned}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TextBody({ data }: { data: TextCardData }) {
   return <div className="dbc-text">{data.text || ""}</div>;
 }
@@ -811,6 +934,12 @@ function CardView({
         break;
       case "recentActivity":
         body = <ActivityBody data={data as RecentActivityCardData} />;
+        break;
+      case "completionTrend":
+        body = <CompletionTrendBody data={data as CompletionTrendCardData} />;
+        break;
+      case "overdueByAssignee":
+        body = <OverdueByAssigneeBody data={data as OverdueByAssigneeCardData} />;
         break;
       case "text":
         body = <TextBody data={data as TextCardData} />;

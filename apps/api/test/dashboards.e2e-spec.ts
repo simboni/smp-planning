@@ -345,6 +345,60 @@ describe("dashboards", () => {
     });
   });
 
+  it("completionTrend buckets completed tasks by week (M21)", async () => {
+    const owner = await ownerWorkspace();
+    const { space, list } = await makeSpaceAndList(owner.accessToken);
+    const statuses = await spaceStatuses(owner.accessToken, space.id);
+    const done = statuses.find((s) => s.type === "done")!;
+    // Two tasks completed this week, one still open.
+    await makeTask(owner.accessToken, list.id, { name: "D1", statusId: done.id });
+    await makeTask(owner.accessToken, list.id, { name: "D2", statusId: done.id });
+    await makeTask(owner.accessToken, list.id, { name: "Open" });
+
+    const dash = await makeDashboard(owner.accessToken);
+    const card = await makeCard(owner.accessToken, dash.id, {
+      kind: "completionTrend",
+      config: { spaceId: space.id, weeks: 4 },
+    });
+    const data = await cardData(owner.accessToken, card.id);
+    expect(data.weeks).toHaveLength(4);
+    expect(data.totalCompleted).toBe(2);
+    // The current (last) week holds both completions.
+    expect(data.weeks[data.weeks.length - 1].completed).toBe(2);
+    expect(data.weeks[data.weeks.length - 1].created).toBeGreaterThanOrEqual(3);
+  });
+
+  it("overdueByAssignee groups past-due open tasks (M21)", async () => {
+    const owner = await ownerWorkspace();
+    const member = await memberOf(owner.accessToken, owner.workspaceId, "member");
+    const { space, list } = await makeSpaceAndList(owner.accessToken);
+    const past = new Date(Date.now() - 3 * 86400000).toISOString();
+    const future = new Date(Date.now() + 3 * 86400000).toISOString();
+    await makeTask(owner.accessToken, list.id, {
+      name: "Late-assigned",
+      assigneeIds: [member.userId],
+      dueDate: past,
+    });
+    await makeTask(owner.accessToken, list.id, { name: "Late-unassigned", dueDate: past });
+    // Not overdue (future) — excluded.
+    await makeTask(owner.accessToken, list.id, {
+      name: "OnTime",
+      assigneeIds: [member.userId],
+      dueDate: future,
+    });
+
+    const dash = await makeDashboard(owner.accessToken);
+    const card = await makeCard(owner.accessToken, dash.id, {
+      kind: "overdueByAssignee",
+      config: { spaceId: space.id },
+    });
+    const data = await cardData(owner.accessToken, card.id);
+    expect(data.rows).toHaveLength(1);
+    expect(data.rows[0].user.id).toBe(member.userId);
+    expect(data.rows[0].overdue).toBe(1);
+    expect(data.unassigned).toBe(1);
+  });
+
   it("guests get 403 on the whole dashboards surface", async () => {
     const owner = await ownerWorkspace();
     const guest = await memberOf(owner.accessToken, owner.workspaceId, "guest");

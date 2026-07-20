@@ -18,6 +18,16 @@ export const FIELD_TYPES = [
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
+/**
+ * Conditional visibility (M21): the field is shown only when the referenced
+ * (earlier) field's answer equals `equals`. For a select/checkbox controller
+ * this drives branching forms.
+ */
+export interface FieldCondition {
+  fieldId: string;
+  equals: string;
+}
+
 export interface FormField {
   id: string;
   label: string;
@@ -25,6 +35,7 @@ export interface FormField {
   required: boolean;
   options?: string[];
   asTitle?: boolean;
+  visibleIf?: FieldCondition;
 }
 
 const MAX_FIELDS = 50;
@@ -94,12 +105,53 @@ export function validateFields(input: unknown): FormField[] {
       out.asTitle = true;
       titleCount += 1;
     }
+    if (f.visibleIf !== undefined && f.visibleIf !== null) {
+      const c = f.visibleIf as Record<string, unknown>;
+      if (
+        typeof c.fieldId !== "string" ||
+        typeof c.equals !== "string" ||
+        !c.fieldId.trim()
+      ) {
+        throw new BadRequestException(
+          "visibleIf must be { fieldId, equals } strings",
+        );
+      }
+      // The controller must be an EARLIER field — this both prevents cycles
+      // and guarantees its answer is known before this field is evaluated.
+      if (!fields.some((prev) => prev.id === c.fieldId)) {
+        throw new BadRequestException(
+          "visibleIf.fieldId must reference an earlier field",
+        );
+      }
+      out.visibleIf = { fieldId: c.fieldId, equals: c.equals };
+    }
     fields.push(out);
   }
   if (titleCount > 1) {
     throw new BadRequestException("at most one field may be marked asTitle");
   }
   return fields;
+}
+
+/** The submitted answer for a field as a plain comparison string. */
+function answerString(value: unknown): string {
+  if (value === true) return "true";
+  if (value === false) return "false";
+  if (value === undefined || value === null) return "";
+  return String(value);
+}
+
+/**
+ * A field is visible iff it has no condition, or the controlling field's
+ * submitted answer equals the condition's value. Hidden fields are neither
+ * required nor recorded.
+ */
+export function fieldIsVisible(
+  field: FormField,
+  values: Record<string, unknown>,
+): boolean {
+  if (!field.visibleIf) return true;
+  return answerString(values[field.visibleIf.fieldId]) === field.visibleIf.equals;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -123,6 +175,9 @@ export function validateSubmission(
   let titleValue: string | null = null;
   const lines: string[] = [];
   for (const field of fields) {
+    // M21: a field hidden by its condition is skipped entirely — not required,
+    // and any stray submitted value for it is ignored.
+    if (!fieldIsVisible(field, values)) continue;
     const value = values[field.id];
     if (isMissing(value)) {
       if (field.required) {

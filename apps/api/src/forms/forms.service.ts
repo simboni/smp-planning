@@ -403,6 +403,7 @@ export class FormsService {
           required: f.required === true,
           ...(f.options ? { options: f.options } : {}),
           ...(f.asTitle ? { asTitle: true } : {}),
+          ...(f.visibleIf ? { visibleIf: f.visibleIf } : {}),
         })),
       };
     });

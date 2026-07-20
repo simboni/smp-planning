@@ -1968,6 +1968,8 @@ export interface FormField {
   options?: string[];
   /** At most one field: its value becomes the created task's title. */
   asTitle?: boolean;
+  /** Conditional visibility (M21): shown only when field `fieldId`'s answer equals `equals`. */
+  visibleIf?: { fieldId: string; equals: string };
 }
 
 /** A form as listed on the Forms home. */
@@ -2197,7 +2199,7 @@ export const taskTypesApi = {
  * coerce with Number() at the point of display/math.
  * ------------------------------------------------------------------ */
 
-/** The eight card visualizations a dashboard can hold. */
+/** The ten card visualizations a dashboard can hold. */
 export type DashboardCardKind =
   | "statusBreakdown"
   | "assigneeLoad"
@@ -2206,6 +2208,8 @@ export type DashboardCardKind =
   | "goalProgress"
   | "sprintBurndown"
   | "recentActivity"
+  | "completionTrend"
+  | "overdueByAssignee"
   | "text";
 
 export type DashboardCardWidth = "half" | "full";
@@ -2217,6 +2221,7 @@ export interface DashboardCardConfig {
   goalId?: string;
   sprintId?: string;
   days?: number;
+  weeks?: number;
   text?: string;
 }
 
@@ -2264,6 +2269,21 @@ export interface TimeTrackedCardData {
   totalSeconds: number;
 }
 
+export interface CompletionTrendCardData {
+  weeks: { week: string; completed: number; created: number }[];
+  totalCompleted: number;
+}
+
+export interface OverdueByAssigneeRow {
+  user: TaskUser;
+  overdue: number;
+}
+
+export interface OverdueByAssigneeCardData {
+  rows: OverdueByAssigneeRow[];
+  unassigned: number;
+}
+
 export interface GoalProgressCardData {
   /** progress is 0..1 (may arrive as a string — Number() it). */
   goals: { id: string; name: string; progress: number }[];
@@ -2307,6 +2327,8 @@ export type DashboardCardData =
   | GoalProgressCardData
   | SprintBurndownCardData
   | RecentActivityCardData
+  | CompletionTrendCardData
+  | OverdueByAssigneeCardData
   | TextCardData;
 
 export const dashboardsApi = {
