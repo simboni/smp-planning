@@ -45,6 +45,7 @@ import { BoardView } from "@/components/views/BoardView";
 import { CalendarView } from "@/components/views/CalendarView";
 import { TableView } from "@/components/views/TableView";
 import { GanttView } from "@/components/views/GanttView";
+import { TimelineView } from "@/components/views/TimelineView";
 import { FavoriteStar } from "@/components/FavoriteStar";
 import { saveEntityAsTemplate } from "@/lib/toast";
 
@@ -611,13 +612,15 @@ function ListShell() {
           onToggleTag={toggleTag}
           onQuickAdd={quickAdd}
         />
-      ) : (
+      ) : kind === "gantt" ? (
         <GanttView
           {...viewProps}
           onShiftDates={(task, s, d) =>
             updateTask(task, { startDate: s, dueDate: d }, { startDate: s, dueDate: d })
           }
         />
+      ) : (
+        <TimelineView {...viewProps} />
       )}
 
       {selectedTask && (

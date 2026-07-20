@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -63,6 +64,18 @@ export class WorkspacesController {
   @UseGuards(JwtAuthGuard, WorkspaceGuard)
   async current(@Req() req: AuthedRequest) {
     return this.workspaces.current(req.workspaceId!, req.userId!);
+  }
+
+  @Patch("current")
+  @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
+  @Roles("admin") // owner + admin
+  async update(
+    @Req() req: AuthedRequest,
+    @Body() body: { name?: string; color?: string; avatarUrl?: string | null },
+  ) {
+    return {
+      workspace: await this.workspaces.update(req.workspaceId!, req.userId!, body),
+    };
   }
 
   @Get("current/members")

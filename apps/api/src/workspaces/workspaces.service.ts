@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -106,6 +107,77 @@ export class WorkspacesService {
         role: row.role,
       };
       return { workspace, role: row.role as Role };
+    });
+  }
+
+  /**
+   * Update the workspace's presentation (name / accent color / logo). Admin-
+   * only (enforced at the controller). Color must be a #rrggbb hex; an empty
+   * logo clears it. Runs under withWorkspace so the workspace_self RLS policy
+   * confines the UPDATE to this workspace.
+   */
+  async update(
+    workspaceId: string,
+    userId: string,
+    input: { name?: string; color?: string; avatarUrl?: string | null },
+  ): Promise<WorkspaceSummary> {
+    const sets: string[] = [];
+    const params: unknown[] = [workspaceId];
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (!name) throw new BadRequestException("Workspace name cannot be empty");
+      params.push(name);
+      sets.push(`name = $${params.length}`);
+    }
+    if (input.color !== undefined) {
+      const color = input.color.trim();
+      if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+        throw new BadRequestException("Color must be a #rrggbb hex value");
+      }
+      params.push(color);
+      sets.push(`color = $${params.length}`);
+    }
+    if (input.avatarUrl !== undefined) {
+      const url = input.avatarUrl?.trim() || null;
+      if (url && url.length > 2000) {
+        throw new BadRequestException("Logo URL is too long");
+      }
+      params.push(url);
+      sets.push(`avatar_url = $${params.length}`);
+    }
+    if (sets.length === 0) {
+      throw new BadRequestException("Nothing to update");
+    }
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const res = await client.query(
+        `UPDATE workspaces SET ${sets.join(", ")} WHERE id = $1
+         RETURNING id, name, slug, color, avatar_url`,
+        params,
+      );
+      const row = res.rows[0];
+      if (!row) throw new NotFoundException();
+      const roleRes = await client.query(
+        `SELECT role FROM memberships WHERE workspace_id = $1 AND user_id = $2`,
+        [workspaceId, userId],
+      );
+      await this.audit.record(client, {
+        workspaceId,
+        actorUserId: userId,
+        action: "workspace.updated",
+        entity: "workspace",
+        entityId: workspaceId,
+        data: Object.fromEntries(
+          Object.entries(input).filter(([, v]) => v !== undefined),
+        ),
+      });
+      return {
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        color: row.color,
+        avatarUrl: row.avatar_url,
+        role: (roleRes.rows[0]?.role ?? "member") as Role,
+      };
     });
   }
 

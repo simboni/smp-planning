@@ -20,9 +20,10 @@ export const KIND_META: Record<ViewKind, { label: string; icon: ReactNode }> = {
   calendar: { label: "Calendar", icon: Icons.calendar },
   table: { label: "Table", icon: Icons.table },
   gantt: { label: "Gantt", icon: Icons.gantt },
+  timeline: { label: "Timeline", icon: Icons.calendar },
 };
 
-const KINDS: ViewKind[] = ["list", "board", "calendar", "table", "gantt"];
+const KINDS: ViewKind[] = ["list", "board", "calendar", "table", "gantt", "timeline"];
 
 export interface ActiveTab {
   kind: ViewKind;

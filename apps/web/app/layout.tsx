@@ -34,6 +34,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        {/* Set the theme before first paint to avoid a light-mode flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('stackup.theme');if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();",
+          }}
+        />
         {children}
         <ServiceWorkerRegister />
       </body>

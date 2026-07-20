@@ -23,6 +23,13 @@ import {
   type WorkspaceSummary,
 } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
+import {
+  applyBranding,
+  applyTheme,
+  getTheme,
+  setTheme,
+  type Theme,
+} from "@/lib/theme";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { HierarchyTree } from "@/components/HierarchyTree";
@@ -72,6 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState<OnlineUser[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [theme, setThemeState] = useState<Theme>("system");
 
   // Module 13 — total unread chat messages across all channels & DMs.
   const [chatUnread, setChatUnread] = useState(0);
@@ -203,6 +211,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         .catch(() => undefined);
     }
   }, []);
+
+  // Theme: sync React state to the persisted choice (the no-flash script in
+  // layout already set data-theme before paint).
+  useEffect(() => {
+    const t = getTheme();
+    setThemeState(t);
+    applyTheme(t);
+  }, []);
+
+  // Branding: theme the app from the active workspace's accent color.
+  useEffect(() => {
+    applyBranding(workspace?.color ?? null);
+  }, [workspace?.color]);
+
+  const cycleTheme = (): void => {
+    const order: Theme[] = ["system", "light", "dark"];
+    const next = order[(order.indexOf(theme) + 1) % order.length];
+    setThemeState(next);
+    setTheme(next);
+  };
 
   // ⌘K / Ctrl-K toggles the palette.
   useEffect(() => {
@@ -419,6 +447,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {Icons.invite}
               <span>Invite</span>
             </Link>
+
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={cycleTheme}
+              aria-label={`Theme: ${theme}. Click to change.`}
+              title={
+                theme === "system"
+                  ? "Theme: System"
+                  : theme === "light"
+                    ? "Theme: Light"
+                    : "Theme: Dark"
+              }
+            >
+              {theme === "system"
+                ? Icons.monitor
+                : theme === "light"
+                  ? Icons.sun
+                  : Icons.moon}
+            </button>
 
             <div className="bell-wrap">
               <button

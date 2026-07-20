@@ -131,11 +131,18 @@ describe("views", () => {
     expect(listed.body.views).toHaveLength(1);
     expect(listed.body.views[0].id).toBe(view.id);
 
+    // Timeline is a valid kind (M19).
+    await http
+      .post(`/lists/${list.id}/views`)
+      .set(auth(owner.accessToken))
+      .send({ name: "Roadmap", kind: "timeline" })
+      .expect(201);
+
     // Bad kind and empty name are rejected.
     await http
       .post(`/lists/${list.id}/views`)
       .set(auth(owner.accessToken))
-      .send({ name: "X", kind: "timeline" })
+      .send({ name: "X", kind: "roadmap" })
       .expect(400);
     await http
       .post(`/lists/${list.id}/views`)

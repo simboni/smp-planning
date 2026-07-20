@@ -23,7 +23,14 @@ export interface View {
   createdBy: string | null;
 }
 
-export const VIEW_KINDS = ["list", "board", "calendar", "table", "gantt"] as const;
+export const VIEW_KINDS = [
+  "list",
+  "board",
+  "calendar",
+  "table",
+  "gantt",
+  "timeline",
+] as const;
 export type ViewKind = (typeof VIEW_KINDS)[number];
 
 /** Max serialized size of a view's config payload (8 KB). */
@@ -74,7 +81,7 @@ export class ViewsService {
   private validKind(kind: unknown): ViewKind {
     if (!VIEW_KINDS.includes(kind as ViewKind)) {
       throw new BadRequestException(
-        "kind must be one of list, board, calendar, table, gantt",
+        "kind must be one of list, board, calendar, table, gantt, timeline",
       );
     }
     return kind as ViewKind;

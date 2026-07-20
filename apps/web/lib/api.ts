@@ -419,7 +419,7 @@ export interface TaskUpdateBody {
 /* ------------------------------------------------------------------ *
  * Views Engine (Module 5): saved views per list.
  * ------------------------------------------------------------------ */
-export type ViewKind = "list" | "board" | "calendar" | "table" | "gantt";
+export type ViewKind = "list" | "board" | "calendar" | "table" | "gantt" | "timeline";
 
 export interface ViewFilters {
   statusIds?: string[];
@@ -730,6 +730,13 @@ export const workspacesApi = {
   invite: (body: { email: string; role: WorkspaceRole }) =>
     api<Member>("/workspaces/current/members", {
       method: "POST",
+      body,
+      auth: "access",
+    }),
+  /** Update workspace branding (name / accent color / logo). Admin only. */
+  update: (body: { name?: string; color?: string; avatarUrl?: string | null }) =>
+    api<{ workspace: WorkspaceSummary }>("/workspaces/current", {
+      method: "PATCH",
       body,
       auth: "access",
     }),

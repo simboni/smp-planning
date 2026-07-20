@@ -6401,3 +6401,141 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   border-color: var(--ink-2);
 }
 .btn-social svg { flex: none; }
+
+/* =========================================================================
+   Module 19 — Timeline view (assignee swimlanes)
+   ========================================================================= */
+.tl-wrap { display: flex; flex-direction: column; gap: 8px; }
+.tl-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.tl-grid { position: relative; }
+.tl-head {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.tl-rail {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+}
+.tl-head-rail { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.tl-cols { flex: none; }
+.tl-months { display: flex; height: 22px; border-bottom: 1px solid var(--line-soft); }
+.tl-month {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-2);
+  padding: 3px 6px;
+  border-right: 1px solid var(--line-soft);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tl-days { display: flex; height: 24px; }
+.tl-day {
+  flex: none;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 24px;
+  border-right: 1px solid var(--line-soft);
+}
+.tl-day.weekend { background: var(--card-2); }
+.tl-day.today { background: var(--brand-soft); color: var(--brand); font-weight: 700; }
+.tl-today-line {
+  position: absolute;
+  top: 46px;
+  bottom: 0;
+  width: 2px;
+  background: var(--brand);
+  opacity: 0.5;
+  z-index: 1;
+  pointer-events: none;
+}
+.tl-lane { display: flex; border-bottom: 1px solid var(--line-soft); }
+.tl-lane:last-child { border-bottom: none; }
+.tl-av {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tl-av-none { background: var(--neutral-soft); color: var(--muted); }
+.tl-rail-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-rail-count { flex: none; font-size: 11px; color: var(--muted); background: var(--card-2); border-radius: var(--r-sm); padding: 1px 6px; }
+.tl-track { flex: none; position: relative; padding: 7px 0; }
+.tl-bar {
+  position: absolute;
+  top: 7px;
+  height: 26px;
+  border: none;
+  border-radius: var(--r-sm);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+}
+.tl-bar:hover { filter: brightness(1.05); }
+.tl-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-unscheduled { font-size: 12px; color: var(--muted); padding: 2px 4px; }
+
+/* ---- Branding settings card (M19) ---- */
+.brand-colors { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.brand-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.brand-swatch.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--card); }
+.brand-custom {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px dashed var(--line);
+  display: inline-flex;
+  cursor: pointer;
+}
+.brand-custom input { width: 40px; height: 40px; margin: -6px; border: none; padding: 0; background: none; cursor: pointer; }
+.brand-hex { font-size: 12px; color: var(--muted); }
+.brand-logo-preview {
+  margin-top: 10px;
+  max-height: 48px;
+  max-width: 180px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-soft);
+  background: var(--card-2);
+  padding: 4px 8px;
+}
+.brand-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 8px; }
+.brand-saved { font-size: 13px; color: var(--ok); font-weight: 600; }
