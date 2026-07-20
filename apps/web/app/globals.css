@@ -6649,3 +6649,7 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 }
 .usage-fill.warn { background: var(--warn); }
 .usage-fill.danger { background: var(--danger); }
+
+/* Inline text link (M22 integration hints). */
+.link { color: var(--brand); text-decoration: none; font-weight: 600; }
+.link:hover { text-decoration: underline; }

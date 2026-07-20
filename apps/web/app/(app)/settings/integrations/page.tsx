@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   apiTokensApi,
+  commsApi,
   hierarchyApi,
   importExportApi,
   webhooksApi,
+  type EmailStatus,
   type HierarchyTree,
   type PatScope,
   type PatSummary,
+  type SlackConfig,
   type WebhookSummary,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
@@ -32,9 +35,173 @@ export default function IntegrationsPage() {
           Personal access tokens, webhooks, and import / export.
         </p>
       </div>
+      <SlackCard />
+      <EmailCard />
       <ApiTokensCard />
       <WebhooksCard />
       <ImportExportCard />
+    </div>
+  );
+}
+
+/* ---- Slack integration (M22) -------------------------------------- */
+
+function SlackCard() {
+  const [cfg, setCfg] = useState<SlackConfig | null>(null);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [testMsg, setTestMsg] = useState("");
+
+  const load = () =>
+    commsApi.getSlack().then(setCfg).catch(() => setCfg(null));
+  useEffect(() => {
+    load();
+  }, []);
+
+  const save = async () => {
+    setBusy(true);
+    setError("");
+    setTestMsg("");
+    try {
+      const next = await commsApi.setSlack({ webhookUrl: url.trim() });
+      setCfg(next);
+      setUrl("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the Slack webhook.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await commsApi.removeSlack();
+      await load();
+      setTestMsg("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const test = async () => {
+    setBusy(true);
+    setTestMsg("");
+    try {
+      const r = await commsApi.testSlack();
+      setTestMsg(r.ok ? "Test message sent — check your Slack channel." : `Slack said: ${r.detail}`);
+    } catch (e) {
+      setTestMsg(e instanceof Error ? e.message : "Test failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card-head">
+        <h3>Slack</h3>
+        {cfg?.configured && <span className="badge badge-soft">Connected</span>}
+      </div>
+      <p className="setting-hint" style={{ marginBottom: 12 }}>
+        Post workspace notifications (task, comment, doc, goal and chat activity)
+        to a Slack channel via an{" "}
+        <a
+          href="https://api.slack.com/messaging/webhooks"
+          target="_blank"
+          rel="noreferrer"
+          className="link"
+        >
+          incoming webhook
+        </a>
+        .
+      </p>
+
+      {cfg === null ? (
+        <div className="skel" style={{ height: 44 }} />
+      ) : cfg.configured ? (
+        <>
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">Webhook</div>
+              <div className="mono setting-hint">{cfg.webhookPreview}</div>
+            </div>
+            <div className="sec-actions">
+              <button className="btn btn-soft btn-sm" onClick={test} disabled={busy}>
+                Send test
+              </button>
+              <button className="btn btn-ghost btn-sm sec-danger" onClick={remove} disabled={busy}>
+                Disconnect
+              </button>
+            </div>
+          </div>
+          {testMsg && <div className="notice" style={{ marginTop: 10 }}>{Icons.info}{testMsg}</div>}
+        </>
+      ) : (
+        <>
+          {error && <div className="form-error">{error}</div>}
+          <div className="field">
+            <label className="label">Slack incoming webhook URL</label>
+            <input
+              className="input"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://hooks.slack.com/services/…"
+            />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={save}
+              disabled={busy || !url.trim()}
+            >
+              {busy ? <span className="spinner" /> : "Connect Slack"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---- Email delivery status (M22) ---------------------------------- */
+
+function EmailCard() {
+  const [status, setStatus] = useState<EmailStatus | null>(null);
+
+  useEffect(() => {
+    commsApi.emailStatus().then(setStatus).catch(() => setStatus(null));
+  }, []);
+
+  if (status === null) return null;
+
+  const label =
+    status.provider === "http"
+      ? "External relay"
+      : status.provider === "log"
+        ? "Log only (no delivery)"
+        : status.provider;
+
+  return (
+    <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card-head">
+        <h3>Email delivery</h3>
+        <span className={`badge ${status.configured ? "badge-soft" : "badge-soon"}`}>
+          {status.configured ? "Active" : "Not configured"}
+        </span>
+      </div>
+      <div className="setting-row">
+        <div>
+          <div className="setting-label">Provider</div>
+          <div className="setting-hint">
+            Outbound task emails route through this provider. Configure a relay
+            via the <span className="mono">EMAIL_PROVIDER</span> /{" "}
+            <span className="mono">EMAIL_RELAY_URL</span> environment variables.
+          </div>
+        </div>
+        <span style={{ fontWeight: 600 }}>{label}</span>
+      </div>
     </div>
   );
 }

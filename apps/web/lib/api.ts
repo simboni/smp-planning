@@ -893,6 +893,39 @@ export const limitsApi = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Comms & integrations (Module 22): email provider + Slack webhook.
+ * ------------------------------------------------------------------ */
+export interface EmailStatus {
+  provider: string;
+  configured: boolean;
+}
+
+export interface SlackConfig {
+  configured: boolean;
+  webhookPreview: string | null;
+  events: string[];
+  active: boolean;
+}
+
+export const commsApi = {
+  emailStatus: () => api<EmailStatus>("/integrations/email", { auth: "access" }),
+  getSlack: () => api<SlackConfig>("/integrations/slack", { auth: "access" }),
+  setSlack: (body: { webhookUrl: string; events?: string[]; active?: boolean }) =>
+    api<SlackConfig>("/integrations/slack", {
+      method: "PUT",
+      body,
+      auth: "access",
+    }),
+  removeSlack: () =>
+    api<void>("/integrations/slack", { method: "DELETE", auth: "access" }),
+  testSlack: () =>
+    api<{ ok: boolean; detail: string }>("/integrations/slack/test", {
+      method: "POST",
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
  * Hierarchy endpoints — all workspace-scoped (access token).
  * ------------------------------------------------------------------ */
 export const hierarchyApi = {

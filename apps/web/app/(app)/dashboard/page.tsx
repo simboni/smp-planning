@@ -10,19 +10,8 @@ import {
   type PublicUser,
   type WorkspaceSummary,
 } from "@/lib/api";
-import { Icons, type IconKey } from "@/components/icons";
+import { Icons } from "@/components/icons";
 import { colorFor, firstName, initials } from "@/lib/format";
-
-interface ModuleTile {
-  label: string;
-  desc: string;
-  icon: IconKey;
-  color: string;
-}
-
-const MODULES: ModuleTile[] = [
-  { label: "Dashboards", desc: "Reporting at a glance", icon: "dashboards", color: "#FFAB00" },
-];
 
 const CHECKLIST = [
   { title: "Create your workspace", sub: "You're in — nice work.", done: true },
@@ -153,10 +142,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* module roadmap */}
+      {/* quick jumps into the workspace */}
       <div className="section-title">
-        <h2>Your workspace, leveling up</h2>
-        <span className="muted">More modules are on the way</span>
+        <h2>Jump back in</h2>
+        <span className="muted">Everything's ready to go</span>
       </div>
       <div className="module-grid">
         <Link href="/everything" className="module-tile module-tile-live">
@@ -209,16 +198,16 @@ export default function DashboardPage() {
           <h3>Goals</h3>
           <p>OKRs, targets & portfolios — set a goal and watch it fill.</p>
         </Link>
-        {MODULES.map((m) => (
-          <div className="module-tile" key={m.label}>
-            <span className="badge badge-soon">Coming soon</span>
-            <span className="module-ic" style={{ background: m.color }}>
-              {Icons[m.icon]}
-            </span>
-            <h3>{m.label}</h3>
-            <p>{m.desc}</p>
-          </div>
-        ))}
+        <Link href="/dashboards" className="module-tile module-tile-live">
+          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
+            Ready
+          </span>
+          <span className="module-ic" style={{ background: "#FFAB00" }}>
+            {Icons.dashboards}
+          </span>
+          <h3>Dashboards</h3>
+          <p>Reporting at a glance — build a dashboard of live cards.</p>
+        </Link>
       </div>
     </div>
   );
