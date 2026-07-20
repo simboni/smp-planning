@@ -6364,3 +6364,40 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   .role-editor-grid { grid-template-columns: 1fr; }
   .assign-select { max-width: 150px; }
 }
+
+/* =========================================================================
+   Module 18 — SSO: Google sign-in button
+   ========================================================================= */
+.auth-or {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.auth-or::before,
+.auth-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.btn-social {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-weight: 600;
+}
+.btn-social:hover:not(:disabled) {
+  background: var(--card-2);
+  border-color: var(--ink-2);
+}
+.btn-social svg { flex: none; }

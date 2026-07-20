@@ -666,7 +666,13 @@ export const authApi = {
       auth: "none",
     }),
   me: () => api<{ user: PublicUser }>("/auth/me", { auth: "identity" }),
+  /** Which SSO providers are enabled (M18). */
+  ssoProviders: () =>
+    api<{ google: boolean }>("/auth/sso/providers", { auth: "none" }),
 };
+
+/** Absolute URL that kicks off the Google OAuth flow (full-page navigation). */
+export const googleSsoStartUrl = `${API_BASE}/auth/oauth/google/start`;
 
 /* ---- Module 16: Account security (2FA + sessions) ----------------- */
 export const securityApi = {

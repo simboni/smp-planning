@@ -18,6 +18,13 @@ export interface AppConfig {
   anthropicApiKey: string;
   /** Claude model the AI Brain calls when a key is present. */
   aiModel: string;
+  /** Google OAuth (M18). Client id/secret empty ⇒ SSO disabled (button hidden). */
+  googleClientId: string;
+  googleClientSecret: string;
+  /** Absolute callback URL registered with Google, e.g. https://app/auth/oauth/google/callback. */
+  oauthRedirectUri: string;
+  /** Where the callback bounces the browser after minting tokens (defaults to same origin). */
+  webBaseUrl: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -32,5 +39,9 @@ export function loadConfig(): AppConfig {
     refreshTtl: Number(process.env.REFRESH_TOKEN_TTL ?? 2592000),
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
     aiModel: process.env.STACKUP_AI_MODEL ?? "claude-opus-4-8",
+    googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    oauthRedirectUri: process.env.OAUTH_REDIRECT_URI ?? "",
+    webBaseUrl: process.env.WEB_BASE_URL ?? "",
   };
 }

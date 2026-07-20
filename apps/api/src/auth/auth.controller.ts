@@ -8,11 +8,14 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common";
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import type { IdentityTokenClaims, WorkspaceTokenClaims } from "@stackup/shared";
+import { loadConfig } from "../config";
 import { AuthService } from "./auth.service";
 import { CurrentAuth, JwtAuthGuard } from "./guards";
 
@@ -25,7 +28,55 @@ const ua = (req: Request) => req.headers["user-agent"];
 
 @Controller("auth")
 export class AuthController {
+  private readonly config = loadConfig();
   constructor(private readonly auth: AuthService) {}
+
+  /* ---- SSO (Module 18): Google OAuth ------------------------------- */
+
+  /** Which SSO providers are configured — drives the login-page buttons. */
+  @Get("sso/providers")
+  ssoProviders() {
+    return this.auth.ssoProviders();
+  }
+
+  /** Redirect the browser to Google's consent screen. */
+  @Get("oauth/google/start")
+  googleStart(@Res() res: Response) {
+    const { url } = this.auth.googleAuthUrl();
+    res.redirect(url);
+  }
+
+  /**
+   * Google redirects here after consent. Exchange the code, mint tokens, and
+   * bounce back to the SPA with the tokens in the URL fragment (never sent to
+   * a server, kept out of logs). On failure, bounce with an error flag.
+   */
+  @Get("oauth/google/callback")
+  async googleCallback(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query("code") code?: string,
+    @Query("state") state?: string,
+    @Query("error") error?: string,
+  ) {
+    const web = this.config.webBaseUrl || "";
+    if (error) {
+      res.redirect(`${web}/login#sso_error=${encodeURIComponent(error)}`);
+      return;
+    }
+    try {
+      const result = await this.auth.googleCallback(code ?? "", state ?? "", ua(req));
+      const frag = new URLSearchParams({
+        sso: "google",
+        identityToken: result.identityToken,
+        refreshToken: result.refreshToken,
+      });
+      res.redirect(`${web}/login#${frag.toString()}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Sign-in failed";
+      res.redirect(`${web}/login#sso_error=${encodeURIComponent(msg)}`);
+    }
+  }
 
   @Post("signup")
   async signup(

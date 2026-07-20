@@ -20,6 +20,7 @@ import type {
 } from "@stackup/shared";
 import { loadConfig } from "../config";
 import { DbService } from "../db/db.service";
+import { GoogleOAuthClient } from "./google-oauth.client";
 
 export interface SignupInput {
   email: string;
@@ -75,6 +76,7 @@ export class AuthService {
   constructor(
     private readonly db: DbService,
     private readonly jwt: JwtService,
+    private readonly google: GoogleOAuthClient,
   ) {}
 
   /**
@@ -108,6 +110,111 @@ export class AuthService {
       user: toPublicUser(user),
       workspaces: [],
     };
+  }
+
+  // --- SSO (Module 18): Google OAuth ---------------------------------------
+
+  /** Which SSO providers are configured (drives the login-page buttons). */
+  ssoProviders(): { google: boolean } {
+    return { google: this.google.configured() };
+  }
+
+  /**
+   * Begin the Google OAuth flow: mint a short-lived, signed `state` (CSRF
+   * defense — the callback verifies it) and return the consent-screen URL.
+   */
+  googleAuthUrl(): { url: string } {
+    const state = this.jwt.sign(
+      { typ: "oauthstate", nonce: randomBytes(8).toString("hex") },
+      { expiresIn: 600 },
+    );
+    return { url: this.google.authorizeUrl(state) };
+  }
+
+  /**
+   * Complete the Google OAuth flow. Verifies the state token, exchanges the
+   * code for the user's verified Google profile, then finds-or-creates the
+   * local account:
+   *   1. a user already linked to this Google subject -> sign in;
+   *   2. otherwise a user with the same (verified) email -> link + sign in;
+   *   3. otherwise create a new user linked to Google.
+   * Requires Google to have verified the email (else we could hijack an
+   * account by asserting an unowned address).
+   */
+  async googleCallback(
+    code: string,
+    state: string,
+    userAgent?: string,
+  ): Promise<AuthResult> {
+    try {
+      const claims = await this.jwt.verifyAsync<{ typ: string }>(state);
+      if (claims.typ !== "oauthstate") throw new Error("wrong token type");
+    } catch {
+      throw new UnauthorizedException("Your sign-in session expired — start again");
+    }
+    if (!code) throw new BadRequestException("Missing authorization code");
+
+    const profile = await this.google.exchange(code);
+    if (!profile.emailVerified) {
+      throw new UnauthorizedException("Your Google email is not verified");
+    }
+
+    // 1. Already linked?
+    const linked = await this.db.query(
+      `SELECT id, email, full_name, avatar_url, password_hash, status
+         FROM users WHERE oauth_provider = 'google' AND oauth_subject = $1`,
+      [profile.sub],
+    );
+    let user = linked.rows[0] as UserRow | undefined;
+
+    if (!user) {
+      // 2. Existing account with the same email -> link it.
+      const byEmail = await this.db.query(
+        `SELECT id, email, full_name, avatar_url, password_hash, status
+           FROM users WHERE lower(email) = lower($1)`,
+        [profile.email],
+      );
+      const existing = byEmail.rows[0] as UserRow | undefined;
+      if (existing) {
+        const upd = await this.db.query(
+          `UPDATE users
+              SET oauth_provider = 'google',
+                  oauth_subject  = $2,
+                  avatar_url     = COALESCE(avatar_url, $3)
+            WHERE id = $1 AND (oauth_provider IS NULL OR oauth_provider = 'google')
+            RETURNING id, email, full_name, avatar_url, password_hash, status`,
+          [existing.id, profile.sub, profile.picture],
+        );
+        user = upd.rows[0] as UserRow | undefined;
+        if (!user) {
+          // Row was linked to a different provider identity — refuse silently.
+          throw new UnauthorizedException("This email is linked to a different sign-in");
+        }
+      } else {
+        // 3. Brand-new user. OAuth accounts carry an unusable random password.
+        const unusable = await argon2.hash(randomBytes(24).toString("hex"), {
+          type: argon2.argon2id,
+        });
+        const created = await this.db.query(
+          `INSERT INTO users (email, password_hash, full_name, avatar_url, oauth_provider, oauth_subject)
+             VALUES ($1, $2, $3, $4, 'google', $5)
+             RETURNING id, email, full_name, avatar_url, password_hash, status`,
+          [
+            profile.email.trim(),
+            unusable,
+            (profile.name ?? profile.email.split("@")[0]).trim(),
+            profile.picture,
+            profile.sub,
+          ],
+        );
+        user = created.rows[0] as UserRow;
+      }
+    }
+
+    if (user.status !== "active") {
+      throw new UnauthorizedException("This account is not active");
+    }
+    return this.completeLogin(user, userAgent);
   }
 
   /**

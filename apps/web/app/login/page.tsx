@@ -8,13 +8,14 @@ import {
   authApi,
   clearTokens,
   getIdentityToken,
+  googleSsoStartUrl,
   isTwoFactorChallenge,
   setIdentityToken,
   setRefreshToken,
   setUser,
   type PublicUser,
 } from "@/lib/api";
-import { Icons, StackMark } from "@/components/icons";
+import { Icons, StackMark, GoogleMark } from "@/components/icons";
 
 type Mode = "login" | "signup";
 type Health = "checking" | "ok" | "down";
@@ -40,11 +41,53 @@ export default function LoginPage() {
   // Second-factor step: set to the challenge token once login says 2FA is on.
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  // Whether Google SSO is configured (drives the button); and a busy flag
+  // while we finish an SSO redirect.
+  const [googleSso, setGoogleSso] = useState(false);
+  const [ssoBusy, setSsoBusy] = useState(false);
 
-  // Already have an identity? Skip straight to workspace selection.
+  // Finish a Google SSO redirect: the callback bounced back with tokens in the
+  // URL fragment (kept out of server logs). Store them, load the user, go on.
   useEffect(() => {
+    const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    if (!hash) return;
+    const params = new URLSearchParams(hash);
+    const err = params.get("sso_error");
+    if (err) {
+      setError(err);
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+    const identityToken = params.get("identityToken");
+    const refreshToken = params.get("refreshToken");
+    if (identityToken && refreshToken) {
+      setSsoBusy(true);
+      window.history.replaceState(null, "", window.location.pathname);
+      clearTokens();
+      setIdentityToken(identityToken);
+      setRefreshToken(refreshToken);
+      authApi
+        .me()
+        .then((r) => setUser(r.user))
+        .catch(() => undefined)
+        .finally(() => router.replace("/select"));
+    }
+  }, [router]);
+
+  // Already have an identity? Skip straight to workspace selection. (Guarded
+  // so it doesn't race the SSO-fragment handler above on the same load.)
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash) return;
     if (getIdentityToken()) router.replace("/select");
   }, [router]);
+
+  // Is Google SSO available? Hide the button entirely when it isn't.
+  useEffect(() => {
+    authApi
+      .ssoProviders()
+      .then((r) => setGoogleSso(r.google))
+      .catch(() => setGoogleSso(false));
+  }, []);
 
   // Lightweight backend heartbeat for the status chip. Reflects the DATABASE
   // status (db), not just that the server answered — a reachable API with a
@@ -380,6 +423,32 @@ export default function LoginPage() {
               </>
             )}
           </p>
+
+          {googleSso && (
+            <>
+              <div className="auth-or">
+                <span>or</span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-social btn-lg btn-block"
+                disabled={busy || ssoBusy}
+                onClick={() => {
+                  setSsoBusy(true);
+                  window.location.href = googleSsoStartUrl;
+                }}
+              >
+                {ssoBusy ? (
+                  <span className="spinner" />
+                ) : (
+                  <>
+                    <GoogleMark />
+                    Continue with Google
+                  </>
+                )}
+              </button>
+            </>
+          )}
           </>
           )}
 
