@@ -8,6 +8,7 @@ import { AutomationsModule } from "./automations/automations.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
 import { ChatModule } from "./chat/chat.module";
 import { CommentsModule } from "./comments/comments.module";
+import { CommsModule } from "./comms/comms.module";
 import { loadConfig } from "./config";
 import { DashboardsModule } from "./dashboards/dashboards.module";
 import { DbModule } from "./db/db.module";
@@ -75,6 +76,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     AiModule,
     IntegrationsModule,
     LimitsModule,
+    CommsModule,
   ],
   controllers: [HealthController],
 })

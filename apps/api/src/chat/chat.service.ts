@@ -9,6 +9,7 @@ import type { Role } from "@stackup/shared";
 import { roleAtLeast } from "@stackup/shared";
 import { AccessService } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
+import { EmailService } from "../comms/email.service";
 import { DbService } from "../db/db.service";
 import { EventsService } from "../events/events.service";
 import { insertNotification } from "../inbox/inbox.support";
@@ -81,6 +82,7 @@ export class ChatService {
     private readonly access: AccessService,
     private readonly audit: AuditService,
     private readonly events: EventsService,
+    private readonly email: EmailService,
   ) {}
 
   // --- guards / helpers -----------------------------------------------------
@@ -1029,11 +1031,15 @@ export class ChatService {
         return this.emailOut(ins.rows[0]);
       },
     );
+    // M22: attempt real delivery through the pluggable provider (a no-op
+    // logger by default). Delivery is best-effort — a failure never undoes the
+    // logged task_email above; the outcome is returned for the UI.
+    const delivery = await this.email.send({ to, subject, text: body });
     this.events.publish(workspaceId, {
       type: "task.changed",
       payload: { taskId },
     });
-    return { email };
+    return { email, delivery };
   }
 
   async listEmails(

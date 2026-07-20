@@ -25,6 +25,12 @@ export interface AppConfig {
   oauthRedirectUri: string;
   /** Where the callback bounces the browser after minting tokens (defaults to same origin). */
   webBaseUrl: string;
+  /** Email delivery (M22): "log" (default) or "http" (relay POST). */
+  emailProvider: string;
+  /** Relay endpoint for the http email provider; {to,subject,text} POSTed as JSON. */
+  emailRelayUrl: string;
+  /** From address stamped on outbound mail. */
+  emailFrom: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -43,5 +49,8 @@ export function loadConfig(): AppConfig {
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
     oauthRedirectUri: process.env.OAUTH_REDIRECT_URI ?? "",
     webBaseUrl: process.env.WEB_BASE_URL ?? "",
+    emailProvider: process.env.EMAIL_PROVIDER ?? "log",
+    emailRelayUrl: process.env.EMAIL_RELAY_URL ?? "",
+    emailFrom: process.env.EMAIL_FROM ?? "no-reply@stackup.app",
   };
 }

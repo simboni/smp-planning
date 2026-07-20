@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AccessModule } from "../access/access.module";
 import { AuditModule } from "../audit/audit.module";
+import { CommsModule } from "../comms/comms.module";
 import { ChatController } from "./chat.controller";
 import { ChatService } from "./chat.service";
 
@@ -11,7 +12,7 @@ import { ChatService } from "./chat.service";
  * email by space, AuditModule records channel/message/email mutations.
  */
 @Module({
-  imports: [AccessModule, AuditModule],
+  imports: [AccessModule, AuditModule, CommsModule],
   controllers: [ChatController],
   providers: [ChatService],
 })

@@ -6,6 +6,7 @@ import { extname, join, resolve } from "node:path";
 import type { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { loadConfig } from "./config";
+import { autoMigrate } from "./db/migrator";
 
 /**
  * Last-resort safety net: the API should degrade, not die. Anything that
@@ -21,6 +22,12 @@ process.on("unhandledRejection", (reason) => {
 });
 
 async function bootstrap(): Promise<void> {
+  // Bring the database schema up to date BEFORE serving, so the code and its
+  // tables can never be out of step after a deploy (the root cause of the
+  // recurring post-deploy "internal server error" on login/signup). No-op
+  // unless ADMIN_DB_URL is set; never throws.
+  await autoMigrate();
+
   // Disable Nest's default 100kb body parser; register our own with a larger
   // limit so base64 file uploads (M12, 5MB decoded ≈ 6.7MB encoded) fit.
   const app = await NestFactory.create(AppModule, { bodyParser: false });
