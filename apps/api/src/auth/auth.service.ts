@@ -1,11 +1,15 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
+import { authenticator } from "otplib";
+import * as QRCode from "qrcode";
 import { createHash, randomBytes } from "node:crypto";
 import type {
   IdentityTokenClaims,
@@ -37,6 +41,23 @@ interface UserRow {
   avatar_url: string | null;
   password_hash: string;
   status: string;
+  totp_enabled?: boolean;
+  totp_secret?: string | null;
+}
+
+/** Returned by login when the account has 2FA on: verify a code to finish. */
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  /** Short-lived token that authorizes the /auth/2fa/login step for this user. */
+  challengeToken: string;
+}
+
+export interface SessionInfo {
+  id: string;
+  userAgent: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  current: boolean;
 }
 
 /**
@@ -62,7 +83,7 @@ export class AuthService {
    * next. 409 on a duplicate email (case-insensitive, enforced by the
    * users_email_key unique index on lower(email)).
    */
-  async signup(input: SignupInput): Promise<AuthResult> {
+  async signup(input: SignupInput, userAgent?: string): Promise<AuthResult> {
     const passwordHash = await argon2.hash(input.password, {
       type: argon2.argon2id,
     });
@@ -83,7 +104,7 @@ export class AuthService {
     }
     return {
       identityToken: await this.issueIdentityToken(user.id),
-      refreshToken: await this.issueRefreshToken(user.id),
+      refreshToken: await this.issueRefreshToken(user.id, userAgent),
       user: toPublicUser(user),
       workspaces: [],
     };
@@ -95,9 +116,14 @@ export class AuthService {
    * unknown email, wrong password, or a non-active account — to avoid
    * leaking which emails exist.
    */
-  async login(email: string, password: string): Promise<AuthResult> {
+  async login(
+    email: string,
+    password: string,
+    userAgent?: string,
+  ): Promise<AuthResult | TwoFactorChallenge> {
     const res = await this.db.query(
-      `SELECT id, email, full_name, avatar_url, password_hash, status
+      `SELECT id, email, full_name, avatar_url, password_hash, status,
+              totp_enabled, totp_secret
        FROM users WHERE lower(email) = lower($1)`,
       [email.trim()],
     );
@@ -108,9 +134,51 @@ export class AuthService {
     if (!user || !valid || user.status !== "active") {
       throw new UnauthorizedException("Invalid credentials");
     }
+    // 2FA on: don't hand out tokens yet — issue a short-lived challenge the
+    // client redeems with a valid TOTP code via /auth/2fa/login.
+    if (user.totp_enabled) {
+      const challengeToken = await this.jwt.signAsync(
+        { sub: user.id, typ: "twofa" },
+        { expiresIn: 300 },
+      );
+      return { twoFactorRequired: true, challengeToken };
+    }
+    return this.completeLogin(user, userAgent);
+  }
+
+  /** Finish a 2FA login: verify the challenge token + TOTP code, mint tokens. */
+  async login2fa(
+    challengeToken: string,
+    code: string,
+    userAgent?: string,
+  ): Promise<AuthResult> {
+    let sub: string;
+    try {
+      const claims = await this.jwt.verifyAsync<{ sub: string; typ: string }>(
+        challengeToken,
+      );
+      if (claims.typ !== "twofa") throw new Error("wrong token type");
+      sub = claims.sub;
+    } catch {
+      throw new UnauthorizedException("Your sign-in session expired — start again");
+    }
+    const user = await this.userRow(sub);
+    if (!user || !user.totp_enabled || !user.totp_secret) {
+      throw new UnauthorizedException("Two-factor is not enabled");
+    }
+    if (!verifyTotp(user.totp_secret, code)) {
+      throw new UnauthorizedException("That code isn't right — try the current one");
+    }
+    return this.completeLogin(user, userAgent);
+  }
+
+  private async completeLogin(
+    user: UserRow,
+    userAgent?: string,
+  ): Promise<AuthResult> {
     return {
       identityToken: await this.issueIdentityToken(user.id),
-      refreshToken: await this.issueRefreshToken(user.id),
+      refreshToken: await this.issueRefreshToken(user.id, userAgent),
       user: toPublicUser(user),
       workspaces: await this.listWorkspaces(user.id),
     };
@@ -123,6 +191,7 @@ export class AuthService {
    */
   async refresh(
     refreshToken: string,
+    userAgent?: string,
   ): Promise<{ identityToken: string; refreshToken: string }> {
     const tokenHash = sha256(refreshToken);
     const res = await this.db.query(
@@ -147,8 +216,109 @@ export class AuthService {
     );
     return {
       identityToken: await this.issueIdentityToken(row.user_id),
-      refreshToken: await this.issueRefreshToken(row.user_id),
+      refreshToken: await this.issueRefreshToken(row.user_id, userAgent),
     };
+  }
+
+  /* ---- Two-factor authentication (TOTP) ---------------------------- */
+
+  /** Whether the caller has 2FA enabled. */
+  async twoFactorStatus(userId: string): Promise<{ enabled: boolean }> {
+    const u = await this.userRow(userId);
+    return { enabled: !!u?.totp_enabled };
+  }
+
+  /**
+   * Begin enrollment: generate a fresh secret (stored but NOT yet enabled) and
+   * return the otpauth URI + a QR data-URL to show in an authenticator app.
+   * Enrollment only takes effect once a code is confirmed via enable2fa.
+   */
+  async enroll2fa(
+    userId: string,
+  ): Promise<{ otpauthUri: string; qrDataUrl: string }> {
+    const user = await this.userRow(userId);
+    if (!user) throw new UnauthorizedException();
+    const secret = authenticator.generateSecret();
+    await this.db.query(
+      "UPDATE users SET totp_secret = $1, totp_enabled = false WHERE id = $2",
+      [secret, userId],
+    );
+    const otpauthUri = authenticator.keyuri(user.email, "StackUp", secret);
+    const qrDataUrl = await QRCode.toDataURL(otpauthUri);
+    return { otpauthUri, qrDataUrl };
+  }
+
+  /** Confirm enrollment with a code from the app; turns 2FA on. */
+  async enable2fa(userId: string, code: string): Promise<{ enabled: true }> {
+    const user = await this.userRow(userId);
+    if (!user?.totp_secret) {
+      throw new BadRequestException("Start 2FA setup first");
+    }
+    if (!verifyTotp(user.totp_secret, code)) {
+      throw new BadRequestException("That code isn't right — try the current one");
+    }
+    await this.db.query(
+      "UPDATE users SET totp_enabled = true WHERE id = $1",
+      [userId],
+    );
+    return { enabled: true };
+  }
+
+  /** Turn 2FA off (requires a current code to prove possession). */
+  async disable2fa(userId: string, code: string): Promise<{ enabled: false }> {
+    const user = await this.userRow(userId);
+    if (!user?.totp_enabled || !user.totp_secret) return { enabled: false };
+    if (!verifyTotp(user.totp_secret, code)) {
+      throw new BadRequestException("That code isn't right — try the current one");
+    }
+    await this.db.query(
+      "UPDATE users SET totp_secret = NULL, totp_enabled = false WHERE id = $1",
+      [userId],
+    );
+    return { enabled: false };
+  }
+
+  /* ---- Session management ------------------------------------------ */
+
+  /** Active (unrevoked, unexpired) sessions for the caller, newest first. */
+  async listSessions(
+    userId: string,
+    currentRefreshToken?: string,
+  ): Promise<SessionInfo[]> {
+    const currentHash = currentRefreshToken ? sha256(currentRefreshToken) : null;
+    const res = await this.db.query(
+      `SELECT id, token_hash, user_agent, last_used_at, created_at
+       FROM refresh_tokens
+       WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+       ORDER BY created_at DESC`,
+      [userId],
+    );
+    return res.rows.map((r) => ({
+      id: r.id as string,
+      userAgent: r.user_agent as string | null,
+      lastUsedAt: r.last_used_at as string | null,
+      createdAt: r.created_at as string,
+      current: currentHash != null && r.token_hash === currentHash,
+    }));
+  }
+
+  /** Revoke one session (sign that device out). */
+  async revokeSession(userId: string, id: string): Promise<void> {
+    const res = await this.db.query(
+      "UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
+      [id, userId],
+    );
+    if ((res.rowCount ?? 0) === 0) throw new NotFoundException("Session not found");
+  }
+
+  private async userRow(userId: string): Promise<UserRow | undefined> {
+    const res = await this.db.query(
+      `SELECT id, email, full_name, avatar_url, password_hash, status,
+              totp_enabled, totp_secret
+       FROM users WHERE id = $1`,
+      [userId],
+    );
+    return res.rows[0] as UserRow | undefined;
   }
 
   /** The public profile for the authenticated user. */
@@ -240,13 +410,16 @@ export class AuthService {
    * never yields a usable token. The plaintext is returned to the client
    * once and never stored.
    */
-  private async issueRefreshToken(userId: string): Promise<string> {
+  private async issueRefreshToken(
+    userId: string,
+    userAgent?: string,
+  ): Promise<string> {
     const token = randomBytes(32).toString("base64url");
     const expires = new Date(Date.now() + this.config.refreshTtl * 1000);
     await this.db.query(
-      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-       VALUES ($1, $2, $3)`,
-      [userId, sha256(token), expires],
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, user_agent, last_used_at)
+       VALUES ($1, $2, $3, $4, now())`,
+      [userId, sha256(token), expires, (userAgent ?? "").slice(0, 400) || null],
     );
     return token;
   }
@@ -254,6 +427,18 @@ export class AuthService {
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/** Verify a 6-digit TOTP code against a base32 secret (±1 step window). */
+function verifyTotp(secret: string, code: string): boolean {
+  const clean = (code ?? "").replace(/\s+/g, "");
+  if (!/^\d{6}$/.test(clean)) return false;
+  try {
+    authenticator.options = { window: 1 };
+    return authenticator.verify({ token: clean, secret });
+  } catch {
+    return false;
+  }
 }
 
 function toPublicUser(row: {

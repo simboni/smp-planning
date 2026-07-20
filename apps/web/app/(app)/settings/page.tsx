@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { colorFor } from "@/lib/format";
+import SecuritySettings from "@/components/SecuritySettings";
 
 export default function SettingsPage() {
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
@@ -87,6 +88,9 @@ export default function SettingsPage() {
         </div>
         <span className="settings-link-arrow">{Icons.chevronRight}</span>
       </Link>
+
+      <div className="sec-heading">Security</div>
+      <SecuritySettings />
 
       <div className="notice">
         {Icons.info}

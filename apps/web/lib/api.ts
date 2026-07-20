@@ -566,6 +566,8 @@ export interface ApiOptions {
   body?: unknown;
   /** Which token to attach. Defaults to the workspace access token. */
   auth?: AuthMode;
+  /** Extra request headers merged into the defaults. */
+  headers?: Record<string, string>;
 }
 
 function tokenFor(auth: AuthMode): string | null {
@@ -585,6 +587,7 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.headers ?? {}),
       },
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     });
@@ -625,11 +628,35 @@ interface AuthResult {
   workspaces: WorkspaceSummary[];
 }
 
+/** login/signup return tokens, OR a 2FA challenge when the account has 2FA on. */
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  challengeToken: string;
+}
+export type LoginResult = AuthResult | TwoFactorChallenge;
+export const isTwoFactorChallenge = (r: LoginResult): r is TwoFactorChallenge =>
+  (r as TwoFactorChallenge).twoFactorRequired === true;
+
+export interface SessionInfo {
+  id: string;
+  userAgent: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  current: boolean;
+}
+
 export const authApi = {
   signup: (body: { email: string; fullName: string; password: string }) =>
     api<AuthResult>("/auth/signup", { method: "POST", body, auth: "none" }),
   login: (body: { email: string; password: string }) =>
-    api<AuthResult>("/auth/login", { method: "POST", body, auth: "none" }),
+    api<LoginResult>("/auth/login", { method: "POST", body, auth: "none" }),
+  /** Second step when login returns a 2FA challenge. */
+  login2fa: (challengeToken: string, code: string) =>
+    api<AuthResult>("/auth/2fa/login", {
+      method: "POST",
+      body: { challengeToken, code },
+      auth: "none",
+    }),
   refresh: (refreshToken: string) =>
     api<{ identityToken: string; refreshToken: string }>("/auth/refresh", {
       method: "POST",
@@ -637,6 +664,36 @@ export const authApi = {
       auth: "none",
     }),
   me: () => api<{ user: PublicUser }>("/auth/me", { auth: "identity" }),
+};
+
+/* ---- Module 16: Account security (2FA + sessions) ----------------- */
+export const securityApi = {
+  twoFactorStatus: () =>
+    api<{ enabled: boolean }>("/auth/2fa/status", { auth: "identity" }),
+  enroll2fa: () =>
+    api<{ otpauthUri: string; qrDataUrl: string }>("/auth/2fa/enroll", {
+      method: "POST",
+      auth: "identity",
+    }),
+  enable2fa: (code: string) =>
+    api<{ enabled: true }>("/auth/2fa/enable", {
+      method: "POST",
+      body: { code },
+      auth: "identity",
+    }),
+  disable2fa: (code: string) =>
+    api<{ enabled: false }>("/auth/2fa/disable", {
+      method: "POST",
+      body: { code },
+      auth: "identity",
+    }),
+  listSessions: () =>
+    api<{ sessions: SessionInfo[] }>("/auth/sessions", {
+      auth: "identity",
+      headers: { "x-refresh-token": getRefreshToken() ?? "" },
+    }),
+  revokeSession: (id: string) =>
+    api<void>(`/auth/sessions/${id}`, { method: "DELETE", auth: "identity" }),
 };
 
 export const workspacesApi = {

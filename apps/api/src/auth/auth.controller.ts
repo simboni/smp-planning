@@ -2,11 +2,16 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
+  Param,
+  ParseUUIDPipe,
   Post,
+  Req,
   UseGuards,
 } from "@nestjs/common";
+import type { Request } from "express";
 import type { IdentityTokenClaims, WorkspaceTokenClaims } from "@stackup/shared";
 import { AuthService } from "./auth.service";
 import { CurrentAuth, JwtAuthGuard } from "./guards";
@@ -16,12 +21,15 @@ import { CurrentAuth, JwtAuthGuard } from "./guards";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
 
+const ua = (req: Request) => req.headers["user-agent"];
+
 @Controller("auth")
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post("signup")
   async signup(
+    @Req() req: Request,
     @Body()
     body: {
       email?: string;
@@ -41,33 +49,111 @@ export class AuthController {
         `Password must be at least ${MIN_PASSWORD} characters`,
       );
     }
-    return this.auth.signup({ email, fullName, password });
+    return this.auth.signup({ email, fullName, password }, ua(req));
   }
 
   @Post("login")
   @HttpCode(200)
-  async login(@Body() body: { email?: string; password?: string }) {
+  async login(
+    @Req() req: Request,
+    @Body() body: { email?: string; password?: string },
+  ) {
     if (!body?.email || !body?.password) {
       throw new BadRequestException("Email and password are required");
     }
-    return this.auth.login(body.email, body.password);
+    return this.auth.login(body.email, body.password, ua(req));
+  }
+
+  /** Second step of a 2FA login: exchange a challenge token + code for tokens. */
+  @Post("2fa/login")
+  @HttpCode(200)
+  async login2fa(
+    @Req() req: Request,
+    @Body() body: { challengeToken?: string; code?: string },
+  ) {
+    if (!body?.challengeToken || !body?.code) {
+      throw new BadRequestException("challengeToken and code are required");
+    }
+    return this.auth.login2fa(body.challengeToken, body.code, ua(req));
   }
 
   @Post("refresh")
   @HttpCode(200)
-  async refresh(@Body() body: { refreshToken?: string }) {
+  async refresh(@Req() req: Request, @Body() body: { refreshToken?: string }) {
     if (!body?.refreshToken) {
       throw new BadRequestException("refreshToken is required");
     }
-    return this.auth.refresh(body.refreshToken);
+    return this.auth.refresh(body.refreshToken, ua(req));
   }
 
   /** Any valid token (identity or access) resolves to the same identity. */
   @Get("me")
   @UseGuards(JwtAuthGuard)
-  async me(
+  async me(@CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims) {
+    return { user: await this.auth.me(auth.sub) };
+  }
+
+  /* ---- Two-factor auth (authenticated) ----------------------------- */
+
+  @Get("2fa/status")
+  @UseGuards(JwtAuthGuard)
+  async twoFactorStatus(
     @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
   ) {
-    return { user: await this.auth.me(auth.sub) };
+    return this.auth.twoFactorStatus(auth.sub);
+  }
+
+  @Post("2fa/enroll")
+  @UseGuards(JwtAuthGuard)
+  async enroll(@CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims) {
+    return this.auth.enroll2fa(auth.sub);
+  }
+
+  @Post("2fa/enable")
+  @UseGuards(JwtAuthGuard)
+  async enable(
+    @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
+    @Body() body: { code?: string },
+  ) {
+    if (!body?.code) throw new BadRequestException("A code is required");
+    return this.auth.enable2fa(auth.sub, body.code);
+  }
+
+  @Post("2fa/disable")
+  @UseGuards(JwtAuthGuard)
+  async disable(
+    @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
+    @Body() body: { code?: string },
+  ) {
+    if (!body?.code) throw new BadRequestException("A code is required");
+    return this.auth.disable2fa(auth.sub, body.code);
+  }
+
+  /* ---- Sessions (authenticated) ------------------------------------ */
+
+  @Get("sessions")
+  @UseGuards(JwtAuthGuard)
+  async sessions(
+    @Req() req: Request,
+    @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
+  ) {
+    // The client sends its own refresh token so we can flag the current device.
+    const current = req.headers["x-refresh-token"];
+    return {
+      sessions: await this.auth.listSessions(
+        auth.sub,
+        typeof current === "string" ? current : undefined,
+      ),
+    };
+  }
+
+  @Delete("sessions/:id")
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(204)
+  async revokeSession(
+    @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    await this.auth.revokeSession(auth.sub, id);
   }
 }

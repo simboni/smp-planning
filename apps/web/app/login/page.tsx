@@ -8,9 +8,11 @@ import {
   authApi,
   clearTokens,
   getIdentityToken,
+  isTwoFactorChallenge,
   setIdentityToken,
   setRefreshToken,
   setUser,
+  type PublicUser,
 } from "@/lib/api";
 import { Icons, StackMark } from "@/components/icons";
 
@@ -35,6 +37,9 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [health, setHealth] = useState<Health>("checking");
   const [healthMsg, setHealthMsg] = useState("");
+  // Second-factor step: set to the challenge token once login says 2FA is on.
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [code, setCode] = useState("");
 
   // Already have an identity? Skip straight to workspace selection.
   useEffect(() => {
@@ -65,6 +70,20 @@ export default function LoginPage() {
     };
   }, []);
 
+  // Store tokens and head to workspace selection — the shared "logged in" path.
+  const finishAuth = (result: {
+    identityToken: string;
+    refreshToken: string;
+    user: PublicUser;
+  }): void => {
+    setIdentityToken(result.identityToken);
+    setRefreshToken(result.refreshToken);
+    setUser(result.user);
+    // Whether they have workspaces or not, /select handles both (list or
+    // "create your first workspace").
+    router.replace("/select");
+  };
+
   const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (busy) return;
@@ -72,21 +91,26 @@ export default function LoginPage() {
     setError("");
     try {
       clearTokens();
-      const result =
-        mode === "signup"
-          ? await authApi.signup({
-              fullName: fullName.trim(),
-              email: email.trim(),
-              password,
-            })
-          : await authApi.login({ email: email.trim(), password });
+      if (mode === "signup") {
+        finishAuth(
+          await authApi.signup({
+            fullName: fullName.trim(),
+            email: email.trim(),
+            password,
+          }),
+        );
+        return;
+      }
 
-      setIdentityToken(result.identityToken);
-      setRefreshToken(result.refreshToken);
-      setUser(result.user);
-      // Whether they have workspaces or not, /select handles both (list or
-      // "create your first workspace").
-      router.replace("/select");
+      const result = await authApi.login({ email: email.trim(), password });
+      // Account has 2FA on — swap the form for the code step and hold the token.
+      if (isTwoFactorChallenge(result)) {
+        setChallengeToken(result.challengeToken);
+        setCode("");
+        setBusy(false);
+        return;
+      }
+      finishAuth(result);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -95,6 +119,31 @@ export default function LoginPage() {
       );
       setBusy(false);
     }
+  };
+
+  // Second step: exchange the challenge token + authenticator code for tokens.
+  const submit2fa = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (busy || !challengeToken) return;
+    setBusy(true);
+    setError("");
+    try {
+      finishAuth(await authApi.login2fa(challengeToken, code.trim()));
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
+      setBusy(false);
+    }
+  };
+
+  const cancel2fa = (): void => {
+    setChallengeToken(null);
+    setCode("");
+    setError("");
+    setBusy(false);
   };
 
   const switchMode = (m: Mode): void => {
@@ -153,6 +202,54 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {challengeToken ? (
+            <>
+              <h1 className="auth-title">Two-factor authentication</h1>
+              <p className="auth-sub">
+                Enter the code from your authenticator app to finish signing in.
+              </p>
+
+              <form onSubmit={(e) => void submit2fa(e)}>
+                {error && <div className="form-error">{error}</div>}
+
+                <div className="field">
+                  <label className="label" htmlFor="twofa-code">
+                    Authentication code
+                  </label>
+                  <input
+                    id="twofa-code"
+                    className="input auth-2fa-code"
+                    value={code}
+                    onChange={(e) =>
+                      setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                    placeholder="000000"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    required
+                  />
+                </div>
+
+                <button
+                  className="btn btn-primary btn-lg btn-block"
+                  type="submit"
+                  disabled={busy || code.length < 6}
+                  style={{ marginTop: 8 }}
+                >
+                  {busy ? <span className="spinner" /> : "Verify"}
+                </button>
+              </form>
+
+              <p className="auth-alt">
+                <button type="button" onClick={cancel2fa}>
+                  Back to log in
+                </button>
+              </p>
+            </>
+          ) : (
+          <>
           <div className="tabs" role="tablist">
             <button
               type="button"
@@ -283,6 +380,8 @@ export default function LoginPage() {
               </>
             )}
           </p>
+          </>
+          )}
 
           <div className={`server-chip ${health}`}>
             <span className="dot" />

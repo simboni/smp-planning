@@ -6088,3 +6088,90 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   background: var(--card-2);
 }
 .qt-nested .field:last-child { margin-bottom: 13px; }
+
+/* ===================================================================
+ * Module 16 — Security (2FA + active sessions)
+ * =================================================================== */
+
+/* Section heading above the security cards (mirrors settings altitude). */
+.sec-heading {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 26px 2px 12px;
+}
+
+/* Centered, spaced 6-digit code input — used on login + enroll/disable. */
+.auth-2fa-code {
+  text-align: center;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: 0.42em;
+  font-variant-numeric: tabular-nums;
+  padding-left: 0.42em; /* offset the trailing letter-spacing to stay centered */
+}
+
+/* "Enabled" / "This device" pill badges. */
+.sec-badge-on {
+  background: var(--ok-soft);
+  color: var(--ok);
+  text-transform: none;
+}
+.sec-badge-current {
+  background: var(--brand-soft);
+  color: var(--brand-700);
+  text-transform: none;
+  margin-left: 8px;
+}
+.sec-badge-on::before,
+.sec-badge-current::before { display: none; }
+.sec-badge-on svg { width: 13px; height: 13px; }
+
+.sec-error {
+  font-size: 13px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
+  margin-bottom: 14px;
+}
+
+/* Enroll layout: QR on the left, steps + code on the right; wraps on mobile. */
+.sec-enroll {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.sec-qr {
+  flex: none;
+  background: #ffffff; /* QR must stay on white in both themes to scan */
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px;
+  line-height: 0;
+}
+.sec-qr img { display: block; width: 168px; height: 168px; }
+.sec-enroll-body { flex: 1; min-width: 220px; }
+.sec-steps {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.sec-steps li { margin-bottom: 4px; }
+
+.sec-disable { margin-top: 4px; max-width: 320px; }
+.sec-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Destructive text button (turn off 2FA / sign out). */
+.sec-danger { color: var(--danger); }
+.sec-danger:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-soft); }
+
+@media (max-width: 560px) {
+  .sec-enroll { gap: 16px; }
+  .sec-qr { margin: 0 auto; }
+}
