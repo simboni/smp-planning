@@ -34,19 +34,28 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [health, setHealth] = useState<Health>("checking");
+  const [healthMsg, setHealthMsg] = useState("");
 
   // Already have an identity? Skip straight to workspace selection.
   useEffect(() => {
     if (getIdentityToken()) router.replace("/select");
   }, [router]);
 
-  // Lightweight backend heartbeat for the status chip.
+  // Lightweight backend heartbeat for the status chip. Reflects the DATABASE
+  // status (db), not just that the server answered — a reachable API with a
+  // broken DB is exactly what blocks signup/login, so surface it here.
   useEffect(() => {
     let alive = true;
     fetch(`${API_BASE}/health`)
       .then((r) => r.json().catch(() => ({})))
-      .then((b: { status?: string }) => {
-        if (alive) setHealth(b.status === "ok" ? "ok" : "down");
+      .then((b: { status?: string; db?: boolean; dbError?: string }) => {
+        if (!alive) return;
+        if (b.db) {
+          setHealth("ok");
+        } else {
+          setHealth("down");
+          setHealthMsg(b.dbError || "Database unavailable");
+        }
       })
       .catch(() => {
         if (alive) setHealth("down");
@@ -281,7 +290,9 @@ export default function LoginPage() {
               ? "Connecting to StackUp…"
               : health === "ok"
                 ? "All systems operational"
-                : "Can't reach the server"}
+                : healthMsg
+                  ? `Database unavailable — ${healthMsg}`
+                  : "Can't reach the server"}
           </div>
         </div>
       </main>
