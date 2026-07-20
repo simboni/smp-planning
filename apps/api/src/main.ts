@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import express from "express";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join, resolve } from "node:path";
 import type { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { loadConfig } from "./config";
@@ -43,11 +43,38 @@ async function bootstrap(): Promise<void> {
     next();
   });
 
-  // Single-origin deploy: if a sibling static web export exists, serve it
-  // from this process so there is one URL and no CORS in production.
+  // Single-origin deploy: serve the static web export from this process (one
+  // URL, no CORS). The web page routes and the API resource routes share names
+  // (/teams the page vs /teams the API), so we must NOT let express.static's
+  // extensionless .html fallback shadow API routes. Split it:
+  //   1. express.static serves real asset files only (/_next/*, .css, .js,
+  //      images, manifest) — these never collide with API routes.
+  //   2. A navigation handler serves an exported <path>.html ONLY for browser
+  //      navigations, detected by `Accept: text/html`. API calls use fetch,
+  //      whose default Accept is */* (no text/html), so they fall through to
+  //      the Nest router below and get JSON. SSE (text/event-stream) too.
   const webDir = process.env.WEB_DIST ?? join(__dirname, "..", "web");
   if (existsSync(webDir)) {
-    app.use(express.static(webDir, { extensions: ["html"] }));
+    const root = resolve(webDir);
+    // redirect:false so /settings isn't 301'd to /settings/ before we can map it.
+    app.use(express.static(root, { index: false, redirect: false }));
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method !== "GET") return next();
+      if (!(req.headers.accept ?? "").includes("text/html")) return next();
+      // An asset path (has an extension) that wasn't found above is a real 404.
+      if (extname(req.path)) return next();
+      const p = req.path.replace(/\/+$/, "") || "/index";
+      // A route may be exported as <p>.html (leaf) or <p>/index.html (has
+      // children, e.g. /settings alongside /settings/integrations).
+      for (const cand of [`.${p}.html`, `.${p}/index.html`]) {
+        const file = resolve(root, cand);
+        if (file.startsWith(root) && existsSync(file)) {
+          res.sendFile(file);
+          return;
+        }
+      }
+      next();
+    });
     console.log(`serving web app from ${webDir}`);
   }
 
