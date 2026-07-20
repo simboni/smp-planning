@@ -631,15 +631,29 @@ export function HierarchyTree() {
               dragOverKey === `space:${space.id}` ? " dragover" : ""
             }`}
             style={{ paddingLeft: 10 }}
-            onClick={() => toggle(space.id)}
             {...dragProps(
               { kind: "space", id: space.id, container: "spaces" },
               { kind: "space", id: space.id, container: "spaces" },
               { spaces: tree },
             )}
           >
-            <span className="tree-label">
-              <span className={`tree-caret${open ? " open" : ""}`}>{Icons.chevronRight}</span>
+            {/* Clicking the space opens its overview page and expands it; the
+                caret alone toggles expand/collapse without navigating. */}
+            <Link
+              href={`/space?id=${space.id}`}
+              className="tree-label"
+              onClick={() => ensureOpen(space.id)}
+            >
+              <span
+                className={`tree-caret${open ? " open" : ""}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggle(space.id);
+                }}
+              >
+                {Icons.chevronRight}
+              </span>
               {space.icon ? (
                 <span className="tree-emoji">{space.icon}</span>
               ) : (
@@ -647,7 +661,7 @@ export function HierarchyTree() {
               )}
               <span className="tree-name strong">{space.name}</span>
               {space.isPrivate && <span className="tree-lock" title="Private">{Icons.lock}</span>}
-            </span>
+            </Link>
             {showMenu && (
               <span className="tree-actions">
                 {canEdit && (
