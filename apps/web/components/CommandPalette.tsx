@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { Icons, type IconKey } from "@/components/icons";
 import { useHierarchy } from "@/components/HierarchyProvider";
 import {
+  aiApi,
   docsApi,
   hierarchyApi,
   searchApi,
@@ -53,6 +54,7 @@ const DESTINATIONS: { label: string; href: string; icon: IconKey; keywords?: str
   { label: "Portfolios", href: "/portfolios", icon: "briefcase", keywords: "rollup lists projects progress" },
   { label: "Dashboards", href: "/dashboards", icon: "dashboards", keywords: "reporting charts widgets analytics" },
   { label: "Chat", href: "/chat", icon: "chat", keywords: "messages channels dm slack conversation" },
+  { label: "Integrations & API", href: "/settings/integrations", icon: "bolt", keywords: "api tokens webhooks import export integrations pat developer" },
 ];
 
 export function CommandPalette({
@@ -194,9 +196,41 @@ export function CommandPalette({
       ];
     }
 
-    if (!results) return [];
-
     const out: Group[] = [];
+
+    // AI: interpret the raw query as a natural-language command. Shown first
+    // so ⌘K doubles as an "ask AI" bar; routing is intentionally conservative.
+    if (needle) {
+      const text = q.trim();
+      out.push({
+        title: "AI",
+        items: [
+          {
+            key: "ai-command",
+            icon: "zap",
+            title: `Ask AI · “${text}”`,
+            subtitle: "Interpret as a command",
+            tag: "AI",
+            run: () => {
+              onClose();
+              void aiApi
+                .command(text)
+                .then(({ command }) => {
+                  if (command.intent === "create_task") {
+                    router.push("/everything");
+                  } else if (command.intent === "search") {
+                    router.push(`/everything`);
+                  }
+                })
+                .catch(() => undefined);
+            },
+          },
+        ],
+      });
+    }
+
+    if (!results) return out;
+
     if (results.tasks.length)
       out.push({
         title: "Tasks",

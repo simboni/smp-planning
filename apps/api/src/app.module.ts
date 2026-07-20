@@ -1,9 +1,11 @@
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { AccessModule } from "./access/access.module";
+import { AiModule } from "./ai/ai.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { AutomationsModule } from "./automations/automations.module";
+import { IntegrationsModule } from "./integrations/integrations.module";
 import { ChatModule } from "./chat/chat.module";
 import { CommentsModule } from "./comments/comments.module";
 import { loadConfig } from "./config";
@@ -67,6 +69,8 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     HomeModule,
     TemplatesModule,
     WorkspaceExtrasModule,
+    AiModule,
+    IntegrationsModule,
   ],
   controllers: [HealthController],
 })

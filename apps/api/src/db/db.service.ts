@@ -69,6 +69,46 @@ export class DbService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * PUBLIC API path (M15): run fn with ONLY `app.pat_token` bound — no
+   * workspace, no user. The `pat_tenant` policy's token arm admits exactly
+   * the one personal-access-token row whose hash matches; every other RLS
+   * policy still reads its settings as NULL and denies. Used solely to
+   * resolve a presented token to its (workspace_id, user_id, scope) before
+   * establishing the real tenant context.
+   */
+  async withPatToken<T>(
+    tokenHash: string,
+    fn: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return this.inTransaction(async (client) => {
+      await client.query("SELECT set_config('app.pat_token', $1, true)", [
+        tokenHash,
+      ]);
+      return fn(client);
+    });
+  }
+
+  /**
+   * SYSTEM path (M15): run fn with ONLY `app.current_workspace` bound — no
+   * user. For server-internal, non-user-driven work such as webhook dispatch
+   * that must read a workspace's webhook rows off the event bus (where there
+   * is no acting user). Tenant-scoped tables still enforce their workspace
+   * arm, so this can only ever see the one workspace's rows.
+   */
+  async withWorkspaceSystem<T>(
+    workspaceId: string,
+    fn: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return this.inTransaction(async (client) => {
+      await client.query(
+        "SELECT set_config('app.current_workspace', $1, true)",
+        [workspaceId],
+      );
+      return fn(client);
+    });
+  }
+
   /** Run fn with BOTH workspace and user context bound (all scoped work). */
   async withWorkspace<T>(
     workspaceId: string,

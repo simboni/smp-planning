@@ -2845,3 +2845,164 @@ export const favoritesApi = {
       auth: "access",
     }),
 };
+
+/* ---- Module 15: AI Brain ------------------------------------------ */
+
+export type AiSource = "claude" | "heuristic";
+export type AiWriteAction = "improve" | "expand" | "shorten" | "fix" | "draft";
+
+export interface AiCommand {
+  intent: "create_task" | "search" | "unknown";
+  taskName?: string;
+  listHint?: string;
+  query?: string;
+  raw: string;
+}
+
+export const aiApi = {
+  status: () =>
+    api<{ available: boolean; model: string }>("/ai/status", {
+      auth: "access",
+    }),
+  write: (action: AiWriteAction, text: string, tone?: string) =>
+    api<{ text: string; source: AiSource }>("/ai/write", {
+      method: "POST",
+      body: { action, text, tone },
+      auth: "access",
+    }),
+  summarize: (text: string) =>
+    api<{ text: string; source: AiSource }>("/ai/summarize", {
+      method: "POST",
+      body: { text },
+      auth: "access",
+    }),
+  taskSummary: (taskId: string) =>
+    api<{ text: string; source: AiSource }>(`/ai/tasks/${taskId}/summary`, {
+      method: "POST",
+      auth: "access",
+    }),
+  taskSubtasks: (taskId: string) =>
+    api<{ items: string[]; source: AiSource }>(`/ai/tasks/${taskId}/subtasks`, {
+      method: "POST",
+      auth: "access",
+    }),
+  subtasks: (prompt: string) =>
+    api<{ items: string[]; source: AiSource }>("/ai/subtasks", {
+      method: "POST",
+      body: { prompt },
+      auth: "access",
+    }),
+  command: (text: string) =>
+    api<{ command: AiCommand }>("/ai/command", {
+      method: "POST",
+      body: { text },
+      auth: "access",
+    }),
+};
+
+/* ---- Module 15: Personal Access Tokens & public API --------------- */
+
+export type PatScope = "read" | "write";
+
+export interface PatSummary {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  scope: PatScope;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export const apiTokensApi = {
+  list: () => api<{ tokens: PatSummary[] }>("/pat", { auth: "access" }),
+  create: (name: string, scope: PatScope) =>
+    api<{ token: string; pat: PatSummary }>("/pat", {
+      method: "POST",
+      body: { name, scope },
+      auth: "access",
+    }),
+  revoke: (id: string) =>
+    api<void>(`/pat/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ---- Module 15: Webhooks ------------------------------------------ */
+
+export interface WebhookSummary {
+  id: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  createdAt: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  event: string;
+  statusCode: number | null;
+  ok: boolean;
+  error: string | null;
+  createdAt: string;
+}
+
+export const webhooksApi = {
+  list: () =>
+    api<{ webhooks: WebhookSummary[] }>("/webhooks", { auth: "access" }),
+  create: (url: string, events: string[]) =>
+    api<{ webhook: WebhookSummary; secret: string }>("/webhooks", {
+      method: "POST",
+      body: { url, events },
+      auth: "access",
+    }),
+  deliveries: (id: string) =>
+    api<{ deliveries: WebhookDelivery[] }>(`/webhooks/${id}/deliveries`, {
+      auth: "access",
+    }),
+  test: (id: string) =>
+    api<{ ok: boolean; statusCode: number | null }>(`/webhooks/${id}/test`, {
+      method: "POST",
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/webhooks/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+/* ---- Module 15: Import / Export ----------------------------------- */
+
+export interface ImportResult {
+  spaceId: string;
+  lists: number;
+  tasks: number;
+}
+
+export const importExportApi = {
+  exportWorkspace: () =>
+    api<{ spaces: unknown[] }>("/export/workspace", { auth: "access" }),
+  importCsv: (listId: string, csv: string) =>
+    api<{ tasks: number }>("/import/csv", {
+      method: "POST",
+      body: { listId, csv },
+      auth: "access",
+    }),
+  importBoard: (source: string, data: unknown) =>
+    api<ImportResult>("/import/board", {
+      method: "POST",
+      body: { source, data },
+      auth: "access",
+    }),
+  /** Download a list's tasks as a CSV file (auth-fetch → blob → click). */
+  downloadListCsv: async (listId: string, filename = "tasks.csv") => {
+    const token = getAccessToken();
+    const res = await fetch(`${API_BASE}/lists/${listId}/export.csv`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const blob = await res.blob();
+    if (typeof window === "undefined") return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+};

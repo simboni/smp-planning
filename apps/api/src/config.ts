@@ -14,6 +14,10 @@ export interface AppConfig {
   accessTtl: number;
   /** Refresh-token lifetime, in seconds. */
   refreshTtl: number;
+  /** Anthropic API key for the AI Brain; empty ⇒ heuristic fallback (M15). */
+  anthropicApiKey: string;
+  /** Claude model the AI Brain calls when a key is present. */
+  aiModel: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -26,5 +30,7 @@ export function loadConfig(): AppConfig {
       process.env.JWT_SECRET ?? "dev-only-secret-do-not-use-in-production",
     accessTtl: Number(process.env.ACCESS_TOKEN_TTL ?? 900),
     refreshTtl: Number(process.env.REFRESH_TOKEN_TTL ?? 2592000),
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+    aiModel: process.env.STACKUP_AI_MODEL ?? "claude-opus-4-8",
   };
 }

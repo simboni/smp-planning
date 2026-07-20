@@ -41,6 +41,11 @@ import { colorFor, formatEstimate, initials, toDateInputValue } from "@/lib/form
 import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChip, TypeIcon } from "@/components/TaskBits";
 import { FieldManager } from "@/components/FieldManager";
 import { CommentsActivity } from "@/components/CommentsActivity";
+import {
+  AiSubtaskButton,
+  AiSummaryButton,
+  AiWriterButton,
+} from "@/components/AiAssist";
 import { Attachments } from "@/components/Attachments";
 import { TaskEmail } from "@/components/TaskEmail";
 import { TimeTracking } from "@/components/TimeTracking";
@@ -807,7 +812,24 @@ export function TaskPanel({
 
             {/* Description */}
             <section className="tp-section">
-              <h3 className="tp-section-title">Description</h3>
+              <div className="tp-section-head">
+                <h3 className="tp-section-title">Description</h3>
+                <div className="tp-section-actions">
+                  <AiSummaryButton taskId={detail.id} />
+                  {canEdit && (
+                    <AiWriterButton
+                      text={descDraft}
+                      onReplace={(next) => {
+                        setDescDraft(next);
+                        setEditingDesc(false);
+                        void run(() =>
+                          tasksApi.update(detail.id, { description: next }),
+                        );
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
               {canEdit ? (
                 <textarea
                   className="tp-desc"
@@ -833,6 +855,14 @@ export function TaskPanel({
                     <span className="tp-count-badge">{detail.subtasks.length}</span>
                   )}
                 </h3>
+                {canEdit && (
+                  <div className="tp-section-actions">
+                    <AiSubtaskButton
+                      taskId={detail.id}
+                      onGenerated={(items) => items.forEach((n) => addSubtask(n))}
+                    />
+                  </div>
+                )}
               </div>
               <div className="tp-subtasks">
                 {detail.subtasks.map((st: TaskCard) => (

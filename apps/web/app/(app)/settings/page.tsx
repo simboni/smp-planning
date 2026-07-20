@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   getWorkspace,
@@ -76,9 +77,20 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <Link href="/settings/integrations" className="card settings-link">
+        <div className="settings-link-ic">{Icons.bolt}</div>
+        <div className="settings-link-body">
+          <div className="setting-label">Integrations &amp; API</div>
+          <div className="setting-hint">
+            Personal access tokens, webhooks, and import / export.
+          </div>
+        </div>
+        <span className="settings-link-arrow">{Icons.chevronRight}</span>
+      </Link>
+
       <div className="notice">
         {Icons.info}
-        More settings — billing, integrations, and permissions — are coming soon.
+        More settings — billing and permissions — are coming soon.
       </div>
     </div>
   );

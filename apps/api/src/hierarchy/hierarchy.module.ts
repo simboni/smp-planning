@@ -13,5 +13,7 @@ import { HierarchyService } from "./hierarchy.service";
   imports: [AuditModule, AccessModule],
   controllers: [HierarchyController],
   providers: [HierarchyService],
+  // M15 public REST API reuses listSpaces / createList etc.
+  exports: [HierarchyService],
 })
 export class HierarchyModule {}
