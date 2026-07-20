@@ -52,8 +52,11 @@ async function bootstrap(): Promise<void> {
   }
 
   app.enableShutdownHooks();
-  await app.listen(config.port);
-  console.log(`stackup-api listening on :${config.port}`);
+  // Bind to 0.0.0.0 explicitly: container platforms (Render/Fly/Cloud Run)
+  // route to the published port only when the process listens on all
+  // interfaces, not localhost. config.port already honors the injected PORT.
+  await app.listen(config.port, "0.0.0.0");
+  console.log(`stackup-api listening on 0.0.0.0:${config.port}`);
 }
 
 void bootstrap();
