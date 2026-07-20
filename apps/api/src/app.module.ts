@@ -15,6 +15,7 @@ import { DocsModule } from "./docs/docs.module";
 import { EventsModule } from "./events/events.module";
 import { FormsModule } from "./forms/forms.module";
 import { GoalsModule } from "./goals/goals.module";
+import { GovernanceModule } from "./governance/governance.module";
 import { HealthController } from "./health.controller";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
 import { HomeModule } from "./home/home.module";
@@ -49,6 +50,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     AccessModule,
     AuthModule,
     WorkspacesModule,
+    GovernanceModule,
     HierarchyModule,
     TeamsModule,
     SharingModule,

@@ -89,12 +89,34 @@ export default function SettingsPage() {
         <span className="settings-link-arrow">{Icons.chevronRight}</span>
       </Link>
 
+      <Link href="/settings/roles" className="card settings-link">
+        <div className="settings-link-ic">{Icons.lock}</div>
+        <div className="settings-link-body">
+          <div className="setting-label">Roles &amp; permissions</div>
+          <div className="setting-hint">
+            Custom roles and fine-grained capabilities for members and guests.
+          </div>
+        </div>
+        <span className="settings-link-arrow">{Icons.chevronRight}</span>
+      </Link>
+
+      <Link href="/settings/audit" className="card settings-link">
+        <div className="settings-link-ic">{Icons.clock}</div>
+        <div className="settings-link-body">
+          <div className="setting-label">Audit log</div>
+          <div className="setting-hint">
+            A tamper-evident record of every change in this workspace.
+          </div>
+        </div>
+        <span className="settings-link-arrow">{Icons.chevronRight}</span>
+      </Link>
+
       <div className="sec-heading">Security</div>
       <SecuritySettings />
 
       <div className="notice">
         {Icons.info}
-        More settings — billing and permissions — are coming soon.
+        More settings — billing — are coming soon.
       </div>
     </div>
   );

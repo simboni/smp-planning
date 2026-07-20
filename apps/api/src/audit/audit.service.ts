@@ -12,6 +12,49 @@ export interface AuditEntry {
 }
 
 /**
+ * Deterministic JSON: object keys are emitted in sorted order at every depth.
+ * The audit `data` is stored as jsonb, which normalizes key order on the way
+ * back out (Postgres orders keys by length then bytes). Hashing over a
+ * canonical form makes the chain verifiable regardless of how the writer's
+ * in-memory object was ordered vs. how jsonb hands it back — otherwise any
+ * multi-key payload whose insertion order differs from jsonb's storage order
+ * would fail integrity verification. Used by BOTH the writer here and the
+ * verifier (GovernanceService.verifyAudit); they must stay in lockstep.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => canonicalJson(v)).join(",")}]`;
+  }
+  const keys = Object.keys(value as Record<string, unknown>).sort();
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`)
+    .join(",")}}`;
+}
+
+/** The exact string hashed for one entry — shared by writer and verifier. */
+export function auditPayload(
+  prevHash: string | null,
+  entry: {
+    workspaceId: string;
+    actorUserId: string | null;
+    action: string;
+    entity: string;
+    entityId: string | null;
+    data: Record<string, unknown>;
+  },
+): string {
+  return `${prevHash ?? ""}|${canonicalJson({
+    workspaceId: entry.workspaceId,
+    actorUserId: entry.actorUserId,
+    action: entry.action,
+    entity: entry.entity,
+    entityId: entry.entityId,
+    data: entry.data,
+  })}`;
+}
+
+/**
  * Append-only, per-workspace hash-chained audit trail
  * (db/migrations/0001_core.sql). record() MUST be called inside the same
  * withWorkspace() transaction as the mutation it describes, so the audit
@@ -40,14 +83,14 @@ export class AuditService {
     const data = entry.data ?? {};
     const hash = createHash("sha256")
       .update(
-        `${prevHash ?? ""}|${JSON.stringify({
+        auditPayload(prevHash, {
           workspaceId: entry.workspaceId,
           actorUserId: entry.actorUserId,
           action: entry.action,
           entity: entry.entity,
           entityId: entry.entityId ?? null,
           data,
-        })}`,
+        }),
       )
       .digest("hex");
     await client.query(

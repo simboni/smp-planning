@@ -14,6 +14,7 @@ import {
 } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
+import { GovernanceService } from "../governance/governance.service";
 
 /** Top division inside a workspace (department / team / client). */
 export interface Space {
@@ -68,6 +69,7 @@ export class HierarchyService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly access: AccessService,
+    private readonly governance: GovernanceService,
   ) {}
 
   // --- Permission enforcement helpers ---------------------------------------
@@ -305,6 +307,14 @@ export class HierarchyService {
     const isPrivate = body?.isPrivate === true;
 
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // M17: a custom role may revoke Space creation from a member/guest.
+      await this.governance.requireCapability(
+        client,
+        userId,
+        role,
+        "createSpaces",
+        "Your role does not allow creating Spaces",
+      );
       const nextOrder = await this.nextOrder(
         client,
         `SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM spaces`,

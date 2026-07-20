@@ -6175,3 +6175,192 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   .sec-enroll { gap: 16px; }
   .sec-qr { margin: 0 auto; }
 }
+
+/* =========================================================================
+   Module 17 — Governance: custom roles, permissions & audit log
+   ========================================================================= */
+
+/* Back link to the settings index (shared by the roles & audit sub-pages). */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+}
+.back-link:hover { color: var(--ink); }
+.back-link svg { transform: rotate(180deg); width: 15px; height: 15px; }
+
+.empty-hint {
+  padding: 22px 4px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+/* ---- Custom roles list ---- */
+.role-list { display: flex; flex-direction: column; }
+.role-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.role-row:first-child { border-top: none; }
+.role-main { min-width: 0; flex: 1; }
+.role-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-weight: 600;
+  font-size: 14.5px;
+}
+.role-base {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--neutral-soft);
+  border-radius: var(--r-sm);
+  padding: 2px 7px;
+}
+.role-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: var(--r-sm);
+  padding: 2px 7px;
+}
+.role-caps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cap-chip {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: var(--card-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  padding: 2px 8px;
+}
+.cap-none { font-size: 12px; color: var(--muted); font-style: italic; }
+.role-actions { display: flex; gap: 2px; flex: none; }
+.btn.danger:hover { color: var(--danger); background: var(--danger-soft); }
+
+/* ---- Role editor ---- */
+.role-editor {
+  background: var(--card-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.role-editor-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+}
+.cap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px 16px;
+  margin: 14px 0 4px;
+}
+.cap-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.cap-toggle input { width: 16px; height: 16px; accent-color: var(--brand); }
+.role-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* ---- Assign roles ---- */
+.assign-list { display: flex; flex-direction: column; }
+.assign-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.assign-row:first-child { border-top: none; }
+.assign-who { min-width: 0; }
+.assign-name { font-weight: 600; font-size: 14px; }
+.assign-select { max-width: 220px; }
+
+/* ---- Audit log ---- */
+.audit-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.integrity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+}
+.integrity-badge .dot { width: 8px; height: 8px; border-radius: 50%; }
+.integrity-badge.ok { color: var(--ok); background: var(--ok-soft); }
+.integrity-badge.ok .dot { background: var(--ok); }
+.integrity-badge.bad { color: var(--danger); background: var(--danger-soft); }
+.integrity-badge.bad .dot { background: var(--danger); }
+.audit-filter { max-width: 190px; }
+
+.audit-feed { list-style: none; margin: 0; padding: 0; }
+.audit-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.audit-item:first-child { border-top: none; }
+.audit-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+.audit-dot.entity-space { background: var(--brand); }
+.audit-dot.entity-task { background: var(--info); }
+.audit-dot.entity-custom_role { background: var(--warn); }
+.audit-dot.entity-membership { background: var(--ok); }
+.audit-body { min-width: 0; flex: 1; }
+.audit-desc { font-size: 14px; }
+.audit-meta { display: flex; align-items: center; gap: 10px; margin-top: 3px; }
+.audit-action {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--card-2);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+}
+.audit-time { font-size: 12px; color: var(--muted); }
+.audit-more { display: flex; justify-content: center; padding-top: 12px; }
+
+@media (max-width: 560px) {
+  .role-editor-grid { grid-template-columns: 1fr; }
+  .assign-select { max-width: 150px; }
+}

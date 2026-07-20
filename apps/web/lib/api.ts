@@ -46,6 +46,8 @@ export interface Member {
   avatarUrl: string | null;
   role: WorkspaceRole;
   status: string;
+  /** Assigned custom role id (M17), or null. */
+  customRoleId?: string | null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -725,6 +727,138 @@ export const workspacesApi = {
       body,
       auth: "access",
     }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Governance (Module 17): custom roles + audit log viewer.
+ * ------------------------------------------------------------------ */
+export const CAPABILITIES = [
+  "createSpaces",
+  "deleteItems",
+  "createDocs",
+  "manageAutomations",
+  "exportData",
+  "viewAuditLog",
+  "manageMembers",
+] as const;
+export type Capability = (typeof CAPABILITIES)[number];
+
+export const CAPABILITY_LABELS: Record<Capability, string> = {
+  createSpaces: "Create Spaces",
+  deleteItems: "Delete items (Spaces, Folders, Lists, Tasks)",
+  createDocs: "Create Docs",
+  manageAutomations: "Create & manage Automations",
+  exportData: "Export workspace data",
+  viewAuditLog: "View the audit log",
+  manageMembers: "Invite & manage members",
+};
+
+/** Baseline capabilities for the two assignable base roles (UI defaults). */
+export const BASE_ROLE_CAPABILITIES: Record<"member" | "guest", Record<Capability, boolean>> = {
+  member: {
+    createSpaces: true,
+    deleteItems: true,
+    createDocs: true,
+    manageAutomations: true,
+    exportData: false,
+    viewAuditLog: false,
+    manageMembers: false,
+  },
+  guest: {
+    createSpaces: false,
+    deleteItems: false,
+    createDocs: false,
+    manageAutomations: false,
+    exportData: false,
+    viewAuditLog: false,
+    manageMembers: false,
+  },
+};
+
+export interface CustomRole {
+  id: string;
+  name: string;
+  description: string | null;
+  baseRole: "member" | "guest";
+  capabilities: Partial<Record<Capability, boolean>>;
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface AuditIntegrity {
+  ok: boolean;
+  checked: number;
+  brokenAt: string | null;
+}
+
+export const governanceApi = {
+  listRoles: () =>
+    api<{ roles: CustomRole[] }>("/governance/roles", { auth: "access" }),
+  createRole: (body: {
+    name: string;
+    description?: string;
+    baseRole: "member" | "guest";
+    capabilities: Partial<Record<Capability, boolean>>;
+  }) =>
+    api<{ role: CustomRole }>("/governance/roles", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateRole: (
+    id: string,
+    body: {
+      name?: string;
+      description?: string;
+      capabilities?: Partial<Record<Capability, boolean>>;
+    },
+  ) =>
+    api<{ role: CustomRole }>(`/governance/roles/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  deleteRole: (id: string) =>
+    api<void>(`/governance/roles/${id}`, { method: "DELETE", auth: "access" }),
+  assignRole: (userId: string, customRoleId: string | null) =>
+    api<void>(`/governance/members/${userId}/role`, {
+      method: "POST",
+      body: { customRoleId },
+      auth: "access",
+    }),
+  listAudit: (opts: {
+    limit?: number;
+    cursor?: string;
+    action?: string;
+    entity?: string;
+    actorUserId?: string;
+  } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.limit) q.set("limit", String(opts.limit));
+    if (opts.cursor) q.set("cursor", opts.cursor);
+    if (opts.action) q.set("action", opts.action);
+    if (opts.entity) q.set("entity", opts.entity);
+    if (opts.actorUserId) q.set("actorUserId", opts.actorUserId);
+    const qs = q.toString();
+    return api<{ events: AuditEvent[]; nextCursor: string | null }>(
+      `/audit${qs ? `?${qs}` : ""}`,
+      { auth: "access" },
+    );
+  },
+  verifyAudit: () =>
+    api<AuditIntegrity>("/audit/verify", { auth: "access" }),
 };
 
 /* ------------------------------------------------------------------ *

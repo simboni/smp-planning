@@ -17,6 +17,8 @@ export interface WorkspaceMember {
   avatarUrl: string | null;
   role: Role;
   status: string;
+  /** Assigned custom role id (M17), or null when none. */
+  customRoleId: string | null;
 }
 
 @Injectable()
@@ -118,7 +120,7 @@ export class WorkspacesService {
   ): Promise<WorkspaceMember[]> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       const res = await client.query(
-        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status
+        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status, m.custom_role_id
          FROM memberships m
          JOIN users u ON u.id = m.user_id
          WHERE m.workspace_id = $1
@@ -132,6 +134,7 @@ export class WorkspacesService {
         avatarUrl: r.avatar_url,
         role: r.role as Role,
         status: r.status,
+        customRoleId: r.custom_role_id ?? null,
       }));
     });
   }
@@ -177,6 +180,7 @@ export class WorkspacesService {
         avatarUrl: r.avatar_url,
         role: r.role,
         status: r.status,
+        customRoleId: null,
       };
       await this.audit.record(client, {
         workspaceId,
