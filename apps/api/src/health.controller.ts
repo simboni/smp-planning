@@ -11,14 +11,23 @@ export class HealthController {
    * blank Bad Gateway.
    */
   @Get()
-  async health(): Promise<{ status: "ok"; db: boolean }> {
-    let db = false;
+  async health(): Promise<{
+    status: "ok";
+    db: boolean;
+    dbError?: string;
+  }> {
     try {
       await this.db.query("SELECT 1");
-      db = true;
-    } catch {
-      db = false;
+      return { status: "ok", db: true };
+    } catch (err) {
+      // Surface the real reason so a failing managed-DB connection is
+      // diagnosable from the browser (SSL, auth, missing role, unreachable)
+      // instead of hiding behind an opaque 500 on the first query.
+      const e = err as { code?: string; message?: string };
+      const dbError = `${e.code ?? ""} ${e.message ?? String(err)}`
+        .trim()
+        .slice(0, 300);
+      return { status: "ok", db: false, dbError };
     }
-    return { status: "ok", db };
   }
 }
