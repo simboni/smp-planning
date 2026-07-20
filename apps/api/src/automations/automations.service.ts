@@ -9,6 +9,7 @@ import type { Role } from "@stackup/shared";
 import { AccessService } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
+import { LimitsService } from "../limits/limits.service";
 import {
   Priority,
   recordActivity,
@@ -98,6 +99,7 @@ export class AutomationsService implements OnModuleInit, OnModuleDestroy {
     private readonly db: DbService,
     private readonly access: AccessService,
     private readonly audit: AuditService,
+    private readonly limits: LimitsService,
   ) {}
 
   onModuleInit(): void {
@@ -388,6 +390,13 @@ export class AutomationsService implements OnModuleInit, OnModuleDestroy {
        ORDER BY created_at, id`,
       [spaceId, event.type],
     );
+    if (res.rows.length === 0) return;
+    // M20: once the workspace hits its monthly automation cap, stop running
+    // rules until the next period. Metering never blocks the user's own
+    // mutation — fire() is best-effort and simply no-ops when over quota.
+    if (!(await this.limits.automationQuotaAvailable(client, workspaceId))) {
+      return;
+    }
     for (const row of res.rows as AutomationRow[]) {
       const trigger = row.trigger;
       if (

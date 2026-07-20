@@ -9,6 +9,7 @@ import { AccessService } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
 import { EventsService } from "../events/events.service";
+import { LimitsService } from "../limits/limits.service";
 import {
   recordActivity,
   requireName,
@@ -66,6 +67,7 @@ export class FilesService {
     private readonly access: AccessService,
     private readonly audit: AuditService,
     private readonly events: EventsService,
+    private readonly limits: LimitsService,
   ) {}
 
   private async taskCtx(
@@ -103,6 +105,8 @@ export class FilesService {
         const task = await this.taskCtx(client, taskId);
         listId = task.listId;
         await requireSpaceEdit(this.access, client, userId, role, task.spaceId);
+        // M20: enforce the workspace storage cap before writing the bytes.
+        await this.limits.assertStorageAvailable(client, workspaceId, data.length);
 
         const ins = await client.query(
           `INSERT INTO files

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AccessModule } from "../access/access.module";
 import { AuditModule } from "../audit/audit.module";
+import { LimitsModule } from "../limits/limits.module";
 import { AutomationsController } from "./automations.controller";
 import { AutomationsService } from "./automations.service";
 
@@ -13,7 +14,7 @@ import { AutomationsService } from "./automations.service";
  * DbModule is @Global.
  */
 @Module({
-  imports: [AccessModule, AuditModule],
+  imports: [AccessModule, AuditModule, LimitsModule],
   controllers: [AutomationsController],
   providers: [AutomationsService],
   exports: [AutomationsService],

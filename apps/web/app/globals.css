@@ -6539,3 +6539,24 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 }
 .brand-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 .brand-saved { font-size: 13px; color: var(--ok); font-weight: 600; }
+
+/* ---- Usage & limits card (M20) ---- */
+.usage-row { padding: 10px 0; }
+.usage-row + .usage-row { border-top: 1px solid var(--line-soft); }
+.usage-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.usage-num { font-size: 13px; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.usage-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--neutral-soft);
+  overflow: hidden;
+}
+.usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width 0.3s ease;
+}
+.usage-fill.warn { background: var(--warn); }
+.usage-fill.danger { background: var(--danger); }

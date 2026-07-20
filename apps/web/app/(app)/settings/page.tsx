@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   getWorkspace,
+  limitsApi,
   setWorkspace as persistWorkspace,
   workspacesApi,
+  type UsageReport,
   type WorkspaceSummary,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
@@ -87,6 +89,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <UsageCard />
+
       {isAdmin && workspace && (
         <BrandingCard workspace={workspace} onSaved={setWorkspace} />
       )}
@@ -131,6 +135,80 @@ export default function SettingsPage() {
         {Icons.info}
         More settings — billing — are coming soon.
       </div>
+    </div>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v >= 10 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+}
+
+function UsageCard() {
+  const [usage, setUsage] = useState<UsageReport | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    limitsApi
+      .usage()
+      .then(setUsage)
+      .catch(() => setFailed(true));
+  }, []);
+
+  if (failed) return null;
+
+  const bar = (percent: number) => (
+    <div className="usage-bar">
+      <span
+        className={`usage-fill${percent >= 90 ? " danger" : percent >= 70 ? " warn" : ""}`}
+        style={{ width: `${Math.max(2, percent)}%` }}
+      />
+    </div>
+  );
+
+  return (
+    <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card-head">
+        <h3>Usage &amp; limits</h3>
+      </div>
+      {!usage ? (
+        <div className="skel" style={{ height: 80 }} />
+      ) : (
+        <>
+          <div className="usage-row">
+            <div className="usage-head">
+              <span className="setting-label">Storage</span>
+              <span className="usage-num">
+                {formatBytes(usage.storage.usedBytes)} of{" "}
+                {formatBytes(usage.storage.limitBytes)}
+              </span>
+            </div>
+            {bar(usage.storage.percent)}
+            <div className="setting-hint">Attachments and clips across all tasks.</div>
+          </div>
+
+          <div className="usage-row">
+            <div className="usage-head">
+              <span className="setting-label">Automations this month</span>
+              <span className="usage-num">
+                {usage.automations.used.toLocaleString()} of{" "}
+                {usage.automations.limit.toLocaleString()}
+              </span>
+            </div>
+            {bar(usage.automations.percent)}
+            <div className="setting-hint">
+              Rule runs reset on the 1st of each month.
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

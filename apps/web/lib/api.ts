@@ -875,6 +875,24 @@ export const governanceApi = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Limits & metering (Module 20).
+ * ------------------------------------------------------------------ */
+export interface Meter {
+  used: number;
+  limit: number;
+  remaining: number;
+  percent: number;
+}
+export interface UsageReport {
+  storage: Meter & { usedBytes: number; limitBytes: number };
+  automations: Meter & { periodStart: string };
+}
+
+export const limitsApi = {
+  usage: () => api<UsageReport>("/limits/usage", { auth: "access" }),
+};
+
+/* ------------------------------------------------------------------ *
  * Hierarchy endpoints — all workspace-scoped (access token).
  * ------------------------------------------------------------------ */
 export const hierarchyApi = {
