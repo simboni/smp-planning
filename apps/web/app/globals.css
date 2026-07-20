@@ -2729,14 +2729,23 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 
 /* --- Topbar presence + bell (AppShell) --- */
 .presence-row { display: flex; align-items: center; margin-right: 4px; }
-.presence-row .avatar { width: 26px; height: 26px; font-size: 0.62rem; border: 2px solid var(--card); margin-left: -6px; position: relative; }
-.presence-row .avatar:first-child { margin-left: 0; }
-.presence-row .avatar::after {
-  content: ""; position: absolute; right: -1px; bottom: -1px;
-  width: 8px; height: 8px; border-radius: 50%;
+.presence-av {
+  position: relative;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.64rem; font-weight: 700; color: #fff;
+  text-transform: uppercase; letter-spacing: 0.01em;
+  border: 2px solid var(--card);
+  margin-left: -7px; flex: none;
+}
+.presence-av:first-child { margin-left: 0; }
+.presence-dot {
+  position: absolute; right: -1px; bottom: -1px;
+  width: 9px; height: 9px; border-radius: 50%;
   background: var(--ok); border: 2px solid var(--card);
 }
-.presence-more { font-size: 0.72rem; color: var(--muted); margin-left: 4px; }
+.presence-more { background: var(--card-2); color: var(--muted); }
 .bell-wrap { position: relative; }
 .bell-btn { position: relative; color: var(--ink-2); }
 .bell-badge {
@@ -6034,3 +6043,37 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 .intg-io-col { display: flex; flex-direction: column; gap: 10px; }
 .intg-io-title { font-size: 13px; font-weight: 700; }
 .intg-area { min-height: 96px; resize: vertical; font-family: var(--font-sans); font-size: 13px; line-height: 1.5; }
+
+/* ===================================================================
+ * Global "New Task" button + quick-add modal
+ * =================================================================== */
+.newtask-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--brand-grad); color: #fff;
+  border: 0; border-radius: 10px; cursor: pointer;
+  font-weight: 700; font-size: 0.92rem; line-height: 1;
+  padding: 10px 16px; margin-right: 10px; flex: none; white-space: nowrap;
+  box-shadow: 0 6px 16px -6px rgba(123, 104, 238, 0.55);
+  transition: transform 0.1s, box-shadow 0.12s, filter 0.12s;
+}
+.newtask-btn:hover { filter: brightness(1.06); box-shadow: 0 9px 22px -7px rgba(123, 104, 238, 0.7); }
+.newtask-btn:active { transform: translateY(1px); }
+.newtask-btn svg { width: 18px; height: 18px; }
+@media (max-width: 760px) {
+  .newtask-label { display: none; }
+  .newtask-btn { padding: 10px 12px; margin-right: 6px; }
+}
+
+.modal-x {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 8px; border: 0; cursor: pointer;
+  background: transparent; color: var(--muted);
+}
+.modal-x:hover { background: var(--card-2); color: var(--ink); }
+.modal-x svg { width: 17px; height: 17px; }
+
+.qt-modal { max-width: 470px; }
+.qt-body { padding: 18px 22px 22px; }
+.qt-modal .modal-head-body h3 { font-size: 1.12rem; letter-spacing: -0.01em; margin: 0; }
+.qt-modal .modal-head-body p { font-size: 0.85rem; margin: 2px 0 0; }
+.input-lg { font-size: 1.02rem; padding: 12px 14px; }

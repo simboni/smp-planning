@@ -24,6 +24,7 @@ import {
 } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
 import { CommandPalette } from "@/components/CommandPalette";
+import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { HierarchyTree } from "@/components/HierarchyTree";
 import { FavoritesNav } from "@/components/FavoritesNav";
 import { Notepad } from "@/components/Notepad";
@@ -74,6 +75,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [online, setOnline] = useState<OnlineUser[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
 
   // Module 13 — total unread chat messages across all channels & DMs.
   const [chatUnread, setChatUnread] = useState(0);
@@ -242,6 +244,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const wsColor = workspace?.color || (workspace ? colorFor(workspace.id) : "#7B68EE");
+  // Presence shows OTHER online teammates — not yourself (a lone self-avatar
+  // is just noise), so the row only appears when someone else is online.
+  const onlineOthers = online.filter((u) => u.id !== user?.id);
 
   return (
     <div className="shell">
@@ -353,6 +358,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <button
             type="button"
+            className="newtask-btn"
+            onClick={() => setNewTaskOpen(true)}
+            aria-label="New task"
+          >
+            {Icons.plus}
+            <span className="newtask-label">New Task</span>
+          </button>
+
+          <button
+            type="button"
             className="topbar-search"
             onClick={() => setPaletteOpen(true)}
             aria-label="Search"
@@ -393,9 +408,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
-            {online.length > 0 && (
-              <div className="presence-row" aria-label={`${online.length} online`}>
-                {online.slice(0, 5).map((u) => (
+            {onlineOthers.length > 0 && (
+              <div
+                className="presence-row"
+                aria-label={`${onlineOthers.length} teammate(s) online`}
+              >
+                {onlineOthers.slice(0, 5).map((u) => (
                   <span
                     key={u.id}
                     className="presence-av"
@@ -406,12 +424,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <span className="presence-dot" />
                   </span>
                 ))}
-                {online.length > 5 && (
+                {onlineOthers.length > 5 && (
                   <span
                     className="presence-av presence-more"
-                    title={online.slice(5).map((u) => u.fullName).join(", ")}
+                    title={onlineOthers.slice(5).map((u) => u.fullName).join(", ")}
                   >
-                    +{online.length - 5}
+                    +{onlineOthers.length - 5}
                   </span>
                 )}
               </div>
@@ -539,6 +557,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      {newTaskOpen && <QuickTaskModal onClose={() => setNewTaskOpen(false)} />}
       <Notepad />
     </div>
   );
