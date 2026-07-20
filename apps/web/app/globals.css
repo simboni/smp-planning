@@ -6077,3 +6077,14 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 .qt-modal .modal-head-body h3 { font-size: 1.12rem; letter-spacing: -0.01em; margin: 0; }
 .qt-modal .modal-head-body p { font-size: 0.85rem; margin: 2px 0 0; }
 .input-lg { font-size: 1.02rem; padding: 12px 14px; }
+
+/* Inline "create new list / space" panel inside the New Task modal */
+.qt-nested {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand);
+  border-radius: 10px;
+  padding: 13px 14px 1px;
+  margin: 2px 0 16px;
+  background: var(--card-2);
+}
+.qt-nested .field:last-child { margin-bottom: 13px; }

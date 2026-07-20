@@ -56,10 +56,6 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/settings", label: "Settings", icon: "settings" },
 ];
 
-const COMING_SOON: NavItem[] = [
-  { href: "#", label: "Tasks", icon: "tasks" },
-];
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -307,22 +303,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <HierarchyTree />
           </Suspense>
-
-          <div className="nav-section">
-            <div className="nav-title">Coming soon</div>
-            {COMING_SOON.map((item) => (
-              <span
-                key={item.label}
-                className="navlink soon"
-                aria-disabled="true"
-                title={`${item.label} — coming soon`}
-              >
-                {Icons[item.icon]}
-                {item.label}
-                <span className="soon-tag">Soon</span>
-              </span>
-            ))}
-          </div>
         </nav>
 
         <div className="sidebar-foot">
