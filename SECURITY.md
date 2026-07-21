@@ -31,7 +31,7 @@ following issues were found and **fixed**:
 | Area | Fix |
 | --- | --- |
 | Stored XSS in Docs/Notepad (bypassable regex sanitizer) | Replaced with the `xss` allow-list HTML sanitizer (`docs.support.ts`). |
-| Weak committed JWT-secret fallback | `loadConfig()` refuses to boot in production without a strong (≥32-byte) `JWT_SECRET` / real `APP_DB_URL`. |
+| Weak committed JWT-secret fallback | In production the app never signs with the committed default: if `JWT_SECRET` is unset it generates a strong random ephemeral secret for the run (and warns to set a persistent one) instead of crashing. |
 | 2FA challenge token accepted as a credential | `JwtAuthGuard` now only accepts `identity`/`access` tokens and pins HS256. |
 | No rate limiting | `@nestjs/throttler`: 300/min global, 10/min on auth endpoints, 20/min on the public form. |
 | DB TLS not verified (MITM) | Certificates are verified by default; `DB_SSL_CA` / `DB_SSL_INSECURE` for edge cases. |

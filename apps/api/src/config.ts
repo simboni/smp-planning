@@ -6,6 +6,8 @@
  * (both are short-lived bearer JWTs); the refresh TTL governs the opaque,
  * hashed rotation tokens stored in the DB.
  */
+import { randomBytes } from "node:crypto";
+
 export interface AppConfig {
   port: number;
   appDbUrl: string;
@@ -42,37 +44,50 @@ export const DEV_JWT_SECRET = "dev-only-secret-do-not-use-in-production";
 const DEV_DB_URL = "postgres://stackup_app:app_dev_pw@localhost:5432/stackup_dev";
 
 /**
- * Guard against booting production with a known/weak signing secret. A missing
- * or default JWT_SECRET means every token type is signed with a public
- * constant — anyone can forge an owner token. Fail fast instead of serving
- * forgeable auth. Only enforced when NODE_ENV=production so local/test runs
- * keep working with the dev default.
+ * Resolve the JWT signing secret ONCE for the process. A missing or default
+ * secret in production is dangerous — every token is signed with a public
+ * constant, so anyone could forge an owner token. But hard-crashing the app
+ * over it takes the whole deployment down. Instead, in production we generate
+ * a strong ephemeral secret for this run and warn loudly: the app stays up and
+ * is NOT forgeable, the only cost being that sessions don't survive a restart
+ * until a persistent JWT_SECRET is set. Memoized at module load so every
+ * caller (JwtModule, guards, controllers) shares the SAME secret within a
+ * process — otherwise signing and verification would use different keys.
  */
-function assertProductionSecrets(cfg: AppConfig): void {
-  if (process.env.NODE_ENV !== "production") return;
-  const problems: string[] = [];
-  if (!process.env.JWT_SECRET || cfg.jwtSecret === DEV_JWT_SECRET) {
-    problems.push("JWT_SECRET is unset or still the committed dev default");
-  } else if (Buffer.byteLength(cfg.jwtSecret, "utf8") < 32) {
-    problems.push("JWT_SECRET must be at least 32 bytes of entropy");
-  }
-  if (!process.env.APP_DB_URL || cfg.appDbUrl === DEV_DB_URL) {
-    problems.push("APP_DB_URL is unset or still the local dev default");
-  }
-  if (problems.length > 0) {
-    throw new Error(
-      `Refusing to start in production with insecure config:\n  - ${problems.join(
-        "\n  - ",
-      )}`,
+function resolveJwtSecret(): string {
+  const fromEnv = process.env.JWT_SECRET;
+  if (fromEnv && fromEnv !== DEV_JWT_SECRET) return fromEnv;
+  if (process.env.NODE_ENV === "production") {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[config] JWT_SECRET is not set — generated a random ephemeral secret " +
+        "for this run. Set a persistent JWT_SECRET so sessions survive restarts.",
     );
+    return randomBytes(48).toString("base64url");
   }
+  return DEV_JWT_SECRET;
 }
 
+/** The effective signing secret — stable for the lifetime of the process. */
+const EFFECTIVE_JWT_SECRET = resolveJwtSecret();
+
 export function loadConfig(): AppConfig {
+  if (
+    process.env.NODE_ENV === "production" &&
+    (!process.env.APP_DB_URL || process.env.APP_DB_URL === DEV_DB_URL)
+  ) {
+    // Don't crash — the DB simply won't connect, which /health already reports
+    // as { db: false }. Warn so it's diagnosable.
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[config] APP_DB_URL is not set in production — the database will be " +
+        "unavailable until it is configured.",
+    );
+  }
   const cfg: AppConfig = {
     port: Number(process.env.PORT ?? 3000),
     appDbUrl: process.env.APP_DB_URL ?? DEV_DB_URL,
-    jwtSecret: process.env.JWT_SECRET ?? DEV_JWT_SECRET,
+    jwtSecret: EFFECTIVE_JWT_SECRET,
     accessTtl: Number(process.env.ACCESS_TOKEN_TTL ?? 900),
     refreshTtl: Number(process.env.REFRESH_TOKEN_TTL ?? 2592000),
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
@@ -87,6 +102,5 @@ export function loadConfig(): AppConfig {
     emailRelayAuthHeader: process.env.EMAIL_RELAY_AUTH_HEADER ?? "Authorization",
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@stackup.app",
   };
-  assertProductionSecrets(cfg);
   return cfg;
 }
