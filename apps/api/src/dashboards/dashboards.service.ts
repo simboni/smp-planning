@@ -9,6 +9,7 @@ import type { Role } from "@stackup/shared";
 import { AccessService } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
+import { LimitsService } from "../limits/limits.service";
 import { EventsService } from "../events/events.service";
 import { GoalsService } from "../goals/goals.service";
 import {
@@ -36,6 +37,9 @@ export const CARD_KINDS = [
   "overdueByAssignee",
 ] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
+
+/** Card kinds gated behind the Business plan's advancedCards feature (M24). */
+const ADVANCED_KINDS = new Set<CardKind>(["completionTrend", "overdueByAssignee"]);
 
 export interface DashboardSummary {
   id: string;
@@ -138,6 +142,7 @@ export class DashboardsService {
     private readonly audit: AuditService,
     private readonly events: EventsService,
     private readonly goals: GoalsService,
+    private readonly limits: LimitsService,
   ) {}
 
   private publishDashboardChanged(
@@ -343,6 +348,15 @@ export class DashboardsService {
       async (client) => {
         const row = await this.dashboardRow(client, dashboardId);
         this.requireDashboardEdit(row, userId, role);
+        // M24: the advanced analytics cards are a Business-plan feature.
+        if (ADVANCED_KINDS.has(kind)) {
+          await this.limits.requireFeature(
+            client,
+            workspaceId,
+            "advancedCards",
+            "Advanced dashboard cards",
+          );
+        }
         const pos = await client.query(
           `SELECT COALESCE(MAX(position) + 1, 0)::int AS n
            FROM dashboard_cards WHERE dashboard_id = $1`,

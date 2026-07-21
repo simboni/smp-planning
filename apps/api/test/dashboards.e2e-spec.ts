@@ -347,6 +347,8 @@ describe("dashboards", () => {
 
   it("completionTrend buckets completed tasks by week (M21)", async () => {
     const owner = await ownerWorkspace();
+    // Advanced cards are Business-plan features (M24).
+    await http.post("/plans/select").set(auth(owner.accessToken)).send({ plan: "business" }).expect(200);
     const { space, list } = await makeSpaceAndList(owner.accessToken);
     const statuses = await spaceStatuses(owner.accessToken, space.id);
     const done = statuses.find((s) => s.type === "done")!;
@@ -370,6 +372,7 @@ describe("dashboards", () => {
 
   it("overdueByAssignee groups past-due open tasks (M21)", async () => {
     const owner = await ownerWorkspace();
+    await http.post("/plans/select").set(auth(owner.accessToken)).send({ plan: "business" }).expect(200);
     const member = await memberOf(owner.accessToken, owner.workspaceId, "member");
     const { space, list } = await makeSpaceAndList(owner.accessToken);
     const past = new Date(Date.now() - 3 * 86400000).toISOString();

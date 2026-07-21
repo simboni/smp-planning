@@ -19,6 +19,7 @@ import {
 } from "@stackup/shared";
 import { AuditService, auditPayload } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
+import { LimitsService } from "../limits/limits.service";
 
 /** Sanitize an arbitrary capability map down to known boolean keys. */
 function cleanOverrides(input: unknown): CapabilityOverrides {
@@ -77,6 +78,7 @@ export class GovernanceService {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
+    private readonly limits: LimitsService,
   ) {}
 
   // --- capability resolution & enforcement ---------------------------------
@@ -167,6 +169,8 @@ export class GovernanceService {
     }
     const capabilities = cleanOverrides(input.capabilities);
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // M24: custom roles are a Business-plan feature.
+      await this.limits.requireFeature(client, workspaceId, "customRoles", "Custom roles");
       const dup = await client.query(
         `SELECT 1 FROM custom_roles WHERE lower(name) = lower($1)`,
         [name],
@@ -207,6 +211,7 @@ export class GovernanceService {
     input: { name?: string; description?: string; capabilities?: unknown },
   ): Promise<CustomRole> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await this.limits.requireFeature(client, workspaceId, "customRoles", "Custom roles");
       const existing = await client.query(
         `SELECT * FROM custom_roles WHERE id = $1`,
         [roleId],
@@ -284,6 +289,7 @@ export class GovernanceService {
     roleId: string | null,
   ): Promise<void> {
     await this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await this.limits.requireFeature(client, workspaceId, "customRoles", "Custom roles");
       const member = await client.query(
         `SELECT role FROM memberships WHERE user_id = $1`,
         [targetUserId],
@@ -331,6 +337,9 @@ export class GovernanceService {
   ): Promise<{ events: AuditEvent[]; nextCursor: string | null }> {
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // M24: the audit viewer is a Business-plan feature (writing continues on
+      // every plan — history is complete the day a workspace upgrades).
+      await this.limits.requireFeature(client, workspaceId, "auditLog", "The audit log");
       await this.requireCapability(
         client,
         userId,
@@ -401,6 +410,7 @@ export class GovernanceService {
     role: Role,
   ): Promise<AuditIntegrity> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await this.limits.requireFeature(client, workspaceId, "auditLog", "The audit log");
       await this.requireCapability(
         client,
         userId,

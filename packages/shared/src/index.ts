@@ -176,3 +176,108 @@ export interface AuditIntegrity {
   /** id of the first row whose hash doesn't match, when ok = false. */
   brokenAt: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Pricing plans (Module 24). A workspace's plan decides its resource limits
+// and which premium features are on. Numbers can still be overridden per
+// workspace via workspace_limits (a billing/admin concern); features cannot.
+// ---------------------------------------------------------------------------
+
+export const PLAN_IDS = ["free", "unlimited", "business", "enterprise"] as const;
+export type PlanId = (typeof PLAN_IDS)[number];
+
+/** Premium features a plan can switch on. */
+export const PLAN_FEATURES = [
+  "customRoles",
+  "auditLog",
+  "branding",
+  "advancedCards",
+] as const;
+export type PlanFeature = (typeof PLAN_FEATURES)[number];
+
+export interface PlanDef {
+  id: PlanId;
+  name: string;
+  /** USD per member per month; 0 = free, null = "talk to us". */
+  pricePerMemberMonth: number | null;
+  tagline: string;
+  storageBytes: number;
+  automationsPerMonth: number;
+  features: Record<PlanFeature, boolean>;
+  /** Marketing bullet points for the plan card. */
+  highlights: string[];
+}
+
+const GB = 1024 * 1024 * 1024;
+
+export const PLANS: Record<PlanId, PlanDef> = {
+  free: {
+    id: "free",
+    name: "Free Forever",
+    pricePerMemberMonth: 0,
+    tagline: "Best for personal use",
+    storageBytes: 500 * 1024 * 1024,
+    automationsPerMonth: 100,
+    features: { customRoles: false, auditLog: false, branding: false, advancedCards: false },
+    highlights: [
+      "Unlimited tasks & members",
+      "All views incl. Timeline",
+      "Docs, Whiteboards, Chat & Goals",
+      "500 MB storage",
+      "100 automation runs / month",
+    ],
+  },
+  unlimited: {
+    id: "unlimited",
+    name: "Unlimited",
+    pricePerMemberMonth: 7,
+    tagline: "Best for small teams",
+    storageBytes: 10 * GB,
+    automationsPerMonth: 1000,
+    features: { customRoles: false, auditLog: false, branding: true, advancedCards: false },
+    highlights: [
+      "Everything in Free",
+      "10 GB storage",
+      "1,000 automation runs / month",
+      "Custom branding (logo & accent)",
+      "Guests & portfolios",
+    ],
+  },
+  business: {
+    id: "business",
+    name: "Business",
+    pricePerMemberMonth: 12,
+    tagline: "Best for mid-size teams",
+    storageBytes: 100 * GB,
+    automationsPerMonth: 10_000,
+    features: { customRoles: true, auditLog: true, branding: true, advancedCards: true },
+    highlights: [
+      "Everything in Unlimited",
+      "100 GB storage",
+      "10,000 automation runs / month",
+      "Custom roles & permissions",
+      "Audit log & advanced dashboard cards",
+    ],
+  },
+  enterprise: {
+    id: "enterprise",
+    name: "Enterprise",
+    pricePerMemberMonth: null,
+    tagline: "Best for many large teams",
+    storageBytes: 1024 * GB,
+    automationsPerMonth: 100_000,
+    features: { customRoles: true, auditLog: true, branding: true, advancedCards: true },
+    highlights: [
+      "Everything in Business",
+      "1 TB storage",
+      "100,000 automation runs / month",
+      "Priority support",
+      "White-glove onboarding",
+    ],
+  },
+};
+
+/** Does `plan` include `feature`? */
+export function planHasFeature(plan: PlanId, feature: PlanFeature): boolean {
+  return PLANS[plan]?.features[feature] === true;
+}

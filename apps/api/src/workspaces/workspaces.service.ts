@@ -10,6 +10,7 @@ import type { Role, WorkspaceSummary } from "@stackup/shared";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { DbService } from "../db/db.service";
+import { LimitsService } from "../limits/limits.service";
 
 export interface WorkspaceMember {
   id: string;
@@ -28,6 +29,7 @@ export class WorkspacesService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly auth: AuthService,
+    private readonly limits: LimitsService,
   ) {}
 
   /** The caller's active workspaces (workspace picker). */
@@ -148,7 +150,12 @@ export class WorkspacesService {
     if (sets.length === 0) {
       throw new BadRequestException("Nothing to update");
     }
+    // M24: renaming is free; the accent color and logo are branding (paid).
+    const wantsBranding = input.color !== undefined || input.avatarUrl !== undefined;
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      if (wantsBranding) {
+        await this.limits.requireFeature(client, workspaceId, "branding", "Custom branding");
+      }
       const res = await client.query(
         `UPDATE workspaces SET ${sets.join(", ")} WHERE id = $1
          RETURNING id, name, slug, color, avatar_url`,

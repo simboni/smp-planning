@@ -128,13 +128,20 @@ export default function SettingsPage() {
         <span className="settings-link-arrow">{Icons.chevronRight}</span>
       </Link>
 
+      <Link href="/settings/plans" className="card settings-link">
+        <div className="settings-link-ic">{Icons.coin}</div>
+        <div className="settings-link-body">
+          <div className="setting-label">Plans &amp; billing</div>
+          <div className="setting-hint">
+            Free, Unlimited, Business and Enterprise — pick your workspace&apos;s plan.
+          </div>
+        </div>
+        <span className="settings-link-arrow">{Icons.chevronRight}</span>
+      </Link>
+
       <div className="sec-heading">Security</div>
       <SecuritySettings />
 
-      <div className="notice">
-        {Icons.info}
-        More settings — billing — are coming soon.
-      </div>
     </div>
   );
 }

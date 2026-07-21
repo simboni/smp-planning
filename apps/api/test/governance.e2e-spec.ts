@@ -35,7 +35,11 @@ async function signup(email = uniqueEmail()) {
   return { email, identityToken: res.body.identityToken as string };
 }
 
-/** Create a workspace owned by identityToken and return its access token. */
+/**
+ * Create a workspace owned by identityToken and return its access token.
+ * Upgraded to Business (M24): governance features (custom roles, audit
+ * viewer) are plan-gated and these tests exercise the features themselves.
+ */
 async function makeWorkspace(identityToken: string, name = "Gov WS") {
   const ws = await http
     .post("/workspaces")
@@ -46,7 +50,9 @@ async function makeWorkspace(identityToken: string, name = "Gov WS") {
     .post(`/workspaces/${ws.body.workspace.id}/token`)
     .set(auth(identityToken))
     .expect(200);
-  return { workspaceId: ws.body.workspace.id as string, accessToken: tok.body.accessToken as string };
+  const accessToken = tok.body.accessToken as string;
+  await http.post("/plans/select").set(auth(accessToken)).send({ plan: "business" }).expect(200);
+  return { workspaceId: ws.body.workspace.id as string, accessToken };
 }
 
 /** Invite a fresh member and return their user id + a workspace access token. */

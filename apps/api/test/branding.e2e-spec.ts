@@ -33,10 +33,13 @@ async function signup(email = uniqueEmail()) {
     .expect(201);
   return { email, identityToken: res.body.identityToken as string };
 }
+/** Workspace upgraded to Unlimited — custom branding is plan-gated (M24). */
 async function makeWorkspace(identityToken: string) {
   const ws = await http.post("/workspaces").set(auth(identityToken)).send({ name: "Brandco" }).expect(201);
   const tok = await http.post(`/workspaces/${ws.body.workspace.id}/token`).set(auth(identityToken)).expect(200);
-  return { workspaceId: ws.body.workspace.id as string, accessToken: tok.body.accessToken as string };
+  const accessToken = tok.body.accessToken as string;
+  await http.post("/plans/select").set(auth(accessToken)).send({ plan: "unlimited" }).expect(200);
+  return { workspaceId: ws.body.workspace.id as string, accessToken };
 }
 
 describe("workspace branding", () => {

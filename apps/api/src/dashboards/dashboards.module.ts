@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AccessModule } from "../access/access.module";
 import { AuditModule } from "../audit/audit.module";
 import { GoalsModule } from "../goals/goals.module";
+import { LimitsModule } from "../limits/limits.module";
 import { DashboardsController } from "./dashboards.controller";
 import { DashboardsService } from "./dashboards.service";
 
@@ -14,7 +15,7 @@ import { DashboardsService } from "./dashboards.service";
  * shared via sprints/sprints.support.ts.
  */
 @Module({
-  imports: [AccessModule, AuditModule, GoalsModule],
+  imports: [AccessModule, AuditModule, GoalsModule, LimitsModule],
   controllers: [DashboardsController],
   providers: [DashboardsService],
 })

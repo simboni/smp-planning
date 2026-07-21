@@ -4,9 +4,15 @@ import {
   PayloadTooLargeException,
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
+import {
+  PLANS,
+  planHasFeature,
+  type PlanFeature,
+  type PlanId,
+} from "@stackup/shared";
 import { DbService } from "../db/db.service";
 
-/** Resolved caps for a workspace (defaults unless overridden in DB). */
+/** Resolved caps for a workspace (plan defaults unless overridden in DB). */
 export interface Limits {
   storageBytes: number;
   automationsPerMonth: number;
@@ -25,16 +31,6 @@ export interface UsageReport {
   automations: Meter & { periodStart: string };
 }
 
-/**
- * Generous defaults — the platform is pre-pricing, so caps exist to keep a
- * single workspace from unbounded growth, not to upsell. A future billing
- * layer writes per-workspace overrides into workspace_limits.
- */
-const DEFAULTS: Limits = {
-  storageBytes: 5 * 1024 * 1024 * 1024, // 5 GB
-  automationsPerMonth: 10_000,
-};
-
 function meter(used: number, limit: number): Meter {
   const remaining = Math.max(0, limit - used);
   const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
@@ -51,8 +47,36 @@ function meter(used: number, limit: number): Meter {
 export class LimitsService {
   constructor(private readonly db: DbService) {}
 
-  /** Resolve caps: workspace override row if present, else defaults. */
+  /** The workspace's plan (M24). Falls back to free on anything unexpected. */
+  async planId(client: PoolClient, workspaceId: string): Promise<PlanId> {
+    const res = await client.query(`SELECT plan FROM workspaces WHERE id = $1`, [
+      workspaceId,
+    ]);
+    const plan = res.rows[0]?.plan as PlanId | undefined;
+    return plan && PLANS[plan] ? plan : "free";
+  }
+
+  /** Throw 403 with an upgrade hint unless the plan includes `feature`. */
+  async requireFeature(
+    client: PoolClient,
+    workspaceId: string,
+    feature: PlanFeature,
+    label: string,
+  ): Promise<void> {
+    const plan = await this.planId(client, workspaceId);
+    if (!planHasFeature(plan, feature)) {
+      throw new ForbiddenException(
+        `${label} is not included in the ${PLANS[plan].name} plan — upgrade in Settings → Plans`,
+      );
+    }
+  }
+
+  /**
+   * Resolve caps: the plan's numbers, with a workspace_limits override row
+   * (a billing/admin concern, set out-of-band) taking precedence per field.
+   */
   private async limitsFor(client: PoolClient, workspaceId: string): Promise<Limits> {
+    const plan = PLANS[await this.planId(client, workspaceId)];
     const res = await client.query(
       `SELECT storage_limit_bytes, automations_monthly_limit
          FROM workspace_limits WHERE workspace_id = $1`,
@@ -65,12 +89,27 @@ export class LimitsService {
       storageBytes:
         row?.storage_limit_bytes != null
           ? Number(row.storage_limit_bytes)
-          : DEFAULTS.storageBytes,
+          : plan.storageBytes,
       automationsPerMonth:
         row?.automations_monthly_limit != null
           ? row.automations_monthly_limit
-          : DEFAULTS.automationsPerMonth,
+          : plan.automationsPerMonth,
     };
+  }
+
+  /** Owner-gated plan switch (billing integration slots in front of this). */
+  async selectPlan(
+    workspaceId: string,
+    userId: string,
+    plan: PlanId,
+  ): Promise<{ plan: PlanId }> {
+    await this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await client.query(`UPDATE workspaces SET plan = $2 WHERE id = $1`, [
+        workspaceId,
+        plan,
+      ]);
+    });
+    return { plan };
   }
 
   private async storageUsed(client: PoolClient, workspaceId: string): Promise<number> {
@@ -94,6 +133,13 @@ export class LimitsService {
       [workspaceId],
     );
     return (res.rows[0]?.n as number) ?? 0;
+  }
+
+  /** The workspace's current plan (standalone transaction, for GET /plans). */
+  async currentPlan(workspaceId: string, userId: string): Promise<PlanId> {
+    return this.db.withWorkspace(workspaceId, userId, (client) =>
+      this.planId(client, workspaceId),
+    );
   }
 
   /** Full usage report for the settings/usage surface. */

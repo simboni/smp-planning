@@ -893,6 +893,34 @@ export const limitsApi = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Pricing plans (Module 24).
+ * ------------------------------------------------------------------ */
+export type PlanId = "free" | "unlimited" | "business" | "enterprise";
+
+export interface PlanDef {
+  id: PlanId;
+  name: string;
+  /** USD per member per month; 0 = free, null = "contact us". */
+  pricePerMemberMonth: number | null;
+  tagline: string;
+  storageBytes: number;
+  automationsPerMonth: number;
+  features: Record<string, boolean>;
+  highlights: string[];
+}
+
+export const plansApi = {
+  list: () =>
+    api<{ plans: PlanDef[]; current: PlanId }>("/plans", { auth: "access" }),
+  select: (plan: PlanId) =>
+    api<{ plan: PlanId }>("/plans/select", {
+      method: "POST",
+      body: { plan },
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
  * Comms & integrations (Module 22): email provider + Slack webhook.
  * ------------------------------------------------------------------ */
 export interface EmailStatus {

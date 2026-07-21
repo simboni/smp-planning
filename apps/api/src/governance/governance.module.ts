@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { LimitsModule } from "../limits/limits.module";
 import { GovernanceController } from "./governance.controller";
 import { GovernanceService } from "./governance.service";
 
@@ -9,7 +10,7 @@ import { GovernanceService } from "./governance.service";
  * is exported so other modules (e.g. Hierarchy) can enforce capabilities.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, LimitsModule],
   controllers: [GovernanceController],
   providers: [GovernanceService],
   exports: [GovernanceService],
