@@ -20,7 +20,8 @@ import {
   type TaskDetail,
 } from "@/lib/api";
 import { Icons, StackMark } from "@/components/icons";
-import { colorFor, formatDueDate, initials } from "@/lib/format";
+import { formatDueDate } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 type LoadState =
   | { kind: "loading" }
@@ -43,14 +44,14 @@ function Assignees({ users }: { users: TaskCard["assignees"] }) {
   return (
     <span className="sv-avatars">
       {users.slice(0, 4).map((u) => (
-        <span
+        <Avatar
           key={u.id}
-          className="avatar avatar-sm"
-          style={{ background: colorFor(u.id) }}
+          name={u.fullName}
+          id={u.id}
+          avatarUrl={u.avatarUrl}
+          className="avatar-sm"
           title={u.fullName}
-        >
-          {initials(u.fullName)}
-        </span>
+        />
       ))}
     </span>
   );

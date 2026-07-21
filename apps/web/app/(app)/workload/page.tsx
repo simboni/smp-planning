@@ -17,13 +17,12 @@ import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
 import { WeekNav } from "@/components/WeekNav";
 import {
-  colorFor,
   formatDueDate,
   formatDuration,
   formatHours,
-  initials,
   mondayOf,
 } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 /** green <70% · amber 70–100% · red >100% of capacity. */
 function loadClass(assigned: number, capacity: number): string {
@@ -57,9 +56,12 @@ function MemberRow({ member }: { member: WorkloadMember }) {
         onClick={() => setOpen((v) => !v)}
       >
         <span className={`wl-caret${open ? " open" : ""}`}>{Icons.chevronRight}</span>
-        <span className="avatar avatar-sm" style={{ background: colorFor(user.id) }}>
-          {initials(user.fullName)}
-        </span>
+        <Avatar
+          name={user.fullName}
+          id={user.id}
+          avatarUrl={user.avatarUrl}
+          className="avatar-sm"
+        />
         <span className="wl-name">{user.fullName}</span>
 
         <span className="wl-bars">

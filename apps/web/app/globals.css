@@ -313,6 +313,8 @@ select.input { cursor: pointer; appearance: none;
 }
 .avatar-sm { width: 28px; height: 28px; font-size: 0.72rem; }
 .avatar-lg { width: 46px; height: 46px; font-size: 1rem; }
+.avatar-xl { width: 72px; height: 72px; font-size: 1.6rem; }
+.avatar img { border-radius: 50%; }
 
 .badge {
   display: inline-flex;

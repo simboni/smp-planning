@@ -11,7 +11,7 @@
 
 import { useMemo, useRef } from "react";
 import type { TaskCard, TaskUser } from "@/lib/api";
-import { colorFor, initials } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 import { addDays, atMidnight, diffDays, startOfWeekMonday } from "@/lib/viewUtils";
 import { MilestoneMark } from "@/components/TaskBits";
 import type { ViewProps } from "@/components/views/types";
@@ -166,12 +166,12 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
               <div className="tl-rail" style={{ width: RAIL_W }}>
                 {lane.user ? (
                   <>
-                    <span
+                    <Avatar
+                      name={lane.user.fullName}
+                      id={lane.user.id}
+                      avatarUrl={lane.user.avatarUrl}
                       className="tl-av"
-                      style={{ background: colorFor(lane.user.id) }}
-                    >
-                      {initials(lane.user.fullName)}
-                    </span>
+                    />
                     <span className="tl-rail-name">{lane.user.fullName}</span>
                   </>
                 ) : (

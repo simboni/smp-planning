@@ -33,7 +33,8 @@ import {
 import { useRealtime } from "@/lib/realtime";
 import { renderMentions } from "@/components/CommentsActivity";
 import { Icons } from "@/components/icons";
-import { colorFor, formatDateTime, initials, timeAgo } from "@/lib/format";
+import { formatDateTime, timeAgo } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 const REACTION_EMOJI = ["👍", "❤️", "😄", "🎉", "🙌", "👀", "🚀", "✅"];
 
@@ -112,9 +113,12 @@ function MentionPicker({
               className="chat-mention-row"
               onClick={() => onPick(m)}
             >
-              <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                {initials(m.fullName || m.email)}
-              </span>
+              <Avatar
+                name={m.fullName || m.email}
+                id={m.id}
+                avatarUrl={m.avatarUrl}
+                className="avatar-sm"
+              />
               <span className="chat-mention-name">{m.fullName || m.email}</span>
             </button>
           ))
@@ -274,9 +278,11 @@ function MessageRow({
     <div className={`chat-msg${showHeader ? " has-header" : ""}`}>
       <div className="chat-msg-gutter">
         {showHeader ? (
-          <span className="avatar" style={{ background: colorFor(msg.author.id) }}>
-            {initials(msg.author.fullName)}
-          </span>
+          <Avatar
+            name={msg.author.fullName}
+            id={msg.author.id}
+            avatarUrl={msg.author.avatarUrl}
+          />
         ) : (
           <span className="chat-msg-time-hover">{clockTime(msg.createdAt)}</span>
         )}
@@ -656,9 +662,11 @@ function DmPickerModal({
                   disabled={busy === m.id}
                   onClick={() => void open(m)}
                 >
-                  <span className="avatar" style={{ background: colorFor(m.id) }}>
-                    {initials(m.fullName || m.email)}
-                  </span>
+                  <Avatar
+                    name={m.fullName || m.email}
+                    id={m.id}
+                    avatarUrl={m.avatarUrl}
+                  />
                   <div className="chat-dm-pick-meta">
                     <span className="chat-dm-pick-name">{m.fullName || m.email}</span>
                     <span className="chat-dm-pick-email">{m.email}</span>
@@ -713,9 +721,12 @@ function SyncupModal({
           <div className="chat-syncup-parts">
             {(channel?.members ?? [syncup.startedBy]).map((u) => (
               <div key={u.id} className="chat-syncup-part">
-                <span className="avatar avatar-sm" style={{ background: colorFor(u.id) }}>
-                  {initials(u.fullName)}
-                </span>
+                <Avatar
+                  name={u.fullName}
+                  id={u.id}
+                  avatarUrl={u.avatarUrl}
+                  className="avatar-sm"
+                />
                 <span>{u.fullName}</span>
               </div>
             ))}
@@ -1068,9 +1079,12 @@ function ChatView() {
                     className={`chat-rail-item${c.id === activeId ? " active" : ""}${c.unread > 0 ? " unread" : ""}`}
                     onClick={() => goChannel(c.id)}
                   >
-                    <span className="avatar avatar-sm" style={{ background: colorFor(other?.id ?? c.id) }}>
-                      {initials(other?.fullName ?? c.name)}
-                    </span>
+                    <Avatar
+                      name={other?.fullName ?? c.name}
+                      id={other?.id ?? c.id}
+                      avatarUrl={other?.avatarUrl}
+                      className="avatar-sm"
+                    />
                     <span className="chat-rail-name">{other?.fullName ?? c.name}</span>
                     {c.unread > 0 && <span className="chat-rail-badge">{c.unread > 99 ? "99+" : c.unread}</span>}
                   </button>

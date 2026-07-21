@@ -19,7 +19,8 @@ import type {
 } from "@/lib/api";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { colorFor, formatDueDate, formatEstimate, initials, isOverdue, toDateInputValue } from "@/lib/format";
+import { colorFor, formatDueDate, formatEstimate, isOverdue, toDateInputValue } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 import { AvatarStack, MilestoneMark, TagChip, TypeIcon } from "@/components/TaskBits";
 import { Popover } from "@/components/views/ViewBits";
 import { QuickAdd } from "@/components/views/ListView";
@@ -381,9 +382,12 @@ function MemberTogglePop({
                 className={`tp-pop-opt${on ? " on" : ""}`}
                 onClick={() => onToggle(m.id, !on)}
               >
-                <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                  {initials(m.fullName || m.email)}
-                </span>
+                <Avatar
+                  name={m.fullName || m.email}
+                  id={m.id}
+                  avatarUrl={m.avatarUrl}
+                  className="avatar-sm"
+                />
                 <span className="tp-pop-opt-body">
                   <span className="tp-pop-opt-name">{m.fullName || m.email}</span>
                   <span className="tp-pop-opt-sub">{m.email}</span>

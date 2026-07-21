@@ -7,6 +7,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -208,6 +209,16 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async me(@CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims) {
     return { user: await this.auth.me(auth.sub) };
+  }
+
+  /** Update the caller's own profile (display name and/or avatar photo). */
+  @Patch("me")
+  @UseGuards(JwtAuthGuard)
+  async updateMe(
+    @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
+    @Body() body: { fullName?: string; avatarUrl?: string | null },
+  ) {
+    return { user: await this.auth.updateProfile(auth.sub, body ?? {}) };
   }
 
   /* ---- Two-factor auth (authenticated) ----------------------------- */

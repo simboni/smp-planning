@@ -25,12 +25,11 @@ import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
 import {
   clamp01,
-  colorFor,
   formatDueDate,
   formatPercent,
-  initials,
   isOverdue,
 } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 const SWATCHES = [
   "#7B68EE",
@@ -312,13 +311,13 @@ function GoalRow({ goal }: { goal: GoalSummary }) {
         </span>
       </span>
       {goal.owner ? (
-        <span
-          className="avatar avatar-sm goal-row-owner"
+        <Avatar
+          name={goal.owner.fullName}
+          id={goal.owner.id}
+          avatarUrl={goal.owner.avatarUrl}
+          className="avatar-sm goal-row-owner"
           title={`Owner — ${goal.owner.fullName}`}
-          style={{ background: colorFor(goal.owner.id) }}
-        >
-          {initials(goal.owner.fullName)}
-        </span>
+        />
       ) : (
         <span className="goal-row-owner goal-row-noowner" title="No owner">
           {Icons.members}

@@ -21,7 +21,8 @@ import {
 } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
-import { colorFor, formatDateTime, initials, timeAgo } from "@/lib/format";
+import { colorFor, formatDateTime, timeAgo } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 type Tab = "all" | "unread";
 
@@ -223,12 +224,18 @@ export default function InboxPage() {
                 className={`notif-row${n.readAt ? "" : " unread"}`}
                 onClick={() => openNotification(n)}
               >
-                <span
-                  className="avatar avatar-sm"
-                  style={{ background: colorFor(n.actor?.id ?? "sys") }}
-                >
-                  {n.actor ? initials(n.actor.fullName) : "•"}
-                </span>
+                {n.actor ? (
+                  <Avatar
+                    name={n.actor.fullName}
+                    id={n.actor.id}
+                    avatarUrl={n.actor.avatarUrl}
+                    className="avatar-sm"
+                  />
+                ) : (
+                  <span className="avatar avatar-sm" style={{ background: colorFor("sys") }}>
+                    •
+                  </span>
+                )}
                 <span className="notif-body">
                   <span className="notif-msg">{n.message}</span>
                   <span className="notif-meta">

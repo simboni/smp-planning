@@ -20,7 +20,8 @@ import {
   type ProofAnnotation,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { colorFor, initials, timeAgo } from "@/lib/format";
+import { timeAgo } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 export function ProofViewer({
   fileId,
@@ -441,18 +442,13 @@ export function ProofViewer({
                       </span>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span
-                            className="avatar avatar-sm"
-                            style={{
-                              background: colorFor(a.author.id),
-                              width: 18,
-                              height: 18,
-                              fontSize: "0.55rem",
-                            }}
+                          <Avatar
+                            name={a.author.fullName}
+                            id={a.author.id}
+                            avatarUrl={a.author.avatarUrl}
+                            className="avatar-sm"
                             title={a.author.fullName}
-                          >
-                            {initials(a.author.fullName)}
-                          </span>
+                          />
                           <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ink)" }}>
                             {a.author.fullName}
                           </span>

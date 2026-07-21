@@ -37,7 +37,8 @@ import {
 } from "@/lib/api";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { colorFor, formatEstimate, initials, toDateInputValue } from "@/lib/format";
+import { colorFor, formatEstimate, toDateInputValue } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChip, TypeIcon } from "@/components/TaskBits";
 import { FieldManager } from "@/components/FieldManager";
 import { PublicShareButton } from "@/components/PublicShareButton";
@@ -131,9 +132,12 @@ function MemberPicker({
                 className={`tp-pop-opt${on ? " on" : ""}`}
                 onClick={() => onToggle(m.id)}
               >
-                <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                  {initials(m.fullName || m.email)}
-                </span>
+                <Avatar
+                  name={m.fullName || m.email}
+                  id={m.id}
+                  avatarUrl={m.avatarUrl}
+                  className="avatar-sm"
+                />
                 <span className="tp-pop-opt-body">
                   <span className="tp-pop-opt-name">{m.fullName || m.email}</span>
                   <span className="tp-pop-opt-sub">{m.email}</span>

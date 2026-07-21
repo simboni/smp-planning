@@ -9,7 +9,7 @@ import {
   type WorkspaceRole,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { colorFor, initials } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 const INVITE_ROLES: WorkspaceRole[] = ["admin", "member", "guest"];
 
@@ -215,9 +215,12 @@ export default function MembersPage() {
                 <tr key={m.id} className={m.role === "guest" ? "row-guest" : undefined}>
                   <td>
                     <div className="cell-user">
-                      <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                        {initials(m.fullName || m.email)}
-                      </span>
+                      <Avatar
+                        name={m.fullName || m.email}
+                        id={m.id}
+                        avatarUrl={m.avatarUrl}
+                        className="avatar-sm"
+                      />
                       <span className="cell-user-body">
                         <span className="cell-user-name">{m.fullName || "Invited user"}</span>
                         <span className="cell-user-email">{m.email}</span>

@@ -544,6 +544,36 @@ export class AuthService {
   }
 
   /**
+   * Update the caller's own profile (display name and/or avatar). The avatar is
+   * a small self-contained data URL (an image resized client-side) or null to
+   * clear it — validated so only images are stored and the row stays small.
+   */
+  async updateProfile(
+    userId: string,
+    body: { fullName?: string; avatarUrl?: string | null },
+  ): Promise<PublicUser> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    let i = 1;
+    if (typeof body.fullName === "string" && body.fullName.trim()) {
+      sets.push(`full_name = $${i++}`);
+      params.push(body.fullName.trim().slice(0, 120));
+    }
+    if (body.avatarUrl !== undefined) {
+      const avatar = normalizeAvatar(body.avatarUrl);
+      sets.push(`avatar_url = $${i++}`);
+      params.push(avatar);
+    }
+    if (sets.length === 0) return this.me(userId);
+    params.push(userId);
+    await this.db.query(
+      `UPDATE users SET ${sets.join(", ")} WHERE id = $${i}`,
+      params,
+    );
+    return this.me(userId);
+  }
+
+  /**
    * The active memberships of a user, as workspace summaries. Runs under
    * withUser so the memberships `membership_read` user_id arm and the
    * `workspace_member_read` policy grant exactly the caller's rows.
@@ -648,6 +678,26 @@ function verifyTotp(secret: string, code: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Validate an avatar value: null/empty clears it; otherwise it must be a small
+ * image data URL (PNG/JPEG/WebP/GIF). Capped so the users row and every
+ * /auth/me payload stay small — the client resizes before upload.
+ */
+function normalizeAvatar(value: string | null | undefined): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException("Invalid avatar");
+  }
+  if (!/^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(value)) {
+    throw new BadRequestException("Avatar must be an image");
+  }
+  // ~200 KB decoded ceiling (base64 is ~4/3 the byte size).
+  if (value.length > 280_000) {
+    throw new BadRequestException("Image is too large — pick a smaller one");
+  }
+  return value;
 }
 
 function toPublicUser(row: {

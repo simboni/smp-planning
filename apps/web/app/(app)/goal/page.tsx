@@ -31,14 +31,13 @@ import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
 import {
   clamp01,
-  colorFor,
   formatDueDate,
   formatMetric,
   formatPercent,
-  initials,
   isOverdue,
   toDateInputValue,
 } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 const TARGET_TYPE_META: Record<TargetType, { label: string; hint: string }> = {
   number: { label: "Number", hint: "Track a metric from a start value to a target." },
@@ -869,12 +868,12 @@ function GoalView() {
             <span className="goal-meta-label">Owner</span>
             <span className="goal-owner-pick">
               {goal.owner ? (
-                <span
-                  className="avatar avatar-sm"
-                  style={{ background: colorFor(goal.owner.id) }}
-                >
-                  {initials(goal.owner.fullName)}
-                </span>
+                <Avatar
+                  name={goal.owner.fullName}
+                  id={goal.owner.id}
+                  avatarUrl={goal.owner.avatarUrl}
+                  className="avatar-sm"
+                />
               ) : (
                 <span className="goal-row-noowner">{Icons.members}</span>
               )}

@@ -55,13 +55,12 @@ import {
 } from "@/components/charts";
 import {
   clamp01,
-  colorFor,
   formatDuration,
   formatPercent,
   formatShortDate,
-  initials,
   timeAgo,
 } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 /* ------------------------------------------------------------------ *
  * Card kind catalogue.
@@ -571,12 +570,12 @@ function AssigneeLoadBody({ data }: { data: AssigneeLoadCardData }) {
     <div className="dbc-load">
       {rows.map((r) => (
         <div key={r.user.id} className="dbc-load-row" title={`${r.user.fullName} — ${r.open} open · ${r.done} done`}>
-          <span
-            className="avatar avatar-sm"
-            style={{ background: colorFor(r.user.id) }}
-          >
-            {initials(r.user.fullName)}
-          </span>
+          <Avatar
+            name={r.user.fullName}
+            id={r.user.id}
+            avatarUrl={r.user.avatarUrl}
+            className="avatar-sm"
+          />
           <span className="dbc-load-name">{r.user.fullName}</span>
           <span className="dbc-load-track">
             {r.open > 0 && (
@@ -715,9 +714,12 @@ function ActivityBody({ data }: { data: RecentActivityCardData }) {
           it.actor && typeof it.actor === "object" ? it.actor.id : name;
         return (
           <div key={`${it.taskId}-${it.createdAt}-${i}`} className="dbc-feed-row">
-            <span className="avatar avatar-sm" style={{ background: colorFor(seed) }}>
-              {initials(name)}
-            </span>
+            <Avatar
+              name={name}
+              id={seed}
+              avatarUrl={it.actor && typeof it.actor === "object" ? it.actor.avatarUrl : undefined}
+              className="avatar-sm"
+            />
             <span className="dbc-feed-text">
               <strong>{name}</strong> {ACTIVITY_VERB[it.kind] ?? "updated"}{" "}
               <span className="dbc-feed-task">{it.taskName}</span>
@@ -799,9 +801,12 @@ function OverdueByAssigneeBody({ data }: { data: OverdueByAssigneeCardData }) {
           className="dbc-overdue-row"
           title={`${r.user.fullName} — ${r.overdue} overdue`}
         >
-          <span className="avatar avatar-sm" style={{ background: colorFor(r.user.id) }}>
-            {initials(r.user.fullName)}
-          </span>
+          <Avatar
+            name={r.user.fullName}
+            id={r.user.id}
+            avatarUrl={r.user.avatarUrl}
+            className="avatar-sm"
+          />
           <span className="dbc-overdue-name">{r.user.fullName}</span>
           <span className="dbc-overdue-badge">{r.overdue}</span>
         </div>

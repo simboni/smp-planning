@@ -47,6 +47,7 @@ import { Notepad } from "@/components/Notepad";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Icons, StackMark, type IconKey } from "@/components/icons";
 import { colorFor, elapsedSeconds, formatTimer, initials, timeAgo } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 interface NavItem {
   href: string;
@@ -362,12 +363,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="notif-row unread"
                 onClick={() => openNotification(n)}
               >
-                <span
-                  className="avatar avatar-sm"
-                  style={{ background: colorFor(n.actor?.id ?? "sys") }}
-                >
-                  {n.actor ? initials(n.actor.fullName) : "•"}
-                </span>
+                {n.actor ? (
+                  <Avatar
+                    name={n.actor.fullName}
+                    id={n.actor.id}
+                    avatarUrl={n.actor.avatarUrl}
+                    className="avatar-sm"
+                  />
+                ) : (
+                  <span className="avatar avatar-sm" style={{ background: colorFor("sys") }}>
+                    •
+                  </span>
+                )}
                 <span className="notif-body">
                   <span className="notif-msg">{n.message}</span>
                   <span className="notif-meta">
@@ -609,16 +616,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   setMenuOpen((v) => !v);
                 }}
               >
-                <span className="avatar" style={{ background: colorFor(user?.id ?? "u") }}>
-                  {user ? initials(user.fullName || user.email) : "•"}
-                </span>
+                {user ? (
+                  <Avatar
+                    name={user.fullName || user.email}
+                    id={user.id}
+                    avatarUrl={user.avatarUrl}
+                  />
+                ) : (
+                  <span className="avatar" style={{ background: colorFor("u") }}>
+                    •
+                  </span>
+                )}
               </button>
               {menuOpen && (
                 <div className="menu" onClick={(e) => e.stopPropagation()}>
                   <div className="menu-head">
-                    <span className="avatar" style={{ background: colorFor(user?.id ?? "u") }}>
-                      {user ? initials(user.fullName || user.email) : "•"}
-                    </span>
+                    {user ? (
+                      <Avatar
+                        name={user.fullName || user.email}
+                        id={user.id}
+                        avatarUrl={user.avatarUrl}
+                      />
+                    ) : (
+                      <span className="avatar" style={{ background: colorFor("u") }}>
+                        •
+                      </span>
+                    )}
                     <span className="menu-head-body">
                       <span className="menu-name">{user?.fullName ?? "Your account"}</span>
                       <span className="menu-email">{user?.email ?? ""}</span>

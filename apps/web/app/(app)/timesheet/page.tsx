@@ -25,13 +25,12 @@ import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
 import { WeekNav } from "@/components/WeekNav";
 import {
-  colorFor,
   formatDuration,
   formatDayLabel,
-  initials,
   isTodayYmd,
   mondayOf,
 } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 type Tab = "me" | "team";
 
@@ -277,12 +276,12 @@ export default function TimesheetPage() {
             <div className="ts-team">
               {rows.map((row) => (
                 <div className="ts-team-row" key={row.user.id}>
-                  <span
-                    className="avatar avatar-sm"
-                    style={{ background: colorFor(row.user.id) }}
-                  >
-                    {initials(row.user.fullName)}
-                  </span>
+                  <Avatar
+                    name={row.user.fullName}
+                    id={row.user.id}
+                    avatarUrl={row.user.avatarUrl}
+                    className="avatar-sm"
+                  />
                   <span className="ts-team-name">{row.user.fullName}</span>
                   <span className="ts-team-hours">
                     <strong>{formatDuration(row.totalSeconds)}</strong>

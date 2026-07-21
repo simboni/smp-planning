@@ -35,6 +35,37 @@ async function signup(email = uniqueEmail()) {
   return { email, identityToken: res.body.identityToken as string, refreshToken: res.body.refreshToken as string };
 }
 
+const TINY_PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+describe("profile", () => {
+  it("updates the display name and avatar, and rejects a non-image avatar", async () => {
+    const u = await signup();
+    const ok = await http
+      .patch("/auth/me")
+      .set(auth(u.identityToken))
+      .send({ fullName: "Renamed Person", avatarUrl: TINY_PNG })
+      .expect(200);
+    expect(ok.body.user.fullName).toBe("Renamed Person");
+    expect(ok.body.user.avatarUrl).toBe(TINY_PNG);
+
+    // A non-image string is refused.
+    await http
+      .patch("/auth/me")
+      .set(auth(u.identityToken))
+      .send({ avatarUrl: "javascript:alert(1)" })
+      .expect(400);
+
+    // null clears it.
+    const cleared = await http
+      .patch("/auth/me")
+      .set(auth(u.identityToken))
+      .send({ avatarUrl: null })
+      .expect(200);
+    expect(cleared.body.user.avatarUrl).toBeNull();
+  });
+});
+
 /** Enroll + enable 2FA; returns the shared secret. */
 async function enable2fa(identityToken: string): Promise<string> {
   const en = await http.post("/auth/2fa/enroll").set(auth(identityToken)).expect(201);

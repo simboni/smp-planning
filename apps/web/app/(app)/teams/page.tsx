@@ -21,7 +21,8 @@ import {
   type WorkspaceRole,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { colorFor, initials } from "@/lib/format";
+import { colorFor } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 const SWATCHES = [
   "#7B68EE",
@@ -155,9 +156,12 @@ function CreateTeamModal({
                       className={`team-pick${on ? " on" : ""}`}
                       onClick={() => toggle(m.id)}
                     >
-                      <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                        {initials(m.fullName || m.email)}
-                      </span>
+                      <Avatar
+                        name={m.fullName || m.email}
+                        id={m.id}
+                        avatarUrl={m.avatarUrl}
+                        className="avatar-sm"
+                      />
                       <span className="team-pick-body">
                         <span className="team-pick-name">{m.fullName || m.email}</span>
                         <span className="team-pick-sub">{m.email}</span>
@@ -405,9 +409,12 @@ function ManageTeamModal({
                         disabled={busy}
                         onClick={() => addMember(m.id)}
                       >
-                        <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                          {initials(m.fullName || m.email)}
-                        </span>
+                        <Avatar
+                          name={m.fullName || m.email}
+                          id={m.id}
+                          avatarUrl={m.avatarUrl}
+                          className="avatar-sm"
+                        />
                         <span className="share-picker-body">
                           <span className="share-picker-name">
                             {m.fullName || m.email}
@@ -434,9 +441,12 @@ function ManageTeamModal({
             ) : (
               roster.map((m) => (
                 <div key={m.userId} className="share-entry">
-                  <span className="avatar avatar-sm" style={{ background: colorFor(m.userId) }}>
-                    {initials(m.fullName || m.email)}
-                  </span>
+                  <Avatar
+                    name={m.fullName || m.email}
+                    id={m.userId}
+                    avatarUrl={m.avatarUrl}
+                    className="avatar-sm"
+                  />
                   <span className="share-entry-body">
                     <span className="share-entry-name">{m.fullName || m.email}</span>
                     <span className="share-entry-sub">{m.email}</span>

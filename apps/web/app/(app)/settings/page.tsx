@@ -13,6 +13,7 @@ import {
 import { Icons } from "@/components/icons";
 import { colorFor } from "@/lib/format";
 import { applyBranding } from "@/lib/theme";
+import ProfileSettings from "@/components/ProfileSettings";
 import SecuritySettings from "@/components/SecuritySettings";
 
 export default function SettingsPage() {
@@ -41,6 +42,8 @@ export default function SettingsPage() {
         <h1>Settings</h1>
         <p className="sub">Workspace preferences and configuration.</p>
       </div>
+
+      <ProfileSettings />
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-head">

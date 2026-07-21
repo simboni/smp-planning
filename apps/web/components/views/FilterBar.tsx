@@ -21,7 +21,8 @@ import type {
 } from "@/lib/api";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { colorFor, initials } from "@/lib/format";
+import { colorFor } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 import { activeFilterCount } from "@/lib/viewUtils";
 import { Popover } from "@/components/views/ViewBits";
 
@@ -117,9 +118,12 @@ export function FilterBar({
                     className={`tp-pop-opt${on ? " on" : ""}`}
                     onClick={() => patchFilters({ assigneeIds: toggleIn(filters.assigneeIds, m.id) })}
                   >
-                    <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                      {initials(m.fullName || m.email)}
-                    </span>
+                    <Avatar
+                      name={m.fullName || m.email}
+                      id={m.id}
+                      avatarUrl={m.avatarUrl}
+                      className="avatar-sm"
+                    />
                     <span className="tp-pop-opt-body">
                       <span className="tp-pop-opt-name">{m.fullName || m.email}</span>
                     </span>

@@ -19,7 +19,8 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, filesApi, type TaskFile } from "@/lib/api";
 import { capturePhoto, isNativeApp } from "@/lib/native";
 import { Icons } from "@/components/icons";
-import { colorFor, initials, timeAgo } from "@/lib/format";
+import { timeAgo } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 import { ProofViewer } from "@/components/ProofViewer";
 import { ClipRecorder } from "@/components/ClipRecorder";
 
@@ -499,13 +500,13 @@ function FileTile({
           {file.name}
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span
-            className="avatar avatar-sm"
-            style={{ background: colorFor(file.author.id), width: 20, height: 20, fontSize: "0.6rem" }}
+          <Avatar
+            name={file.author.fullName}
+            id={file.author.id}
+            avatarUrl={file.author.avatarUrl}
+            className="avatar-sm"
             title={file.author.fullName}
-          >
-            {initials(file.author.fullName)}
-          </span>
+          />
           <span style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
             {formatBytes(file.sizeBytes)} · {timeAgo(file.createdAt)}
           </span>

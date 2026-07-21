@@ -23,14 +23,13 @@ import {
 import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
 import {
-  colorFor,
   elapsedSeconds,
   formatDueDate,
   formatDuration,
   formatEstimate,
   formatTimer,
-  initials,
 } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 export function TimeTracking({
   taskId,
@@ -327,13 +326,13 @@ export function TimeTracking({
             const mine = me !== null && e.user.id === me.id;
             return (
               <div className="tt-entry" key={e.id}>
-                <span
-                  className="avatar avatar-sm"
-                  style={{ background: colorFor(e.user.id) }}
+                <Avatar
+                  name={e.user.fullName}
+                  id={e.user.id}
+                  avatarUrl={e.user.avatarUrl}
+                  className="avatar-sm"
                   title={e.user.fullName}
-                >
-                  {initials(e.user.fullName)}
-                </span>
+                />
                 <span className="tt-entry-dur">{formatDuration(e.durationSeconds)}</span>
                 <span className="tt-entry-date" title={new Date(e.startedAt).toLocaleString()}>
                   {formatDueDate(e.startedAt)}

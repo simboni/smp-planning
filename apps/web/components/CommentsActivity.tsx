@@ -33,7 +33,8 @@ import {
 } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
-import { colorFor, initials, timeAgo } from "@/lib/format";
+import { timeAgo } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 /* ------------------------------------------------------------------ *
  * Mention rendering — `@[userId]` tokens become purple @Name chips.
@@ -121,9 +122,12 @@ function MemberPop({
               className="tp-pop-opt"
               onClick={() => onPick(m)}
             >
-              <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                {initials(m.fullName || m.email)}
-              </span>
+              <Avatar
+                name={m.fullName || m.email}
+                id={m.id}
+                avatarUrl={m.avatarUrl}
+                className="avatar-sm"
+              />
               <span className="tp-pop-opt-body">
                 <span className="tp-pop-opt-name">{m.fullName || m.email}</span>
                 <span className="tp-pop-opt-sub">{m.email}</span>
@@ -332,13 +336,13 @@ function CommentItem({
 
   return (
     <div className={`cm-item${isReply ? " reply" : ""}${resolved ? " resolved" : ""}`}>
-      <span
-        className="avatar avatar-sm cm-avatar"
-        style={{ background: colorFor(c.author.id) }}
+      <Avatar
+        name={c.author.fullName}
+        id={c.author.id}
+        avatarUrl={c.author.avatarUrl}
+        className="avatar-sm cm-avatar"
         title={c.author.fullName}
-      >
-        {initials(c.author.fullName)}
-      </span>
+      />
       <div className="cm-main">
         <div className="cm-head">
           <span className="cm-author">{c.author.fullName}</span>

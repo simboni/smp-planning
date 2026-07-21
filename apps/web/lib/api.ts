@@ -666,6 +666,13 @@ export const authApi = {
       auth: "none",
     }),
   me: () => api<{ user: PublicUser }>("/auth/me", { auth: "identity" }),
+  /** Update the caller's own profile (display name and/or avatar photo). */
+  updateProfile: (body: { fullName?: string; avatarUrl?: string | null }) =>
+    api<{ user: PublicUser }>("/auth/me", {
+      method: "PATCH",
+      body,
+      auth: "identity",
+    }),
   /** Revoke the given refresh token server-side (best-effort on sign-out). */
   logout: (refreshToken: string) =>
     api<void>("/auth/logout", {

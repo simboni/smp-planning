@@ -31,7 +31,8 @@ import {
   type Team,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
-import { colorFor, initials } from "@/lib/format";
+import { colorFor } from "@/lib/format";
+import { Avatar } from "@/components/Avatar";
 
 const PERMISSION_OPTS: { value: Permission; label: string }[] = [
   { value: "view", label: "View" },
@@ -348,12 +349,12 @@ export function ShareDialog({
                                 {Icons.team}
                               </span>
                             ) : (
-                              <span
-                                className="avatar avatar-sm"
-                                style={{ background: colorFor(c.id) }}
-                              >
-                                {initials(c.name)}
-                              </span>
+                              <Avatar
+                                name={c.name}
+                                id={c.id}
+                                avatarUrl={undefined}
+                                className="avatar-sm"
+                              />
                             )}
                             <span className="share-picker-body">
                               <span className="share-picker-name">
@@ -403,12 +404,12 @@ export function ShareDialog({
                           {Icons.team}
                         </span>
                       ) : (
-                        <span
-                          className="avatar avatar-sm"
-                          style={{ background: colorFor(entry.principalId) }}
-                        >
-                          {initials(entry.name)}
-                        </span>
+                        <Avatar
+                          name={entry.name}
+                          id={entry.principalId}
+                          avatarUrl={entry.avatarUrl}
+                          className="avatar-sm"
+                        />
                       )}
                       <span className="share-entry-body">
                         <span className="share-entry-name">

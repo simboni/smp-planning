@@ -99,16 +99,31 @@ export function AvatarStack({
   const extra = users.length - shown.length;
   return (
     <span className="avatar-stack">
-      {shown.map((u) => (
-        <span
-          key={u.id}
-          className="avatar-stack-item"
-          style={{ background: colorFor(u.id), width: size, height: size }}
-          title={u.fullName}
-        >
-          {initials(u.fullName)}
-        </span>
-      ))}
+      {shown.map((u) =>
+        u.avatarUrl ? (
+          <span
+            key={u.id}
+            className="avatar-stack-item"
+            style={{ width: size, height: size, padding: 0, overflow: "hidden" }}
+            title={u.fullName}
+          >
+            <img
+              src={u.avatarUrl}
+              alt=""
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            />
+          </span>
+        ) : (
+          <span
+            key={u.id}
+            className="avatar-stack-item"
+            style={{ background: colorFor(u.id), width: size, height: size }}
+            title={u.fullName}
+          >
+            {initials(u.fullName)}
+          </span>
+        ),
+      )}
       {extra > 0 && (
         <span
           className="avatar-stack-item avatar-stack-more"
