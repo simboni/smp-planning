@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -6,9 +7,71 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { createHmac, randomBytes } from "node:crypto";
+import { isIP } from "node:net";
 import type { Role } from "@stackup/shared";
 import { DbService } from "../db/db.service";
 import { EventsService, RealtimeEvent } from "../events/events.service";
+
+/**
+ * Reject webhook URLs that point at a private/loopback/link-local host to
+ * block SSRF (e.g. the cloud metadata endpoint 169.254.169.254 or internal
+ * services). Literal-IP hosts are checked directly; hostnames are checked at
+ * delivery time by refusing to follow redirects and by the https-only rule.
+ * Only https is allowed so credentials/payloads aren't sent in the clear.
+ */
+function assertSafeWebhookUrl(raw: string): URL {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new BadRequestException("A valid https URL is required");
+  }
+  // Escape hatch for local development and the test suite, which deliver to a
+  // localhost receiver. Never enable in production.
+  const allowInsecure = /^(1|true|yes)$/i.test(
+    process.env.WEBHOOK_ALLOW_INSECURE_TARGETS ?? "",
+  );
+  if (allowInsecure) {
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      throw new BadRequestException("A valid http(s) URL is required");
+    }
+    return url;
+  }
+  if (url.protocol !== "https:") {
+    throw new BadRequestException("Webhook URLs must use https");
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".internal") ||
+    (isIP(host) !== 0 && isPrivateIp(host))
+  ) {
+    throw new BadRequestException("Webhook URL host is not allowed");
+  }
+  return url;
+}
+
+/** True for loopback, private, link-local, and unique-local IP literals. */
+function isPrivateIp(host: string): boolean {
+  if (isIP(host) === 4) {
+    const [a, b] = host.split(".").map(Number);
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true; // link-local / cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    return false;
+  }
+  // IPv6: loopback, unspecified, unique-local (fc00::/7), link-local (fe80::/10),
+  // and IPv4-mapped forms.
+  const v6 = host.toLowerCase();
+  if (v6 === "::1" || v6 === "::") return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true;
+  if (/^fe[89ab][0-9a-f]:/.test(v6)) return true;
+  if (v6.startsWith("::ffff:")) return isPrivateIp(v6.slice(7));
+  return false;
+}
 
 export interface WebhookSummary {
   id: string;
@@ -85,10 +148,7 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
     body: { url?: string; events?: string[] },
   ): Promise<{ webhook: WebhookSummary; secret: string }> {
     if (role === "guest") throw new NotFoundException();
-    const url = (body.url ?? "").trim();
-    if (!/^https?:\/\//i.test(url)) {
-      throw new NotFoundException("A valid http(s) URL is required");
-    }
+    const url = assertSafeWebhookUrl((body.url ?? "").trim()).toString();
     const events =
       Array.isArray(body.events) && body.events.length > 0
         ? body.events.map(String)
@@ -203,6 +263,9 @@ export class WebhooksService implements OnModuleInit, OnModuleDestroy {
         },
         body,
         signal: controller.signal,
+        // Don't follow redirects: a 30x to an internal host would defeat the
+        // create-time SSRF check.
+        redirect: "manual",
       }).finally(() => clearTimeout(timer));
       statusCode = res.status;
       ok = res.ok;

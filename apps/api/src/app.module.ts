@@ -1,5 +1,8 @@
 import { Module } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 import { JwtModule } from "@nestjs/jwt";
+import { ThrottlerModule } from "@nestjs/throttler";
+import { AppThrottlerGuard } from "./common/throttler.guard";
 import { AccessModule } from "./access/access.module";
 import { AiModule } from "./ai/ai.module";
 import { AuditModule } from "./audit/audit.module";
@@ -46,7 +49,12 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     JwtModule.register({
       global: true,
       secret: loadConfig().jwtSecret,
+      signOptions: { algorithm: "HS256" },
     }),
+    // Baseline abuse protection: a generous per-IP-per-route ceiling on every
+    // endpoint (auth routes tighten this further with @Throttle). Disabled in
+    // tests by AppThrottlerGuard. TTL is milliseconds in throttler v6.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     DbModule,
     EventsModule,
     AuditModule,
@@ -81,5 +89,6 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     PushModule,
   ],
   controllers: [HealthController],
+  providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })
 export class AppModule {}

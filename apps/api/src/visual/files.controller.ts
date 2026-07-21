@@ -15,6 +15,18 @@ import type { Response } from "express";
 import { AuthedRequest, JwtAuthGuard, WorkspaceGuard } from "../auth/guards";
 import { FilesService } from "./files.service";
 
+/** Image content types safe to serve inline (raster only — no SVG). */
+const INLINE_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "image/bmp",
+  "image/x-icon",
+]);
+
 /**
  * Module 12: task attachments. Uploads arrive as base64 JSON (the JSON body
  * limit is raised to 8MB in main.ts to fit the 5MB decoded cap); downloads
@@ -49,7 +61,13 @@ export class FilesController {
     return { files: await this.files.listTaskFiles(...this.ctx(req), taskId) };
   }
 
-  /** The raw file bytes, served inline with its stored content type. */
+  /**
+   * The raw file bytes. Images are served inline (so <img src> previews work);
+   * everything else is forced to `attachment` so an active type (HTML, SVG)
+   * can never be rendered same-origin as a document — closing a stored-XSS
+   * path even if a client is ever tricked into a top-level navigation here.
+   * X-Content-Type-Options: nosniff (set globally) stops MIME-sniffing.
+   */
   @Get("files/:id")
   async getRaw(
     @Req() req: AuthedRequest,
@@ -59,8 +77,13 @@ export class FilesController {
     const file = await this.files.getRaw(...this.ctx(req), id);
     // Keep the filename header-safe: strip quotes/control/non-ascii chars.
     const safeName = file.name.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "'");
-    res.setHeader("Content-Type", file.mime);
-    res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
+    // Only a fixed set of image types may render inline; treat everything else
+    // (incl. image/svg+xml, which can carry script) as a download.
+    const inlineOk = INLINE_IMAGE_TYPES.has(file.mime.toLowerCase());
+    const disposition = inlineOk ? "inline" : "attachment";
+    res.setHeader("Content-Type", inlineOk ? file.mime : "application/octet-stream");
+    res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, max-age=3600");
     res.send(file.data);
   }

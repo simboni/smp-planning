@@ -30,8 +30,14 @@ export interface AuthedRequest extends Request {
 
 /**
  * Verifies the bearer token and attaches the decoded claims to req.auth.
- * Any valid, unexpired StackUp JWT passes — later guards narrow by token
- * type. 401 on a missing or invalid token.
+ * Only a *credential* token — an identity or access token — passes; the
+ * short-lived `twofa` challenge and `oauthstate` tokens are signed with the
+ * same key but must never authenticate a request (accepting the challenge
+ * token would let a caller who has passed the password step but not the
+ * second factor reach authenticated endpoints, e.g. rotate their TOTP
+ * secret). Later guards narrow further by token type. The verify pins HS256
+ * so a future asymmetric key can't enable an alg-confusion downgrade. 401 on
+ * a missing, invalid, or non-credential token.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -42,11 +48,18 @@ export class JwtAuthGuard implements CanActivate {
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     if (!token) throw new UnauthorizedException("Missing bearer token");
+    let claims: AuthClaims;
     try {
-      req.auth = await this.jwt.verifyAsync<AuthClaims>(token);
+      claims = await this.jwt.verifyAsync<AuthClaims>(token, {
+        algorithms: ["HS256"],
+      });
     } catch {
       throw new UnauthorizedException("Invalid or expired token");
     }
+    if (claims.typ !== "identity" && claims.typ !== "access") {
+      throw new UnauthorizedException("A valid credential token is required");
+    }
+    req.auth = claims;
     return true;
   }
 }

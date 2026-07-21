@@ -65,6 +65,11 @@ describe("two-factor auth", () => {
     // wrong code rejected
     await http.post("/auth/2fa/login").send({ challengeToken, code: "000000" }).expect(401);
 
+    // the pre-2FA challenge token must NOT authenticate real endpoints — it is
+    // not a credential, so presenting it as a Bearer token is rejected.
+    await http.get("/auth/me").set(auth(challengeToken)).expect(401);
+    await http.post("/auth/2fa/enroll").set(auth(challengeToken)).expect(401);
+
     // correct code completes login
     const done = await http
       .post("/auth/2fa/login")
@@ -118,5 +123,22 @@ describe("sessions", () => {
       .set("x-refresh-token", u.refreshToken)
       .expect(200);
     expect(after.body.sessions.some((s: { id: string }) => s.id === other.id)).toBe(false);
+  });
+
+  it("logout revokes the presented refresh token", async () => {
+    const u = await signup();
+    // the token works before logout
+    await http.post("/auth/refresh").send({ refreshToken: u.refreshToken }).expect(200);
+    // NB: refresh rotates, so re-login for a fresh token to revoke
+    const again = await http
+      .post("/auth/login")
+      .send({ email: u.email, password: "password123" })
+      .expect(200);
+    const rt = again.body.refreshToken as string;
+    await http.post("/auth/logout").send({ refreshToken: rt }).expect(204);
+    // after logout the token can no longer be redeemed
+    await http.post("/auth/refresh").send({ refreshToken: rt }).expect(401);
+    // logout is idempotent — a second call still succeeds
+    await http.post("/auth/logout").send({ refreshToken: rt }).expect(204);
   });
 });

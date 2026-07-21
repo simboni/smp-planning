@@ -71,7 +71,9 @@ export class SearchService {
     }
     const term = (q ?? "").trim();
     if (!term) return { results: emptyResults() };
-    const like = `%${term}%`;
+    // Escape LIKE metacharacters so a caller's literal %, _ or \ match as
+    // themselves (pure substring search) rather than as wildcards.
+    const like = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
     const lim = this.clampLimit(limit);
 
     return this.db.withWorkspace(workspaceId, userId, async (client) => {

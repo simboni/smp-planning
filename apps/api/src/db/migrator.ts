@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Client } from "pg";
+import { sslConfig } from "./pool";
 
 /**
  * Startup migrator (M22 fix). Applies db/migrations/*.sql in filename order,
@@ -15,20 +16,6 @@ import { Client } from "pg";
  * told how to enable it. SSL mirrors the app pool so managed hosts (Neon) work
  * without extra flags.
  */
-
-/** SSL decision identical to the app pool, so Neon/managed hosts just work. */
-function useSsl(connectionString: string): boolean {
-  const forced = (process.env.DB_SSL ?? "").toLowerCase();
-  if (["disable", "off", "false"].includes(forced)) return false;
-  if (["require", "on", "true"].includes(forced)) return true;
-  if (/sslmode=disable/i.test(connectionString)) return false;
-  try {
-    const host = new URL(connectionString).hostname;
-    return !(host === "localhost" || host === "127.0.0.1" || host === "::1");
-  } catch {
-    return false;
-  }
-}
 
 /** Locate db/migrations wherever the app is run from (repo, Docker image). */
 function migrationsDir(): string | null {
@@ -65,7 +52,7 @@ export async function autoMigrate(): Promise<void> {
 
   const client = new Client({
     connectionString: adminUrl,
-    ssl: useSsl(adminUrl) ? { rejectUnauthorized: false } : undefined,
+    ssl: sslConfig(adminUrl),
   });
   try {
     await client.connect();

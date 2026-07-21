@@ -173,6 +173,9 @@ describe("Webhooks", () => {
   let url = "";
 
   beforeAll(async () => {
+    // The receiver is a localhost server; allow private/http targets here.
+    // Production keeps the SSRF guard on (https + no private hosts).
+    process.env.WEBHOOK_ALLOW_INSECURE_TARGETS = "1";
     receiver = createServer((req, res) => {
       let data = "";
       req.on("data", (c) => (data += c));
@@ -235,6 +238,33 @@ describe("Webhooks", () => {
     // dispatch is fire-and-forget; give the event loop a beat.
     await new Promise((r) => setTimeout(r, 300));
     expect(received.some((r) => (r.body as { event: string }).event === "task.changed")).toBe(true);
+  });
+
+  it("rejects unsafe webhook targets (SSRF guard) when strict", async () => {
+    const f = await fixture();
+    // Turn the guard on for this one case (production default).
+    delete process.env.WEBHOOK_ALLOW_INSECURE_TARGETS;
+    try {
+      // http (not https) is refused.
+      await http
+        .post("/webhooks")
+        .set(auth(f.access))
+        .send({ url: "http://example.com/hook", events: ["*"] })
+        .expect(400);
+      // https to a private/link-local host (cloud metadata) is refused.
+      await http
+        .post("/webhooks")
+        .set(auth(f.access))
+        .send({ url: "https://169.254.169.254/latest/meta-data", events: ["*"] })
+        .expect(400);
+      await http
+        .post("/webhooks")
+        .set(auth(f.access))
+        .send({ url: "https://localhost/hook", events: ["*"] })
+        .expect(400);
+    } finally {
+      process.env.WEBHOOK_ALLOW_INSECURE_TARGETS = "1";
+    }
   });
 });
 

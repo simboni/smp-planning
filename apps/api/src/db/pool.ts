@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { Pool } from "pg";
+import type { PoolConfig } from "pg";
 
 /**
  * All pg pools MUST be created through here. node-postgres emits 'error'
@@ -10,18 +12,22 @@ import { Pool } from "pg";
  * TLS: managed providers (Neon, Supabase, RDS) REQUIRE SSL and refuse plain
  * connections — without this, the app boots and serves static pages but every
  * DB query (e.g. signup) fails with a 500. We enable SSL automatically for any
- * non-local host and leave local development (localhost) plain, so the same
- * code works in both places with no extra env var. rejectUnauthorized is off
- * because managed endpoints (and their poolers) often present certs that don't
- * chain to the system CA store; the connection is still encrypted. Set
- * DB_SSL=disable to force it off, or DB_SSL=require to force it on.
+ * non-local host and leave local development (localhost) plain.
+ *
+ * The certificate IS verified by default (rejectUnauthorized: true) so the DB
+ * connection can't be silently MITM'd. Most managed providers (incl. Neon)
+ * present certs that chain to a public CA in Node's trust store, so this works
+ * out of the box. If your provider uses a private CA, set DB_SSL_CA to the CA
+ * PEM (inline or a file path). As a last-resort escape hatch, DB_SSL_INSECURE=1
+ * disables verification (encrypted but unauthenticated) — avoid in production.
+ * DB_SSL=disable forces plaintext; DB_SSL=require forces TLS on.
  */
 export function makePool(connectionString: string, max: number): Pool {
   const pool = new Pool({
     connectionString,
     max,
     keepAlive: true,
-    ssl: useSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
+    ssl: sslConfig(connectionString),
   });
   pool.on("error", (err) => {
     console.warn(
@@ -29,6 +35,34 @@ export function makePool(connectionString: string, max: number): Pool {
     );
   });
   return pool;
+}
+
+/**
+ * Build the pg `ssl` option: undefined (plaintext) for local, otherwise a
+ * verifying TLS config with an optional custom CA and an opt-out escape hatch.
+ * Exported for the migrator so both connections share one TLS policy.
+ */
+export function sslConfig(connectionString: string): PoolConfig["ssl"] {
+  if (!useSsl(connectionString)) return undefined;
+  const insecure = /^(1|true|yes)$/i.test(process.env.DB_SSL_INSECURE ?? "");
+  if (insecure) return { rejectUnauthorized: false };
+  const ca = loadCa();
+  return ca
+    ? { rejectUnauthorized: true, ca }
+    : { rejectUnauthorized: true };
+}
+
+/** Read DB_SSL_CA as inline PEM or a file path, if provided. */
+function loadCa(): string | undefined {
+  const raw = (process.env.DB_SSL_CA ?? "").trim();
+  if (!raw) return undefined;
+  if (raw.includes("BEGIN CERTIFICATE")) return raw;
+  try {
+    return readFileSync(raw, "utf8");
+  } catch {
+    console.warn(`DB_SSL_CA path unreadable (${raw}) — using system CAs`);
+    return undefined;
+  }
 }
 
 /** Decide whether to negotiate TLS for this connection string. */

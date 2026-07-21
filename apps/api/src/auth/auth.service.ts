@@ -421,6 +421,20 @@ export class AuthService {
     }));
   }
 
+  /**
+   * Sign out: revoke the presented refresh token by value so it can't be
+   * replayed after logout (the stateless access/identity JWTs still expire on
+   * their own short TTL). Idempotent — an unknown/already-revoked token is a
+   * no-op, so logout never errors.
+   */
+  async logout(refreshToken: string): Promise<void> {
+    if (!refreshToken) return;
+    await this.db.query(
+      "UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL",
+      [sha256(refreshToken)],
+    );
+  }
+
   /** Revoke one session (sign that device out). */
   async revokeSession(userId: string, id: string): Promise<void> {
     const res = await this.db.query(

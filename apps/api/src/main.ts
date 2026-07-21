@@ -42,11 +42,34 @@ async function bootstrap(): Promise<void> {
     : ["http://localhost:3001"];
   app.enableCors({ origin: origins });
 
-  // Baseline security headers on every response.
+  // Baseline security headers on every response. The Content-Security-Policy
+  // is the key defense-in-depth against XSS: even if a script were injected,
+  // `connect-src 'self'` blocks exfiltration of the localStorage bearer tokens
+  // to an attacker host, `object-src 'none'` kills plugin vectors, and
+  // `base-uri 'self'` blocks <base> hijacking. 'unsafe-inline' is required for
+  // Next.js's inline bootstrap and the theme/native marker scripts; the
+  // server-side HTML sanitizer (docs.support.ts) is what actually strips
+  // injected markup, with CSP as the backstop. Same-origin deploy, so 'self'
+  // covers the API, the SSE stream, and file downloads; extra API origins can
+  // be allow-listed via WEB_ORIGINS for split deploys.
+  const connectSrc = ["'self'", ...origins].join(" ");
+  const csp = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline'",
+    `connect-src ${connectSrc}`,
+    "form-action 'self' https://accounts.google.com",
+  ].join("; ");
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Content-Security-Policy", csp);
     next();
   });
 

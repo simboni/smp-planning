@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { FormsService } from "./forms.service";
 
 /**
@@ -20,6 +21,8 @@ export class PublicFormsController {
 
   @Post(":token/submit")
   @HttpCode(201)
+  // Unauthenticated write path — cap submissions per IP to blunt spam/DoS.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async submit(@Param("token") token: string, @Body() body: unknown) {
     await this.forms.submit(token, body);
     return { ok: true };

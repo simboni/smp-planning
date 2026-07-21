@@ -13,11 +13,15 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import type { IdentityTokenClaims, WorkspaceTokenClaims } from "@stackup/shared";
 import { loadConfig } from "../config";
 import { AuthService } from "./auth.service";
 import { CurrentAuth, JwtAuthGuard } from "./guards";
+
+/** Tight per-IP limit for credential endpoints: 10 attempts/minute. */
+const AUTH_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 
 // Deliberately permissive email shape — the DB's unique index is the source
 // of truth; this only rejects obviously malformed input early.
@@ -89,6 +93,7 @@ export class AuthController {
   }
 
   @Post("signup")
+  @Throttle(AUTH_THROTTLE)
   async signup(
     @Req() req: Request,
     @Body()
@@ -115,6 +120,7 @@ export class AuthController {
 
   @Post("login")
   @HttpCode(200)
+  @Throttle(AUTH_THROTTLE)
   async login(
     @Req() req: Request,
     @Body() body: { email?: string; password?: string },
@@ -128,6 +134,7 @@ export class AuthController {
   /** Second step of a 2FA login: exchange a challenge token + code for tokens. */
   @Post("2fa/login")
   @HttpCode(200)
+  @Throttle(AUTH_THROTTLE)
   async login2fa(
     @Req() req: Request,
     @Body() body: { challengeToken?: string; code?: string },
@@ -145,6 +152,13 @@ export class AuthController {
       throw new BadRequestException("refreshToken is required");
     }
     return this.auth.refresh(body.refreshToken, ua(req));
+  }
+
+  /** Sign out: revoke the presented refresh token so it can't be replayed. */
+  @Post("logout")
+  @HttpCode(204)
+  async logout(@Body() body: { refreshToken?: string }) {
+    await this.auth.logout(body?.refreshToken ?? "");
   }
 
   /** Any valid token (identity or access) resolves to the same identity. */

@@ -37,14 +37,42 @@ export interface AppConfig {
   emailFrom: string;
 }
 
+/** The committed dev fallback — usable locally, never acceptable in prod. */
+export const DEV_JWT_SECRET = "dev-only-secret-do-not-use-in-production";
+const DEV_DB_URL = "postgres://stackup_app:app_dev_pw@localhost:5432/stackup_dev";
+
+/**
+ * Guard against booting production with a known/weak signing secret. A missing
+ * or default JWT_SECRET means every token type is signed with a public
+ * constant — anyone can forge an owner token. Fail fast instead of serving
+ * forgeable auth. Only enforced when NODE_ENV=production so local/test runs
+ * keep working with the dev default.
+ */
+function assertProductionSecrets(cfg: AppConfig): void {
+  if (process.env.NODE_ENV !== "production") return;
+  const problems: string[] = [];
+  if (!process.env.JWT_SECRET || cfg.jwtSecret === DEV_JWT_SECRET) {
+    problems.push("JWT_SECRET is unset or still the committed dev default");
+  } else if (Buffer.byteLength(cfg.jwtSecret, "utf8") < 32) {
+    problems.push("JWT_SECRET must be at least 32 bytes of entropy");
+  }
+  if (!process.env.APP_DB_URL || cfg.appDbUrl === DEV_DB_URL) {
+    problems.push("APP_DB_URL is unset or still the local dev default");
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `Refusing to start in production with insecure config:\n  - ${problems.join(
+        "\n  - ",
+      )}`,
+    );
+  }
+}
+
 export function loadConfig(): AppConfig {
-  return {
+  const cfg: AppConfig = {
     port: Number(process.env.PORT ?? 3000),
-    appDbUrl:
-      process.env.APP_DB_URL ??
-      "postgres://stackup_app:app_dev_pw@localhost:5432/stackup_dev",
-    jwtSecret:
-      process.env.JWT_SECRET ?? "dev-only-secret-do-not-use-in-production",
+    appDbUrl: process.env.APP_DB_URL ?? DEV_DB_URL,
+    jwtSecret: process.env.JWT_SECRET ?? DEV_JWT_SECRET,
     accessTtl: Number(process.env.ACCESS_TOKEN_TTL ?? 900),
     refreshTtl: Number(process.env.REFRESH_TOKEN_TTL ?? 2592000),
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
@@ -59,4 +87,6 @@ export function loadConfig(): AppConfig {
     emailRelayAuthHeader: process.env.EMAIL_RELAY_AUTH_HEADER ?? "Authorization",
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@stackup.app",
   };
+  assertProductionSecrets(cfg);
+  return cfg;
 }

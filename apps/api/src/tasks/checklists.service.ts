@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import type { PoolClient } from "pg";
 import type { Role } from "@stackup/shared";
 import { AccessService } from "../access/access.service";
@@ -207,6 +211,20 @@ export class ChecklistsService {
         params.push(body.resolved === true);
       }
       if (body?.assigneeUserId !== undefined) {
+        // Validate the assignee is a member of this workspace before storing
+        // it — otherwise an arbitrary/foreign UUID could be written (every
+        // other assignee path validates membership; this one must too).
+        if (body.assigneeUserId !== null) {
+          const m = await client.query(
+            "SELECT 1 FROM memberships WHERE user_id = $1",
+            [body.assigneeUserId],
+          );
+          if (!m.rows[0]) {
+            throw new BadRequestException(
+              "assignee is not a member of this workspace",
+            );
+          }
+        }
         sets.push(`assignee_user_id = $${i++}`);
         params.push(body.assigneeUserId ?? null);
       }

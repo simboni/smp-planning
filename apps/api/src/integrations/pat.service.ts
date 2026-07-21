@@ -70,11 +70,16 @@ export class PatService {
 
   async list(workspaceId: string, userId: string): Promise<PatSummary[]> {
     return this.db.withWorkspace(workspaceId, userId, async (c) => {
+      // Scope to the calling user: a personal access token belongs to the
+      // person who created it, not to the whole workspace. Without the
+      // user_id filter any member could enumerate (and, in revoke(), destroy)
+      // other members' tokens.
       const res = await c.query(
         `SELECT id, name, token_prefix, scope, last_used_at, expires_at, created_at
          FROM personal_access_tokens
-         WHERE revoked_at IS NULL
+         WHERE user_id = $1 AND revoked_at IS NULL
          ORDER BY created_at DESC`,
+        [userId],
       );
       return res.rows.map(toSummary);
     });
@@ -87,8 +92,8 @@ export class PatService {
   ): Promise<void> {
     const done = await this.db.withWorkspace(workspaceId, userId, async (c) => {
       const res = await c.query(
-        "UPDATE personal_access_tokens SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",
-        [id],
+        "UPDATE personal_access_tokens SET revoked_at = now() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
+        [id, userId],
       );
       return res.rowCount ?? 0;
     });

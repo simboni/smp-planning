@@ -10,15 +10,26 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { AuthedRequest, JwtAuthGuard, WorkspaceGuard } from "../auth/guards";
+import {
+  AuthedRequest,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  WorkspaceGuard,
+} from "../auth/guards";
 import { WebhooksService } from "./webhooks.service";
 
 /**
- * Webhook management (M15). Session-authenticated. Creating a webhook returns
- * its signing secret once; deliveries are HMAC-signed with it.
+ * Webhook management (M15). Session-authenticated and **admin-only**: an
+ * outbound webhook is a workspace-level integration that receives every
+ * workspace event, so a plain member must not be able to create one and
+ * silently exfiltrate activity (incl. from private spaces they can't see).
+ * Creating a webhook returns its signing secret once; deliveries are
+ * HMAC-signed with it.
  */
 @Controller("webhooks")
-@UseGuards(JwtAuthGuard, WorkspaceGuard)
+@UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
+@Roles("admin")
 export class WebhooksController {
   constructor(private readonly webhooks: WebhooksService) {}
 
