@@ -47,6 +47,7 @@ import { TableView } from "@/components/views/TableView";
 import { GanttView } from "@/components/views/GanttView";
 import { TimelineView } from "@/components/views/TimelineView";
 import { FavoriteStar } from "@/components/FavoriteStar";
+import { PublicShareButton } from "@/components/PublicShareButton";
 import { saveEntityAsTemplate } from "@/lib/toast";
 
 interface ListMeta {
@@ -504,6 +505,7 @@ function ListShell() {
         <span className="list-head-dot" style={{ background: listColor }} />
         <h1>{list.name}</h1>
         <FavoriteStar type="list" id={list.id} name={list.name} />
+        <PublicShareButton type="list" id={list.id} />
         <div className="list-head-actions">
           {canEdit && (
             <>

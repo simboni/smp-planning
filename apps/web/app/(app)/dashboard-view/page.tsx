@@ -44,6 +44,7 @@ import {
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { useRealtime } from "@/lib/realtime";
 import { Icons, type IconKey } from "@/components/icons";
+import { PublicShareButton } from "@/components/PublicShareButton";
 import {
   Bars,
   ChartEmpty,
@@ -1201,6 +1202,7 @@ function DashboardView() {
           </button>
         )}
         <span className="dbv-head-spacer" />
+        <PublicShareButton type="dashboard" id={dashboard.id} />
         <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
           {Icons.plus} Add card
         </button>

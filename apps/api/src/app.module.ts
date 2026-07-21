@@ -27,6 +27,7 @@ import { InboxModule } from "./inbox/inbox.module";
 import { LimitsModule } from "./limits/limits.module";
 import { PushModule } from "./push/push.module";
 import { SearchModule } from "./search/search.module";
+import { SharesModule } from "./shares/shares.module";
 import { SharingModule } from "./sharing/sharing.module";
 import { SprintsModule } from "./sprints/sprints.module";
 import { TasksModule } from "./tasks/tasks.module";
@@ -87,6 +88,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     LimitsModule,
     CommsModule,
     PushModule,
+    SharesModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],

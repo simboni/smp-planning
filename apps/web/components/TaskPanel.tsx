@@ -40,6 +40,7 @@ import { Icons } from "@/components/icons";
 import { colorFor, formatEstimate, initials, toDateInputValue } from "@/lib/format";
 import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChip, TypeIcon } from "@/components/TaskBits";
 import { FieldManager } from "@/components/FieldManager";
+import { PublicShareButton } from "@/components/PublicShareButton";
 import { CommentsActivity } from "@/components/CommentsActivity";
 import {
   AiSubtaskButton,
@@ -471,6 +472,7 @@ export function TaskPanel({
               <span className="muted">Task</span>
             )}
           </div>
+          {detail && <PublicShareButton type="task" id={detail.id} />}
           <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
             {Icons.close}
           </button>

@@ -90,6 +90,26 @@ export class DbService implements OnModuleDestroy {
   }
 
   /**
+   * PUBLIC share path (M26): run fn with ONLY `app.share_token` bound — no
+   * workspace, no user. The `public_shares_public_read` policy admits exactly
+   * the one non-revoked share row whose token matches; every other RLS policy
+   * reads its settings as NULL and denies. Used to resolve a share token to
+   * its (workspace_id, entity_type, entity_id, permission) before loading that
+   * one entity's content under a workspace-system context.
+   */
+  async withShareToken<T>(
+    token: string,
+    fn: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return this.inTransaction(async (client) => {
+      await client.query("SELECT set_config('app.share_token', $1, true)", [
+        token,
+      ]);
+      return fn(client);
+    });
+  }
+
+  /**
    * SYSTEM path (M15): run fn with ONLY `app.current_workspace` bound — no
    * user. For server-internal, non-user-driven work such as webhook dispatch
    * that must read a workspace's webhook rows off the event bus (where there

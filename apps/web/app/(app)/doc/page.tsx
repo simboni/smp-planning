@@ -37,6 +37,7 @@ import { useHierarchy } from "@/components/HierarchyProvider";
 import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
 import { FavoriteStar } from "@/components/FavoriteStar";
+import { PublicShareButton } from "@/components/PublicShareButton";
 import { saveEntityAsTemplate } from "@/lib/toast";
 import { DOC_EMOJI } from "@/lib/format";
 
@@ -884,6 +885,7 @@ function DocView() {
           {!canEdit && <span className="doc-chip doc-chip-ro">{Icons.eye} Read-only</span>}
 
           <FavoriteStar type="doc" id={doc.id} name={doc.name} />
+          <PublicShareButton type="doc" id={doc.id} />
 
           <span className="doc-head-spacer" />
 

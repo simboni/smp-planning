@@ -2158,6 +2158,86 @@ export const publicFormsApi = {
     }),
 };
 
+/* ---- Public share links (M26) ------------------------------------- */
+
+export type ShareEntityType =
+  | "space"
+  | "folder"
+  | "list"
+  | "task"
+  | "doc"
+  | "dashboard";
+export type SharePermission = "view" | "comment";
+
+export interface ShareSummary {
+  id: string;
+  entityType: ShareEntityType;
+  entityId: string;
+  token: string;
+  permission: SharePermission;
+  createdAt: string;
+}
+
+export interface SharedPage {
+  id: string;
+  title: string;
+  content: string;
+  parentPageId: string | null;
+  position: number;
+}
+
+/** The read-only payload the public share page renders. */
+export interface SharedView {
+  entityType: ShareEntityType;
+  permission: SharePermission;
+  workspaceName: string;
+  title: string;
+  task?: TaskDetail;
+  list?: { name: string; tasks: TaskCard[] };
+  doc?: { name: string; pages: SharedPage[] };
+  dashboard?: { name: string; cards: DashboardCard[] };
+  overview?: {
+    kind: "space" | "folder";
+    name: string;
+    folders: { id: string; name: string }[];
+    lists: { id: string; name: string }[];
+  };
+}
+
+export const sharesApi = {
+  forEntity: (type: ShareEntityType, id: string) =>
+    api<{ share: ShareSummary | null }>(
+      `/shares?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`,
+      { auth: "access" },
+    ),
+  create: (
+    entityType: ShareEntityType,
+    entityId: string,
+    permission: SharePermission = "view",
+  ) =>
+    api<{ share: ShareSummary }>("/shares", {
+      method: "POST",
+      body: { entityType, entityId, permission },
+      auth: "access",
+    }),
+  revoke: (id: string) =>
+    api<void>(`/shares/${id}`, { method: "DELETE", auth: "access" }),
+};
+
+export const publicShareApi = {
+  resolve: (token: string) =>
+    publicApi<{ view: SharedView }>(
+      `/public/share/${encodeURIComponent(token)}`,
+    ),
+};
+
+/** Build the shareable public URL for a token (current origin + /s?t=). */
+export function shareUrl(token: string): string {
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/s?t=${token}`;
+}
+
 /* ---- automations -------------------------------------------------- */
 
 export type AutomationTriggerType =

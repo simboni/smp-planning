@@ -18,5 +18,6 @@ import { DashboardsService } from "./dashboards.service";
   imports: [AccessModule, AuditModule, GoalsModule, LimitsModule],
   controllers: [DashboardsController],
   providers: [DashboardsService],
+  exports: [DashboardsService],
 })
 export class DashboardsModule {}

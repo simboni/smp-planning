@@ -23,6 +23,7 @@ import { Icons } from "@/components/icons";
 import { ShareDialog } from "@/components/ShareDialog";
 import { ClickAppsModal } from "@/components/ClickAppsModal";
 import { FavoriteStar } from "@/components/FavoriteStar";
+import { PublicShareButton } from "@/components/PublicShareButton";
 import { saveEntityAsTemplate } from "@/lib/toast";
 import {
   actionSummary,
@@ -709,6 +710,7 @@ function SpaceView() {
           <div className="sp-head-title">
             <h1 style={{ color }}>{space.name}</h1>
             <FavoriteStar type="space" id={space.id} name={space.name} />
+            <PublicShareButton type="space" id={space.id} />
           </div>
           <div className="sp-head-meta">
             {space.isPrivate && (
