@@ -6,12 +6,14 @@ import {
   getUser,
   getWorkspace,
   homeApi,
+  type HomeData,
   type HomeOverview,
   type PublicUser,
+  type TaskCard,
   type WorkspaceSummary,
 } from "@/lib/api";
 import { Icons, type IconKey } from "@/components/icons";
-import { firstName } from "@/lib/format";
+import { firstName, formatDueDate, timeAgo } from "@/lib/format";
 
 const CHECKLIST = [
   { title: "Create your workspace", sub: "You're in — nice work.", done: true },
@@ -40,6 +42,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
   const [overview, setOverview] = useState<HomeOverview | null>(null);
+  const [home, setHome] = useState<HomeData | null>(null);
 
   useEffect(() => {
     setUser(getUser());
@@ -48,7 +51,18 @@ export default function DashboardPage() {
       .overview()
       .then(setOverview)
       .catch(() => setOverview(null));
+    homeApi
+      .get()
+      .then(setHome)
+      .catch(() => setHome(null));
   }, []);
+
+  // Tasks that need attention now: overdue first, then due today.
+  const attention: TaskCard[] = home
+    ? [...home.overdue, ...home.dueToday].slice(0, 6)
+    : [];
+  const taskHref = (t: { listId: string; id: string }) =>
+    `/list?id=${t.listId}&task=${t.id}`;
 
   const doneCount = CHECKLIST.filter((c) => c.done).length;
   const progress = Math.round((doneCount / CHECKLIST.length) * 100);
@@ -140,73 +154,110 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* quick jumps into the workspace */}
-      <div className="section-title">
-        <h2>Jump back in</h2>
-        <span className="muted">Everything's ready to go</span>
-      </div>
-      <div className="module-grid">
-        <Link href="/everything" className="module-tile module-tile-live">
-          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
-            Ready
-          </span>
-          <span className="module-ic" style={{ background: "#7B68EE" }}>
-            {Icons.spaces}
-          </span>
-          <h3>Spaces</h3>
-          <p>Organize teams and projects — create your first space.</p>
-        </Link>
-        <Link href="/everything" className="module-tile module-tile-live">
-          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
-            Ready
-          </span>
-          <span className="module-ic" style={{ background: "#5B5FEF" }}>
-            {Icons.tasks}
-          </span>
-          <h3>Tasks</h3>
-          <p>Lists, statuses & task detail — open a list to start.</p>
-        </Link>
-        <Link href="/docs" className="module-tile module-tile-live">
-          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
-            Ready
-          </span>
-          <span className="module-ic" style={{ background: "#00B8D9" }}>
-            {Icons.docs}
-          </span>
-          <h3>Docs</h3>
-          <p>Wikis and collaborative docs — write your first page.</p>
-        </Link>
-        <Link href="/timesheet" className="module-tile module-tile-live">
-          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
-            Ready
-          </span>
-          <span className="module-ic" style={{ background: "#E5578C" }}>
-            {Icons.timer}
-          </span>
-          <h3>Time Tracking</h3>
-          <p>Timers, timesheets & team workload — track your week.</p>
-        </Link>
-        <Link href="/goals" className="module-tile module-tile-live">
-          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
-            Ready
-          </span>
-          <span className="module-ic" style={{ background: "#36B37E" }}>
-            {Icons.goals}
-          </span>
-          <h3>Goals</h3>
-          <p>OKRs, targets & portfolios — set a goal and watch it fill.</p>
-        </Link>
-        <Link href="/dashboards" className="module-tile module-tile-live">
-          <span className="badge badge-soft" style={{ position: "absolute", top: 14, right: 14 }}>
-            Ready
-          </span>
-          <span className="module-ic" style={{ background: "#FFAB00" }}>
-            {Icons.dashboards}
-          </span>
-          <h3>Dashboards</h3>
-          <p>Reporting at a glance — build a dashboard of live cards.</p>
-        </Link>
+      {/* second row: what needs attention + recent activity */}
+      <div className="grid grid-2">
+        <div className="card">
+          <div className="card-head">
+            <h3>Needs your attention</h3>
+            <Link href="/my-work" className="badge badge-soft" style={{ textDecoration: "none" }}>
+              My Work
+            </Link>
+          </div>
+          {home === null ? (
+            <>
+              <span className="skel" style={{ width: "100%", height: 44, marginBottom: 8 }} />
+              <span className="skel" style={{ width: "100%", height: 44 }} />
+            </>
+          ) : attention.length === 0 ? (
+            <div className="home-empty">
+              <span className="home-empty-ic">{Icons.checkCircle}</span>
+              <div>
+                <div className="home-empty-title">You're all caught up 🎉</div>
+                <div className="muted" style={{ fontSize: "0.86rem" }}>
+                  Nothing overdue or due today. Nice work.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="home-list">
+              {attention.map((t) => {
+                const overdue = home.overdue.some((o) => o.id === t.id);
+                return (
+                  <Link key={t.id} href={taskHref(t)} className="home-row">
+                    <span
+                      className="home-row-dot"
+                      style={{ background: t.status.color || "var(--muted)" }}
+                    />
+                    <span className="home-row-main">
+                      <span className="home-row-name">{t.name}</span>
+                      <span className="home-row-sub">{t.status.name}</span>
+                    </span>
+                    <span className={`home-due${overdue ? " overdue" : ""}`}>
+                      {formatDueDate(t.dueDate)}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <h3>Recent activity</h3>
+            <Link href="/my-work" className="badge badge-soft" style={{ textDecoration: "none" }}>
+              View all
+            </Link>
+          </div>
+          {home === null ? (
+            <>
+              <span className="skel" style={{ width: "100%", height: 40, marginBottom: 8 }} />
+              <span className="skel" style={{ width: "100%", height: 40 }} />
+            </>
+          ) : home.recent.length === 0 ? (
+            <div className="home-empty">
+              <span className="home-empty-ic">{Icons.clock}</span>
+              <div>
+                <div className="home-empty-title">No activity yet</div>
+                <div className="muted" style={{ fontSize: "0.86rem" }}>
+                  Create or update a task and it'll show up here.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="home-list">
+              {home.recent.slice(0, 6).map((r, i) => (
+                <Link
+                  key={`${r.taskId}-${i}`}
+                  href={`/list?id=${r.listId}&task=${r.taskId}`}
+                  className="home-row"
+                >
+                  <span className="home-row-ic">{Icons.checkCircle}</span>
+                  <span className="home-row-main">
+                    <span className="home-row-name">{r.taskName}</span>
+                    <span className="home-row-sub">{humanizeKind(r.kind)}</span>
+                  </span>
+                  <span className="home-due">{timeAgo(r.createdAt)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
+}
+
+/** Turn an activity kind ("status_changed") into a readable phrase. */
+function humanizeKind(kind: string): string {
+  const map: Record<string, string> = {
+    created: "Task created",
+    updated: "Task updated",
+    status_changed: "Status changed",
+    assigned: "Assignment changed",
+    commented: "New comment",
+    completed: "Marked complete",
+    due_changed: "Due date changed",
+  };
+  return map[kind] ?? kind.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
