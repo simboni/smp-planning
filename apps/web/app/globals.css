@@ -951,6 +951,60 @@ select.input { cursor: pointer; appearance: none;
 .home-empty-ic svg { width: 20px; height: 20px; }
 .home-empty-title { font-weight: 700; font-size: 0.94rem; }
 
+/* Home accordion (needs attention / recent activity) */
+.accordion { display: flex; flex-direction: column; gap: 12px; }
+.acc-item {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, 14px);
+  background: var(--card, var(--bg));
+  overflow: hidden;
+}
+.acc-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.acc-head:hover { background: var(--card-2); }
+.acc-chevron {
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform 0.22s ease;
+}
+.acc-chevron svg { width: 18px; height: 18px; }
+.acc-item.open .acc-chevron { transform: rotate(180deg); }
+.acc-title { font-size: 1rem; font-weight: 700; }
+.acc-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: var(--brand-soft);
+  color: var(--brand-700);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.acc-link { margin-left: auto; }
+/* Smooth collapse without measuring: 0fr -> 1fr grid row. */
+.acc-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+.acc-item.open .acc-body { grid-template-rows: 1fr; }
+.acc-body-inner { overflow: hidden; }
+.acc-item.open .acc-body-inner { padding: 0 16px 14px; }
+
 /* module "coming soon" tiles */
 .module-grid {
   display: grid;

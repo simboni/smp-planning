@@ -43,6 +43,12 @@ export default function DashboardPage() {
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
   const [overview, setOverview] = useState<HomeOverview | null>(null);
   const [home, setHome] = useState<HomeData | null>(null);
+  // Accordion: only one panel open at a time (opening one closes the other).
+  const [openPanel, setOpenPanel] = useState<"attention" | "activity" | null>(
+    "attention",
+  );
+  const toggle = (p: "attention" | "activity") =>
+    setOpenPanel((cur) => (cur === p ? null : p));
 
   useEffect(() => {
     setUser(getUser());
@@ -154,95 +160,131 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* second row: what needs attention + recent activity */}
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="card-head">
-            <h3>Needs your attention</h3>
-            <Link href="/my-work" className="badge badge-soft" style={{ textDecoration: "none" }}>
+      {/* second row: accordion — needs attention / recent activity */}
+      <div className="accordion">
+        <section className={`acc-item${openPanel === "attention" ? " open" : ""}`}>
+          <button
+            type="button"
+            className="acc-head"
+            aria-expanded={openPanel === "attention"}
+            onClick={() => toggle("attention")}
+          >
+            <span className="acc-chevron">{Icons.chevronDown}</span>
+            <span className="acc-title">Needs your attention</span>
+            {home && attention.length > 0 && (
+              <span className="acc-count">{attention.length}</span>
+            )}
+            <Link
+              href="/my-work"
+              className="badge badge-soft acc-link"
+              style={{ textDecoration: "none" }}
+              onClick={(e) => e.stopPropagation()}
+            >
               My Work
             </Link>
-          </div>
-          {home === null ? (
-            <>
-              <span className="skel" style={{ width: "100%", height: 44, marginBottom: 8 }} />
-              <span className="skel" style={{ width: "100%", height: 44 }} />
-            </>
-          ) : attention.length === 0 ? (
-            <div className="home-empty">
-              <span className="home-empty-ic">{Icons.checkCircle}</span>
-              <div>
-                <div className="home-empty-title">You're all caught up 🎉</div>
-                <div className="muted" style={{ fontSize: "0.86rem" }}>
-                  Nothing overdue or due today. Nice work.
+          </button>
+          <div className="acc-body">
+            <div className="acc-body-inner">
+              {home === null ? (
+                <>
+                  <span className="skel" style={{ width: "100%", height: 44, marginBottom: 8 }} />
+                  <span className="skel" style={{ width: "100%", height: 44 }} />
+                </>
+              ) : attention.length === 0 ? (
+                <div className="home-empty">
+                  <span className="home-empty-ic">{Icons.checkCircle}</span>
+                  <div>
+                    <div className="home-empty-title">You're all caught up 🎉</div>
+                    <div className="muted" style={{ fontSize: "0.86rem" }}>
+                      Nothing overdue or due today. Nice work.
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="home-list">
+                  {attention.map((t) => {
+                    const overdue = home.overdue.some((o) => o.id === t.id);
+                    return (
+                      <Link key={t.id} href={taskHref(t)} className="home-row">
+                        <span
+                          className="home-row-dot"
+                          style={{ background: t.status.color || "var(--muted)" }}
+                        />
+                        <span className="home-row-main">
+                          <span className="home-row-name">{t.name}</span>
+                          <span className="home-row-sub">{t.status.name}</span>
+                        </span>
+                        <span className={`home-due${overdue ? " overdue" : ""}`}>
+                          {formatDueDate(t.dueDate)}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="home-list">
-              {attention.map((t) => {
-                const overdue = home.overdue.some((o) => o.id === t.id);
-                return (
-                  <Link key={t.id} href={taskHref(t)} className="home-row">
-                    <span
-                      className="home-row-dot"
-                      style={{ background: t.status.color || "var(--muted)" }}
-                    />
-                    <span className="home-row-main">
-                      <span className="home-row-name">{t.name}</span>
-                      <span className="home-row-sub">{t.status.name}</span>
-                    </span>
-                    <span className={`home-due${overdue ? " overdue" : ""}`}>
-                      {formatDueDate(t.dueDate)}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          </div>
+        </section>
 
-        <div className="card">
-          <div className="card-head">
-            <h3>Recent activity</h3>
-            <Link href="/my-work" className="badge badge-soft" style={{ textDecoration: "none" }}>
+        <section className={`acc-item${openPanel === "activity" ? " open" : ""}`}>
+          <button
+            type="button"
+            className="acc-head"
+            aria-expanded={openPanel === "activity"}
+            onClick={() => toggle("activity")}
+          >
+            <span className="acc-chevron">{Icons.chevronDown}</span>
+            <span className="acc-title">Recent activity</span>
+            {home && home.recent.length > 0 && (
+              <span className="acc-count">{home.recent.length}</span>
+            )}
+            <Link
+              href="/my-work"
+              className="badge badge-soft acc-link"
+              style={{ textDecoration: "none" }}
+              onClick={(e) => e.stopPropagation()}
+            >
               View all
             </Link>
-          </div>
-          {home === null ? (
-            <>
-              <span className="skel" style={{ width: "100%", height: 40, marginBottom: 8 }} />
-              <span className="skel" style={{ width: "100%", height: 40 }} />
-            </>
-          ) : home.recent.length === 0 ? (
-            <div className="home-empty">
-              <span className="home-empty-ic">{Icons.clock}</span>
-              <div>
-                <div className="home-empty-title">No activity yet</div>
-                <div className="muted" style={{ fontSize: "0.86rem" }}>
-                  Create or update a task and it'll show up here.
+          </button>
+          <div className="acc-body">
+            <div className="acc-body-inner">
+              {home === null ? (
+                <>
+                  <span className="skel" style={{ width: "100%", height: 40, marginBottom: 8 }} />
+                  <span className="skel" style={{ width: "100%", height: 40 }} />
+                </>
+              ) : home.recent.length === 0 ? (
+                <div className="home-empty">
+                  <span className="home-empty-ic">{Icons.clock}</span>
+                  <div>
+                    <div className="home-empty-title">No activity yet</div>
+                    <div className="muted" style={{ fontSize: "0.86rem" }}>
+                      Create or update a task and it'll show up here.
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="home-list">
+                  {home.recent.slice(0, 6).map((r, i) => (
+                    <Link
+                      key={`${r.taskId}-${i}`}
+                      href={`/list?id=${r.listId}&task=${r.taskId}`}
+                      className="home-row"
+                    >
+                      <span className="home-row-ic">{Icons.checkCircle}</span>
+                      <span className="home-row-main">
+                        <span className="home-row-name">{r.taskName}</span>
+                        <span className="home-row-sub">{humanizeKind(r.kind)}</span>
+                      </span>
+                      <span className="home-due">{timeAgo(r.createdAt)}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="home-list">
-              {home.recent.slice(0, 6).map((r, i) => (
-                <Link
-                  key={`${r.taskId}-${i}`}
-                  href={`/list?id=${r.listId}&task=${r.taskId}`}
-                  className="home-row"
-                >
-                  <span className="home-row-ic">{Icons.checkCircle}</span>
-                  <span className="home-row-main">
-                    <span className="home-row-name">{r.taskName}</span>
-                    <span className="home-row-sub">{humanizeKind(r.kind)}</span>
-                  </span>
-                  <span className="home-due">{timeAgo(r.createdAt)}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+          </div>
+        </section>
       </div>
     </div>
   );
