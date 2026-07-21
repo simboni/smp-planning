@@ -204,6 +204,26 @@ describe("home / my work", () => {
       res.body.reminders.some((r: { note: string }) => r.note === "Ping the team"),
     ).toBe(true);
   });
+
+  it("returns at-a-glance counts scoped to the caller", async () => {
+    const f = await fixture();
+    const me = f.owner.userId;
+    // three tasks in the fixture's visible list
+    for (const n of ["A", "B", "C"]) {
+      await http
+        .post(`/lists/${f.listId}/tasks`)
+        .set(auth(f.access))
+        .send({ name: n, assigneeIds: [me] })
+        .expect(201);
+    }
+    const ov = await http.get("/home/overview").set(auth(f.access)).expect(200);
+    expect(ov.body.spaces).toBeGreaterThanOrEqual(1);
+    expect(ov.body.tasks).toBeGreaterThanOrEqual(3);
+    expect(ov.body.members).toBeGreaterThanOrEqual(1);
+    expect(typeof ov.body.docs).toBe("number");
+    expect(typeof ov.body.goals).toBe("number");
+    expect(typeof ov.body.dashboards).toBe("number");
+  });
 });
 
 describe("templates", () => {

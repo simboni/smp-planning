@@ -3040,8 +3040,19 @@ export interface HomeData {
   recent: HomeRecent[];
 }
 
+/** At-a-glance workspace counts for the Home stat tiles. */
+export interface HomeOverview {
+  spaces: number;
+  tasks: number;
+  docs: number;
+  goals: number;
+  dashboards: number;
+  members: number;
+}
+
 export const homeApi = {
   get: () => api<HomeData>("/home", { auth: "access" }),
+  overview: () => api<HomeOverview>("/home/overview", { auth: "access" }),
 };
 
 /* ---- Template Center ---------------------------------------------- */

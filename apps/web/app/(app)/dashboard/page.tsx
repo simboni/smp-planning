@@ -5,13 +5,13 @@ import { useEffect, useState } from "react";
 import {
   getUser,
   getWorkspace,
-  workspacesApi,
-  type Member,
+  homeApi,
+  type HomeOverview,
   type PublicUser,
   type WorkspaceSummary,
 } from "@/lib/api";
-import { Icons } from "@/components/icons";
-import { colorFor, firstName, initials } from "@/lib/format";
+import { Icons, type IconKey } from "@/components/icons";
+import { firstName } from "@/lib/format";
 
 const CHECKLIST = [
   { title: "Create your workspace", sub: "You're in — nice work.", done: true },
@@ -20,18 +20,34 @@ const CHECKLIST = [
   { title: "Create your first task", sub: "Open a list and add your first task.", done: false, href: "/everything", cta: "Open" },
 ];
 
+/** The at-a-glance stat buttons, in display order. */
+const STATS: {
+  key: keyof HomeOverview;
+  label: string;
+  href: string;
+  icon: IconKey;
+  color: string;
+}[] = [
+  { key: "spaces", label: "Spaces", href: "/everything", icon: "spaces", color: "#7B68EE" },
+  { key: "tasks", label: "Tasks", href: "/my-work", icon: "tasks", color: "#5B5FEF" },
+  { key: "docs", label: "Docs", href: "/docs", icon: "docs", color: "#00B8D9" },
+  { key: "goals", label: "Goals", href: "/goals", icon: "goals", color: "#36B37E" },
+  { key: "dashboards", label: "Dashboards", href: "/dashboards", icon: "dashboards", color: "#FFAB00" },
+  { key: "members", label: "Members", href: "/members", icon: "members", color: "#E5578C" },
+];
+
 export default function DashboardPage() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
-  const [members, setMembers] = useState<Member[] | null>(null);
+  const [overview, setOverview] = useState<HomeOverview | null>(null);
 
   useEffect(() => {
     setUser(getUser());
     setWorkspace(getWorkspace());
-    workspacesApi
-      .members()
-      .then((r) => setMembers(r.members))
-      .catch(() => setMembers([]));
+    homeApi
+      .overview()
+      .then(setOverview)
+      .catch(() => setOverview(null));
   }, []);
 
   const doneCount = CHECKLIST.filter((c) => c.done).length;
@@ -103,42 +119,24 @@ export default function DashboardPage() {
 
         <div className="card">
           <div className="card-head">
-            <h3>Members</h3>
-            <Link href="/members" className="badge badge-soft" style={{ textDecoration: "none" }}>
-              Manage
+            <h3>Workspace at a glance</h3>
+            <Link href="/everything" className="badge badge-soft" style={{ textDecoration: "none" }}>
+              Browse
             </Link>
           </div>
-          {members === null ? (
-            <>
-              <span className="skel" style={{ width: 80, height: 32, marginBottom: 14 }} />
-              <span className="skel" style={{ width: "100%", height: 40, marginBottom: 8 }} />
-              <span className="skel" style={{ width: "100%", height: 40 }} />
-            </>
-          ) : (
-            <>
-              <div className="stat-big">{members.length}</div>
-              <div className="muted" style={{ fontSize: "0.85rem", marginBottom: 12 }}>
-                {members.length === 1 ? "person" : "people"} in this workspace
-              </div>
-              {members.slice(0, 3).map((m) => (
-                <div className="member-mini" key={m.id}>
-                  <span className="avatar avatar-sm" style={{ background: colorFor(m.id) }}>
-                    {initials(m.fullName || m.email)}
-                  </span>
-                  <span className="member-mini-body">
-                    <span className="member-mini-name">{m.fullName || m.email}</span>
-                    <span className="member-mini-email">{m.email}</span>
-                  </span>
-                  <span className={`badge role-${m.role}`}>{m.role}</span>
-                </div>
-              ))}
-              {members.length === 0 && (
-                <div className="muted" style={{ fontSize: "0.88rem" }}>
-                  Just you so far. Invite your team to get going.
-                </div>
-              )}
-            </>
-          )}
+          <div className="stat-grid">
+            {STATS.map((s) => (
+              <Link key={s.key} href={s.href} className="stat-tile">
+                <span className="stat-tile-ic" style={{ background: s.color }}>
+                  {Icons[s.icon]}
+                </span>
+                <span className="stat-tile-num">
+                  {overview ? overview[s.key] : <span className="skel stat-tile-skel" />}
+                </span>
+                <span className="stat-tile-label">{s.label}</span>
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
 

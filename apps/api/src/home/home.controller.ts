@@ -15,4 +15,10 @@ export class HomeController {
   get(@Req() req: AuthedRequest) {
     return this.home.home(req.workspaceId!, req.userId!, req.role!);
   }
+
+  /** At-a-glance counts (spaces, tasks, docs, goals, dashboards, members). */
+  @Get("home/overview")
+  overview(@Req() req: AuthedRequest) {
+    return this.home.overview(req.workspaceId!, req.userId!, req.role!);
+  }
 }

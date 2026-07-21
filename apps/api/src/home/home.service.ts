@@ -35,6 +35,16 @@ export interface HomeSummary {
   recent: HomeRecent[];
 }
 
+/** At-a-glance counts for the Home stat tiles, scoped to what the caller sees. */
+export interface HomeOverview {
+  spaces: number;
+  tasks: number;
+  docs: number;
+  goals: number;
+  dashboards: number;
+  members: number;
+}
+
 /** Per-bucket cap so a busy user's Home stays a fixed-size payload. */
 const BUCKET_CAP = 25;
 
@@ -162,6 +172,48 @@ export class HomeService {
         unscheduled,
         reminders,
         recent,
+      };
+    });
+  }
+
+  /**
+   * Counts for the Home stat tiles. Everything is scoped to what the caller
+   * can actually see: tasks and docs are limited to their visible spaces (so a
+   * private space they aren't in doesn't inflate the numbers); goals,
+   * dashboards and members are workspace-level. Members-only, like home().
+   */
+  async overview(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+  ): Promise<HomeOverview> {
+    if (role === "guest") {
+      throw new ForbiddenException("Home is available to members only");
+    }
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const visible = [
+        ...(await this.access.visibleSpaceIds(client, userId, role)),
+      ];
+      const res = await client.query(
+        `SELECT
+           (SELECT count(*) FROM tasks
+              WHERE archived = false AND space_id = ANY($1::uuid[]))::int AS tasks,
+           (SELECT count(*) FROM docs
+              WHERE space_id = ANY($1::uuid[])
+                 OR (space_id IS NULL AND created_by = $2))::int AS docs,
+           (SELECT count(*) FROM goals WHERE archived = false)::int AS goals,
+           (SELECT count(*) FROM dashboards)::int AS dashboards,
+           (SELECT count(*) FROM memberships)::int AS members`,
+        [visible, userId],
+      );
+      const row = res.rows[0];
+      return {
+        spaces: visible.length,
+        tasks: row.tasks as number,
+        docs: row.docs as number,
+        goals: row.goals as number,
+        dashboards: row.dashboards as number,
+        members: row.members as number,
       };
     });
   }
