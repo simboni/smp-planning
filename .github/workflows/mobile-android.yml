@@ -24,8 +24,10 @@ on:
       - "mobile/**"
       - ".github/workflows/mobile-android.yml"
 
+# contents: write so the build can publish the APK to the "android-latest"
+# release — giving a permanent direct-install link for phones.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -72,6 +74,23 @@ jobs:
           name: stackup-debug-apk
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Rename APK for the release link
+        run: cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/StackUp.apk"
+
+      # Publish/refresh the "android-latest" release so the SAME direct link
+      # always serves the newest build:
+      #   https://github.com/simboni/smp-planning/releases/download/android-latest/StackUp.apk
+      - name: Publish direct-install release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: StackUp Android (latest)
+          body: |
+            Direct install: download StackUp.apk on your Android phone, open it,
+            allow "install unknown apps", and install. This release is refreshed
+            automatically by every mobile build.
+          files: ${{ runner.temp }}/StackUp.apk
 
       - name: Signing not configured (skipping release)
         if: env.HAS_SIGNING != 'true'

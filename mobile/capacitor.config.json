@@ -3,7 +3,7 @@
   "appName": "StackUp",
   "webDir": "www",
   "server": {
-    "url": "https://app.stackup.co.ke",
+    "url": "https://stackup-c2vf.onrender.com",
     "cleartext": false,
     "androidScheme": "https"
   },
