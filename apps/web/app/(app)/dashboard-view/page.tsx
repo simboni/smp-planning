@@ -971,11 +971,11 @@ function CardView({
             className="dbv-card-title"
             title="Rename card"
             onClick={() => {
-              setRenameVal(card.title);
+              setRenameVal(card.title || meta?.label || "");
               setRenaming(true);
             }}
           >
-            {card.title}
+            {card.title || meta?.label || "Card"}
           </button>
         )}
         <span className="dp-menu-wrap">

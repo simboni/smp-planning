@@ -41,6 +41,20 @@ export type CardKind = (typeof CARD_KINDS)[number];
 /** Card kinds gated behind the Business plan's advancedCards feature (M24). */
 const ADVANCED_KINDS = new Set<CardKind>(["completionTrend", "overdueByAssignee"]);
 
+/** Default card headings, used when a card is created without a title. */
+const KIND_TITLES: Record<CardKind, string> = {
+  statusBreakdown: "Tasks by status",
+  assigneeLoad: "Workload by assignee",
+  priorityBreakdown: "Tasks by priority",
+  timeTracked: "Time tracked",
+  goalProgress: "Goal progress",
+  sprintBurndown: "Sprint burndown",
+  recentActivity: "Recent activity",
+  text: "Note",
+  completionTrend: "Completion trend",
+  overdueByAssignee: "Overdue by assignee",
+};
+
 export interface DashboardSummary {
   id: string;
   name: string;
@@ -339,7 +353,10 @@ export class DashboardsService {
     },
   ): Promise<DashboardCard> {
     const kind = validKind(body?.kind);
-    const title = body?.title !== undefined ? String(body.title) : "";
+    const title =
+      body?.title !== undefined && String(body.title).trim() !== ""
+        ? String(body.title)
+        : KIND_TITLES[kind];
     const config = body?.config !== undefined ? validConfig(body.config) : {};
     const width = body?.width !== undefined ? validWidth(body.width) : "half";
     const card = await this.db.withWorkspace(
