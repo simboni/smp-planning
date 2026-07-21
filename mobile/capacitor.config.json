@@ -1,0 +1,23 @@
+{
+  "appId": "com.stackup.app",
+  "appName": "StackUp",
+  "webDir": "www",
+  "server": {
+    "url": "https://stackup-c2vf.onrender.com",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "backgroundColor": "#ffffff",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 900,
+      "backgroundColor": "#7B68EE",
+      "showSpinner": false,
+      "androidSplashResourceName": "splash"
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#7B68EE"
+    }
+  }
+}

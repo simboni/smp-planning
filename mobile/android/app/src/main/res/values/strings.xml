@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">StackUp</string>
+    <string name="title_activity_main">StackUp</string>
+    <string name="package_name">com.stackup.app</string>
+    <string name="custom_url_scheme">com.stackup.app</string>
+</resources>

@@ -1,0 +1,102 @@
+name: Build mobile app (Android)
+
+# Builds the StackUp Capacitor Android app and uploads the installable files as
+# downloadable artifacts. The app wraps the live StackUp web app (see
+# mobile/capacitor.config.json) and is the base for native features (push,
+# biometric unlock, share sheet) added later.
+#
+# - A DEBUG apk is ALWAYS built — download `stackup-debug-apk`, copy to a phone
+#   and install (allow "install unknown apps").
+# - A signed RELEASE .aab + .apk build once the four signing secrets are set:
+#       ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD /
+#       ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD
+#   (see mobile/README.md for the keystore commands).
+#
+# Run it: Actions tab → "Build mobile app (Android)" → Run workflow.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/clickup-recreation-9vk6m2
+      - main
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-android.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      HAS_SIGNING: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install JS dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Capacitor sync (regenerate native config + plugins)
+        working-directory: mobile
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: stackup-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Signing not configured (skipping release)
+        if: env.HAS_SIGNING != 'true'
+        run: echo "::notice::Release build skipped — add the four ANDROID_* signing secrets to build a Play-ready signed .aab."
+
+      - name: Decode keystore
+        if: env.HAS_SIGNING == 'true'
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/stackup.keystore"
+
+      - name: Build signed release bundle (.aab) and APK
+        if: env.HAS_SIGNING == 'true'
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/stackup.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Upload release bundle + APK
+        if: env.HAS_SIGNING == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stackup-release
+          path: |
+            mobile/android/app/build/outputs/bundle/release/app-release.aab
+            mobile/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
