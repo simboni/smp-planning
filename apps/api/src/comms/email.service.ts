@@ -50,9 +50,15 @@ export class EmailService {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 5000);
+        // Optional auth for the relay (e.g. "Bearer re_..." for Resend, whose
+        // API accepts this exact {from,to,subject,text} payload directly).
+        const headers: Record<string, string> = { "content-type": "application/json" };
+        if (this.config.emailRelayAuth) {
+          headers[this.config.emailRelayAuthHeader] = this.config.emailRelayAuth;
+        }
         const res = await fetch(this.config.emailRelayUrl, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers,
           body: JSON.stringify({
             from: this.config.emailFrom,
             to: message.to,

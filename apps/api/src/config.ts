@@ -29,6 +29,10 @@ export interface AppConfig {
   emailProvider: string;
   /** Relay endpoint for the http email provider; {to,subject,text} POSTed as JSON. */
   emailRelayUrl: string;
+  /** Auth header VALUE sent to the relay (e.g. "Bearer re_..." for Resend). */
+  emailRelayAuth: string;
+  /** Auth header NAME (default Authorization; e.g. "api-key" for some providers). */
+  emailRelayAuthHeader: string;
   /** From address stamped on outbound mail. */
   emailFrom: string;
 }
@@ -51,6 +55,8 @@ export function loadConfig(): AppConfig {
     webBaseUrl: process.env.WEB_BASE_URL ?? "",
     emailProvider: process.env.EMAIL_PROVIDER ?? "log",
     emailRelayUrl: process.env.EMAIL_RELAY_URL ?? "",
+    emailRelayAuth: process.env.EMAIL_RELAY_AUTH ?? "",
+    emailRelayAuthHeader: process.env.EMAIL_RELAY_AUTH_HEADER ?? "Authorization",
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@stackup.app",
   };
 }
