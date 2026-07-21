@@ -1,7 +1,7 @@
 # StackUp — mobile app (Capacitor)
 
 The native Android app shell for StackUp, built with **Capacitor**. It wraps the
-live app (`https://stackup-c2vf.onrender.com`) in a real native app and is the
+live app (`https://app.stackup.co.ke`) in a real native app and is the
 base we add native features onto (push notifications, biometric unlock, share
 sheet). Web content auto-updates on every deploy of the web app; we only
 re-release the store build when the native shell itself changes.
