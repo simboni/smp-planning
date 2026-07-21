@@ -1,10 +1,15 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { DbService } from "../db/db.service";
+import { EventsService } from "../events/events.service";
+import { PushService } from "../push/push.service";
 import { parseDate, requireName } from "../tasks/tasks.support";
 import { insertNotification } from "./inbox.support";
 
@@ -51,8 +56,76 @@ function iso(v: unknown): string | null {
  * (no background scheduler needed).
  */
 @Injectable()
-export class InboxService {
-  constructor(private readonly db: DbService) {}
+export class InboxService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(InboxService.name);
+  private untap: (() => void) | null = null;
+
+  constructor(
+    private readonly db: DbService,
+    private readonly events: EventsService,
+    private readonly push: PushService,
+  ) {}
+
+  // --- Mobile push bridge ---------------------------------------------------
+
+  /**
+   * Producers publish `notification.new` on the event bus AFTER their
+   * transaction commits (see inbox.support.ts), so tapping the bus here is
+   * the one after-commit hook that covers every notification writer. The
+   * dispatch is fire-and-forget and dormant until FCM is configured.
+   */
+  onModuleInit(): void {
+    this.untap = this.events.tap((workspaceId, event) => {
+      if (event.type !== "notification.new") return;
+      const userId =
+        typeof event.payload?.userId === "string" ? event.payload.userId : null;
+      if (!userId || !this.push.enabled()) return;
+      void this.pushLatestNotification(workspaceId, userId).catch((err) =>
+        this.logger.warn(`push dispatch error: ${(err as Error).message}`),
+      );
+    });
+  }
+  onModuleDestroy(): void {
+    this.untap?.();
+  }
+
+  /** Push the user's freshest notification (the one the event announced). */
+  private async pushLatestNotification(
+    workspaceId: string,
+    userId: string,
+  ): Promise<void> {
+    const row = await this.db.withWorkspaceSystem(workspaceId, async (client) => {
+      const res = await client.query(
+        `SELECT n.kind, n.message, n.task_id, t.name AS task_name
+         FROM notifications n
+         LEFT JOIN tasks t ON t.id = n.task_id
+         WHERE n.user_id = $1
+         ORDER BY n.created_at DESC, n.id DESC
+         LIMIT 1`,
+        [userId],
+      );
+      return res.rows[0] as
+        | { kind: string; message: string; task_id: string | null; task_name: string | null }
+        | undefined;
+    });
+    if (!row) return;
+    const titles: Record<string, string> = {
+      mention: "New mention",
+      assigned: "New assignment",
+      comment: "New comment",
+      status: "Status update",
+      reminder: "Reminder",
+      timesheet: "Timesheet update",
+      chat: "New chat message",
+    };
+    const body =
+      row.message || (row.task_name ? `On “${row.task_name}”` : "Open your inbox");
+    await this.push.notifyUser(userId, {
+      title: titles[row.kind] ?? "New notification",
+      body,
+      path: row.task_id ? `/list?task=${row.task_id}` : "/inbox",
+    });
+  }
 
   // --- Notifications --------------------------------------------------------
 

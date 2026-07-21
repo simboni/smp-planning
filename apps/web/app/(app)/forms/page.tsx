@@ -23,6 +23,7 @@ import {
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { copyToClipboard, publicFormUrl, timeAgo } from "@/lib/format";
+import { isNativeApp, share } from "@/lib/native";
 
 /** Flattened, permission-filtered list choices grouped by space. */
 interface ListChoiceGroup {
@@ -191,9 +192,13 @@ function FormRow({
   };
 
   const copyLink = (): void => {
-    void copyToClipboard(publicFormUrl(form.publicToken)).then((ok) =>
-      onToast(ok ? "Public link copied to your clipboard." : "Couldn't copy the link."),
-    );
+    const url = publicFormUrl(form.publicToken);
+    void (async () => {
+      // In the native shell, prefer the OS share sheet; fall back to copy.
+      if (isNativeApp() && (await share({ title: form.name, url }))) return;
+      const ok = await copyToClipboard(url);
+      onToast(ok ? "Public link copied to your clipboard." : "Couldn't copy the link.");
+    })();
   };
 
   const rotate = (): void => {

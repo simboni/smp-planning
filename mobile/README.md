@@ -62,8 +62,18 @@ Bump `versionCode` (and `versionName`) in `android/app/build.gradle` for every
 Play upload. Change the display name in
 `android/app/src/main/res/values/strings.xml`.
 
+## Native features (built)
+
+- **Mobile app shell** — inside the app the web UI switches to a bottom-tab
+  layout with a native app bar (no desktop chrome, no text selection).
+- **Push notifications** — dormant until Firebase is connected; see
+  `../docs/push-notifications.md`.
+- **Google sign-in** — opens the system browser and deep-links back via
+  `com.stackup.app://sso`.
+- **Share sheet, haptics, camera capture, hardware back button, status-bar
+  theming, keyboard handling.**
+
 ## Roadmap (next)
 
-- **Native features**: `@capacitor/push-notifications` (needs a Firebase
-  project + `google-services.json`), biometric unlock, `@capacitor/camera`.
+- Biometric app lock.
 - **iOS**: `npx cap add ios` + a macOS/cloud-Mac build (Android first).

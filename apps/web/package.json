@@ -10,6 +10,13 @@
     "test": "echo \"no tests\""
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.2",
+    "@capacitor/camera": "^8.0.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/keyboard": "^8.0.2",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.3",
     "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

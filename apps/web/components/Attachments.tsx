@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, filesApi, type TaskFile } from "@/lib/api";
+import { capturePhoto, isNativeApp } from "@/lib/native";
 import { Icons } from "@/components/icons";
 import { colorFor, initials, timeAgo } from "@/lib/format";
 import { ProofViewer } from "@/components/ProofViewer";
@@ -67,6 +68,9 @@ export function Attachments({ taskId, canEdit }: { taskId: string; canEdit: bool
   const [toast, setToast] = useState("");
   const [viewer, setViewer] = useState<{ id: string; name: string } | null>(null);
   const [recording, setRecording] = useState(false);
+  // Native shell only — enables the "Take photo" camera button.
+  const [native, setNative] = useState(false);
+  useEffect(() => setNative(isNativeApp()), []);
 
   // fileId -> object URL, for image thumbnails and inline clip players.
   const [urls, setUrls] = useState<Record<string, string>>({});
@@ -172,6 +176,27 @@ export function Attachments({ taskId, canEdit }: { taskId: string; canEdit: bool
     }
   };
 
+  /** Native only: snap (or pick) a photo and upload it as an attachment. */
+  const takePhoto = async (): Promise<void> => {
+    const photo = await capturePhoto();
+    if (!photo) return; // cancelled or not native
+    setUploading(true);
+    setError("");
+    try {
+      const created = await filesApi.upload(taskId, {
+        name: photo.name,
+        mime: photo.mime,
+        dataBase64: photo.base64,
+      });
+      setFiles((prev) => (prev ? [created, ...prev.filter((p) => p.id !== created.id)] : [created]));
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const onDrop = (e: React.DragEvent): void => {
     e.preventDefault();
     setDragging(false);
@@ -222,6 +247,16 @@ export function Attachments({ taskId, canEdit }: { taskId: string; canEdit: bool
         </h3>
         {canEdit && (
           <div style={{ display: "flex", gap: 8 }}>
+            {native && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => void takePhoto()}
+                disabled={uploading}
+              >
+                📷 Take photo
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-ghost btn-sm"

@@ -6709,3 +6709,242 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   margin-bottom: 12px;
 }
 .plan-current { cursor: default; pointer-events: none; }
+
+/* ================================================================== *
+ * Native app mode (Capacitor shell)
+ *
+ * layout.tsx marks <html data-app="native"> before paint when running
+ * inside the Android shell. CSS then swaps the desktop chrome (.web-only)
+ * for the mobile app shell (.app-only): a compact top app bar and a
+ * bottom tab bar, padded for the device safe areas.
+ * ================================================================== */
+:root {
+  --su-safe-top: max(env(safe-area-inset-top, 0px), 26px);
+  --su-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --su-tabbar-h: 62px;
+  --su-appbar-h: 54px;
+}
+
+.app-only { display: none; }
+[data-app="native"] .app-only { display: flex; }
+[data-app="native"] .web-only { display: none !important; }
+
+[data-app="native"] body {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+[data-app="native"] input,
+[data-app="native"] textarea,
+[data-app="native"] [contenteditable] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Content clears the fixed app bar and tab bar (+ safe areas). */
+[data-app="native"] .shell-main > main {
+  padding-top: calc(var(--su-appbar-h) + var(--su-safe-top));
+  padding-bottom: calc(var(--su-tabbar-h) + var(--su-safe-bottom) + 12px);
+}
+
+/* Finger-sized tap targets. */
+[data-app="native"] .tree-row,
+[data-app="native"] .navlink,
+[data-app="native"] .notif-row,
+[data-app="native"] .app-sheet-link {
+  min-height: 44px;
+}
+[data-app="native"] .icon-btn {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+/* ---- Top app bar -------------------------------------------------- */
+.app-appbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  align-items: center;
+  gap: 8px;
+  height: calc(var(--su-appbar-h) + var(--su-safe-top));
+  padding: var(--su-safe-top) 8px 0 16px;
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.app-appbar-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-appbar-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* The shared notifications panel hangs from the app bar on mobile. */
+[data-app="native"] .app-appbar .bell-panel {
+  position: fixed;
+  top: calc(var(--su-appbar-h) + var(--su-safe-top) + 6px);
+  left: 10px;
+  right: 10px;
+  width: auto;
+}
+
+/* ---- Bottom tab bar ----------------------------------------------- */
+.app-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  align-items: stretch;
+  height: calc(var(--su-tabbar-h) + var(--su-safe-bottom));
+  padding: 0 4px var(--su-safe-bottom);
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  box-shadow: var(--shadow-2);
+}
+.app-tab {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.app-tab svg { width: 22px; height: 22px; }
+.app-tab.active { color: var(--brand); }
+.app-tab-badge {
+  position: absolute;
+  top: 7px;
+  left: calc(50% + 6px);
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 17px;
+  text-align: center;
+}
+.app-tab-new {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 50px;
+  height: 50px;
+  margin: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-grad);
+  color: var(--brand-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px var(--ring);
+  transform: translateY(-10px);
+  cursor: pointer;
+}
+.app-tab-new svg { width: 24px; height: 24px; }
+.app-tab-new:active { transform: translateY(-10px) scale(0.94); }
+
+/* ---- Full-screen Menu sheet --------------------------------------- */
+.app-sheet {
+  position: fixed;
+  inset: 0;
+  bottom: calc(var(--su-tabbar-h) + var(--su-safe-bottom));
+  z-index: 55;
+  flex-direction: column;
+  background: var(--bg);
+  overflow-y: auto;
+}
+.app-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--su-safe-top) + 12px) 16px 8px;
+}
+.app-sheet-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+.app-sheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 10px 20px;
+}
+.app-sheet-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.app-sheet-link svg { width: 20px; height: 20px; color: var(--muted); }
+.app-sheet-link.active {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.app-sheet-link.active svg { color: var(--brand); }
+.app-sheet-link .nav-badge { margin-left: auto; }
+
+/* Pull-to-refresh puck (native app only) */
+html[data-app="native"] .ptr-puck {
+  position: fixed;
+  top: calc(var(--su-safe-top) + 6px);
+  left: 50%;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card-bg, var(--bg));
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  color: var(--muted);
+  pointer-events: none;
+}
+html[data-app="native"] .ptr-puck svg { width: 20px; height: 20px; }
+html[data-app="native"] .ptr-puck.armed { color: var(--brand); }
+html[data-app="native"] .ptr-puck.spinning {
+  animation: ptr-spin 0.7s linear infinite;
+  color: var(--brand);
+}
+@keyframes ptr-spin {
+  from { transform: translateX(-50%) translateY(72px) rotate(0deg); }
+  to { transform: translateX(-50%) translateY(72px) rotate(360deg); }
+}
+html:not([data-app="native"]) .ptr-puck { display: none; }

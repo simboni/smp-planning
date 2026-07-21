@@ -35,6 +35,7 @@ import {
 import { FormRenderer } from "@/components/FormRenderer";
 import { Icons } from "@/components/icons";
 import { copyToClipboard, publicFormUrl } from "@/lib/format";
+import { isNativeApp, share } from "@/lib/native";
 
 type SaveState = "idle" | "saving" | "saved";
 
@@ -489,9 +490,13 @@ function FormBuilderView() {
 
   const copyLink = (): void => {
     if (!form) return;
-    void copyToClipboard(publicFormUrl(form.publicToken)).then((ok) =>
-      showToast(ok ? "Public link copied to your clipboard." : "Couldn't copy the link."),
-    );
+    const url = publicFormUrl(form.publicToken);
+    void (async () => {
+      // In the native shell, prefer the OS share sheet; fall back to copy.
+      if (isNativeApp() && (await share({ title: form.name, url }))) return;
+      const ok = await copyToClipboard(url);
+      showToast(ok ? "Public link copied to your clipboard." : "Couldn't copy the link.");
+    })();
   };
 
   /* ---- guards ---- */

@@ -23,6 +23,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#7B68EE",
 };
 
@@ -39,6 +40,14 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html:
               "(function(){try{var t=localStorage.getItem('stackup.theme');if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();",
+          }}
+        />
+        {/* Mark the document early when running inside the Capacitor shell so
+            CSS can swap the desktop chrome for the mobile app shell. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()){document.documentElement.setAttribute('data-app','native');}}catch(e){}})();",
           }}
         />
         {children}

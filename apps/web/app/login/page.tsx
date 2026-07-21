@@ -16,6 +16,7 @@ import {
   type PublicUser,
 } from "@/lib/api";
 import { Icons, StackMark, GoogleMark } from "@/components/icons";
+import { initDeepLinks, isNativeApp } from "@/lib/native";
 
 type Mode = "login" | "signup";
 type Health = "checking" | "ok" | "down";
@@ -80,6 +81,12 @@ export default function LoginPage() {
     if (typeof window !== "undefined" && window.location.hash) return;
     if (getIdentityToken()) router.replace("/select");
   }, [router]);
+
+  // Native shell: the Google SSO callback arrives as a custom-scheme deep
+  // link while the user is still on this page — listen for it here.
+  useEffect(() => {
+    if (isNativeApp()) void initDeepLinks();
+  }, []);
 
   // Is Google SSO available? Hide the button entirely when it isn't.
   useEffect(() => {
@@ -435,7 +442,11 @@ export default function LoginPage() {
                 disabled={busy || ssoBusy}
                 onClick={() => {
                   setSsoBusy(true);
-                  window.location.href = googleSsoStartUrl;
+                  // Native: the API carries the flag through the OAuth state
+                  // and bounces the callback to a custom-scheme deep link.
+                  window.location.href = isNativeApp()
+                    ? `${googleSsoStartUrl}?native=1`
+                    : googleSsoStartUrl;
                 }}
               >
                 {ssoBusy ? (

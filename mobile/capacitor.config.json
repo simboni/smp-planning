@@ -18,6 +18,16 @@
     "StatusBar": {
       "style": "LIGHT",
       "backgroundColor": "#7B68EE"
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    },
+    "Keyboard": {
+      "resize": "body"
     }
   }
 }

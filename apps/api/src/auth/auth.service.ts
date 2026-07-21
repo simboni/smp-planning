@@ -122,13 +122,25 @@ export class AuthService {
   /**
    * Begin the Google OAuth flow: mint a short-lived, signed `state` (CSRF
    * defense — the callback verifies it) and return the consent-screen URL.
+   * `native` marks a flow started from the installed app, so the callback
+   * deep-links tokens back into the app instead of the website.
    */
-  googleAuthUrl(): { url: string } {
+  googleAuthUrl(native = false): { url: string } {
     const state = this.jwt.sign(
-      { typ: "oauthstate", nonce: randomBytes(8).toString("hex") },
+      { typ: "oauthstate", nonce: randomBytes(8).toString("hex"), native },
       { expiresIn: 600 },
     );
     return { url: this.google.authorizeUrl(state) };
+  }
+
+  /** Was this OAuth state minted by the native app? (false on any doubt) */
+  async oauthStateIsNative(state: string): Promise<boolean> {
+    try {
+      const claims = await this.jwt.verifyAsync<{ typ: string; native?: boolean }>(state);
+      return claims.typ === "oauthstate" && claims.native === true;
+    } catch {
+      return false;
+    }
   }
 
   /**

@@ -22,6 +22,7 @@ import { HierarchyModule } from "./hierarchy/hierarchy.module";
 import { HomeModule } from "./home/home.module";
 import { InboxModule } from "./inbox/inbox.module";
 import { LimitsModule } from "./limits/limits.module";
+import { PushModule } from "./push/push.module";
 import { SearchModule } from "./search/search.module";
 import { SharingModule } from "./sharing/sharing.module";
 import { SprintsModule } from "./sprints/sprints.module";
@@ -77,6 +78,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     IntegrationsModule,
     LimitsModule,
     CommsModule,
+    PushModule,
   ],
   controllers: [HealthController],
 })

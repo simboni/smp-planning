@@ -39,17 +39,23 @@ export class AuthController {
     return this.auth.ssoProviders();
   }
 
-  /** Redirect the browser to Google's consent screen. */
+  /**
+   * Redirect the browser to Google's consent screen. `?native=1` marks a flow
+   * started from the installed Android app (it opens this URL in the system
+   * browser — Google refuses OAuth inside WebViews), so the callback returns
+   * tokens via the app's deep link instead of the website.
+   */
   @Get("oauth/google/start")
-  googleStart(@Res() res: Response) {
-    const { url } = this.auth.googleAuthUrl();
+  googleStart(@Res() res: Response, @Query("native") native?: string) {
+    const { url } = this.auth.googleAuthUrl(native === "1");
     res.redirect(url);
   }
 
   /**
    * Google redirects here after consent. Exchange the code, mint tokens, and
-   * bounce back to the SPA with the tokens in the URL fragment (never sent to
-   * a server, kept out of logs). On failure, bounce with an error flag.
+   * bounce back with the tokens in the URL fragment (never sent to a server,
+   * kept out of logs): to the SPA normally, or into the installed app via its
+   * com.stackup.app:// deep link when the flow started there.
    */
   @Get("oauth/google/callback")
   async googleCallback(
@@ -59,9 +65,13 @@ export class AuthController {
     @Query("state") state?: string,
     @Query("error") error?: string,
   ) {
-    const web = this.config.webBaseUrl || "";
+    const native = await this.auth.oauthStateIsNative(state ?? "");
+    const target = (frag: string): string =>
+      native
+        ? `com.stackup.app://sso#${frag}`
+        : `${this.config.webBaseUrl || ""}/login#${frag}`;
     if (error) {
-      res.redirect(`${web}/login#sso_error=${encodeURIComponent(error)}`);
+      res.redirect(target(`sso_error=${encodeURIComponent(error)}`));
       return;
     }
     try {
@@ -71,10 +81,10 @@ export class AuthController {
         identityToken: result.identityToken,
         refreshToken: result.refreshToken,
       });
-      res.redirect(`${web}/login#${frag.toString()}`);
+      res.redirect(target(frag.toString()));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Sign-in failed";
-      res.redirect(`${web}/login#sso_error=${encodeURIComponent(msg)}`);
+      res.redirect(target(`sso_error=${encodeURIComponent(msg)}`));
     }
   }
 

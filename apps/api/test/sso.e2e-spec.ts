@@ -133,6 +133,27 @@ describe("Google SSO", () => {
     expect(frag.get("sso_error")).toBeTruthy();
   });
 
+  it("a native-flagged flow deep-links tokens back into the app", async () => {
+    const email = uniqueEmail();
+    const code = `code-${email}`;
+    profiles.set(code, {
+      sub: `g-${email}`,
+      email,
+      emailVerified: true,
+      name: "App User",
+      picture: null,
+    });
+    const start = await http.get("/auth/oauth/google/start?native=1").expect(302);
+    const state = new URL(start.headers.location).searchParams.get("state") as string;
+    const cb = await http
+      .get(`/auth/oauth/google/callback?code=${code}&state=${encodeURIComponent(state)}`)
+      .expect(302);
+    expect(cb.headers.location.startsWith("com.stackup.app://sso#")).toBe(true);
+    const frag = new URLSearchParams(cb.headers.location.split("#")[1]);
+    expect(frag.get("identityToken")).toBeTruthy();
+    expect(frag.get("refreshToken")).toBeTruthy();
+  });
+
   it("rejects a callback with a forged/absent state", async () => {
     const email = uniqueEmail();
     const code = `code-${email}`;

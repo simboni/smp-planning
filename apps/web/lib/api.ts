@@ -1503,6 +1503,18 @@ export const notificationsApi = {
     api<unknown>("/notifications/read-all", { method: "POST", auth: "access" }),
 };
 
+/** Native push-notification device tokens (Capacitor shell). */
+export const pushApi = {
+  register: (body: { token: string; platform: string }) =>
+    api<unknown>("/push/tokens", { method: "POST", body, auth: "identity" }),
+  unregister: (token: string) =>
+    api<unknown>("/push/tokens", {
+      method: "DELETE",
+      body: { token },
+      auth: "identity",
+    }),
+};
+
 export const remindersApi = {
   list: () => api<{ reminders: Reminder[] }>("/reminders", { auth: "access" }),
   create: (body: { note: string; remindAt: string; taskId?: string }) =>

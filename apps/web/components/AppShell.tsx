@@ -27,14 +27,23 @@ import {
   applyBranding,
   applyTheme,
   getTheme,
+  resolvedTheme,
   setTheme,
   type Theme,
 } from "@/lib/theme";
+import {
+  haptic,
+  initBackButton,
+  initDeepLinks,
+  registerPush,
+  syncStatusBar,
+} from "@/lib/native";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { HierarchyTree } from "@/components/HierarchyTree";
 import { FavoritesNav } from "@/components/FavoritesNav";
 import { Notepad } from "@/components/Notepad";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { Icons, StackMark, type IconKey } from "@/components/icons";
 import { colorFor, elapsedSeconds, formatTimer, initials, timeAgo } from "@/lib/format";
 
@@ -43,6 +52,24 @@ interface NavItem {
   label: string;
   icon: IconKey;
 }
+
+/** Route-aware active check, shared by the sidebar and the native app bar. */
+function isNavActive(item: NavItem, pathname: string): boolean {
+  return (
+    pathname === item.href ||
+    pathname.startsWith(`${item.href}/`) ||
+    (item.href === "/docs" && pathname === "/doc") ||
+    (item.href === "/whiteboards" &&
+      (pathname === "/whiteboard" || pathname === "/mindmap")) ||
+    (item.href === "/forms" && pathname === "/form-builder") ||
+    (item.href === "/goals" && pathname === "/goal") ||
+    (item.href === "/portfolios" && pathname === "/portfolio") ||
+    (item.href === "/dashboards" && pathname === "/dashboard-view")
+  );
+}
+
+// Tabs pinned to the native bottom bar; the rest lives in the Menu sheet.
+const NATIVE_TAB_HREFS = ["/dashboard", "/my-work", "/inbox"];
 
 const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
@@ -80,6 +107,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [bellOpen, setBellOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [theme, setThemeState] = useState<Theme>("system");
+
+  // Native app shell (Capacitor) — layout.tsx sets data-app="native" early.
+  const [native, setNative] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Module 13 — total unread chat messages across all channels & DMs.
   const [chatUnread, setChatUnread] = useState(0);
@@ -220,6 +251,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     applyTheme(t);
   }, []);
 
+  // Native shell lifecycle: hardware back button + SSO deep links, once.
+  useEffect(() => {
+    if (document.documentElement.dataset.app !== "native") return;
+    setNative(true);
+    void initBackButton(router);
+    void initDeepLinks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the Android status bar matched to the effective theme.
+  useEffect(() => {
+    if (!native) return;
+    void syncStatusBar(resolvedTheme());
+  }, [native, theme]);
+
+  // Register for push once the user is known (token posts need identity).
+  useEffect(() => {
+    if (!native || !user) return;
+    void registerPush();
+  }, [native, user]);
+
   // Branding: theme the app from the active workspace's accent color.
   useEffect(() => {
     applyBranding(workspace?.color ?? null);
@@ -249,6 +301,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setDrawerOpen(false);
     setMenuOpen(false);
     setBellOpen(false);
+    setSheetOpen(false);
   }, [pathname]);
 
   // Click-away closes the account menu / notification panel.
@@ -272,9 +325,68 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // is just noise), so the row only appears when someone else is online.
   const onlineOthers = online.filter((u) => u.id !== user?.id);
 
+  // Native app bar title: the active primary destination, else the workspace.
+  const currentNav = PRIMARY_NAV.find((i) => isNavActive(i, pathname));
+  const pageLabel = currentNav?.label ?? workspace?.name ?? "StackUp";
+
+  // The notifications panel — shared by the desktop bell and the native
+  // app-bar bell (only one of the two wraps is visible at a time).
+  const bellPanel = (
+    <div className="menu bell-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="bell-panel-head">
+        <span className="bell-panel-title">Notifications</span>
+        {unreadCount > 0 && (
+          <button type="button" className="cm-action" onClick={markAllRead}>
+            Mark all read
+          </button>
+        )}
+      </div>
+      <div className="bell-panel-list">
+        {notifications.filter((n) => !n.readAt).length === 0 ? (
+          <div className="bell-empty">
+            {Icons.checkCircle}
+            <span>You're all caught up.</span>
+          </div>
+        ) : (
+          notifications
+            .filter((n) => !n.readAt)
+            .slice(0, 8)
+            .map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                className="notif-row unread"
+                onClick={() => openNotification(n)}
+              >
+                <span
+                  className="avatar avatar-sm"
+                  style={{ background: colorFor(n.actor?.id ?? "sys") }}
+                >
+                  {n.actor ? initials(n.actor.fullName) : "•"}
+                </span>
+                <span className="notif-body">
+                  <span className="notif-msg">{n.message}</span>
+                  <span className="notif-meta">
+                    {n.taskName && (
+                      <span className="notif-task">{n.taskName}</span>
+                    )}
+                    <span className="notif-time">{timeAgo(n.createdAt)}</span>
+                  </span>
+                </span>
+                <span className="notif-dot" aria-hidden="true" />
+              </button>
+            ))
+        )}
+      </div>
+      <Link href="/inbox" className="bell-panel-foot" onClick={() => setBellOpen(false)}>
+        View all in Inbox {Icons.arrowRight}
+      </Link>
+    </div>
+  );
+
   return (
     <div className="shell">
-      <aside className={`sidebar${drawerOpen ? " open" : ""}`}>
+      <aside className={`sidebar web-only${drawerOpen ? " open" : ""}`}>
         <div className="sidebar-brand">
           <Link href="/dashboard" className="brand">
             <span className="brand-mark">
@@ -289,16 +401,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav>
           <div className="nav-section">
             {PRIMARY_NAV.map((item) => {
-              const active =
-                pathname === item.href ||
-                pathname.startsWith(`${item.href}/`) ||
-                (item.href === "/docs" && pathname === "/doc") ||
-                (item.href === "/whiteboards" &&
-                  (pathname === "/whiteboard" || pathname === "/mindmap")) ||
-                (item.href === "/forms" && pathname === "/form-builder") ||
-                (item.href === "/goals" && pathname === "/goal") ||
-                (item.href === "/portfolios" && pathname === "/portfolio") ||
-                (item.href === "/dashboards" && pathname === "/dashboard-view");
+              const active = isNavActive(item, pathname);
               return (
                 <Link
                   key={item.href}
@@ -348,13 +451,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div
-        className={`scrim${drawerOpen ? " show" : ""}`}
+        className={`scrim web-only${drawerOpen ? " show" : ""}`}
         onClick={() => setDrawerOpen(false)}
         aria-hidden="true"
       />
 
       <div className="shell-main">
-        <header className="topbar">
+        <header className="topbar web-only">
           <button
             type="button"
             className="hamburger"
@@ -488,58 +591,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="bell-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
                 )}
               </button>
-              {bellOpen && (
-                <div className="menu bell-panel" onClick={(e) => e.stopPropagation()}>
-                  <div className="bell-panel-head">
-                    <span className="bell-panel-title">Notifications</span>
-                    {unreadCount > 0 && (
-                      <button type="button" className="cm-action" onClick={markAllRead}>
-                        Mark all read
-                      </button>
-                    )}
-                  </div>
-                  <div className="bell-panel-list">
-                    {notifications.filter((n) => !n.readAt).length === 0 ? (
-                      <div className="bell-empty">
-                        {Icons.checkCircle}
-                        <span>You're all caught up.</span>
-                      </div>
-                    ) : (
-                      notifications
-                        .filter((n) => !n.readAt)
-                        .slice(0, 8)
-                        .map((n) => (
-                          <button
-                            key={n.id}
-                            type="button"
-                            className="notif-row unread"
-                            onClick={() => openNotification(n)}
-                          >
-                            <span
-                              className="avatar avatar-sm"
-                              style={{ background: colorFor(n.actor?.id ?? "sys") }}
-                            >
-                              {n.actor ? initials(n.actor.fullName) : "•"}
-                            </span>
-                            <span className="notif-body">
-                              <span className="notif-msg">{n.message}</span>
-                              <span className="notif-meta">
-                                {n.taskName && (
-                                  <span className="notif-task">{n.taskName}</span>
-                                )}
-                                <span className="notif-time">{timeAgo(n.createdAt)}</span>
-                              </span>
-                            </span>
-                            <span className="notif-dot" aria-hidden="true" />
-                          </button>
-                        ))
-                    )}
-                  </div>
-                  <Link href="/inbox" className="bell-panel-foot" onClick={() => setBellOpen(false)}>
-                    View all in Inbox {Icons.arrowRight}
-                  </Link>
-                </div>
-              )}
+              {bellOpen && bellPanel}
             </div>
 
             <div className="acct">
@@ -581,7 +633,147 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
+        {/* ---- Native app chrome: pull-to-refresh + compact top app bar (Capacitor only) ---- */}
+        <PullToRefresh />
+        <header className="app-appbar app-only">
+          <span className="app-appbar-title">{pageLabel}</span>
+          <span className="app-appbar-tools">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Search"
+              onClick={() => setPaletteOpen(true)}
+            >
+              {Icons.search}
+            </button>
+            <div className="bell-wrap">
+              <button
+                type="button"
+                className="icon-btn bell-btn"
+                aria-label={
+                  unreadCount > 0
+                    ? `Notifications — ${unreadCount} unread`
+                    : "Notifications"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBellOpen((v) => !v);
+                }}
+              >
+                {Icons.bell}
+                {unreadCount > 0 && (
+                  <span className="bell-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                )}
+              </button>
+              {bellOpen && bellPanel}
+            </div>
+          </span>
+        </header>
+
         <main>{children}</main>
+
+        {/* ---- Native app chrome: bottom tab bar (Capacitor only) ---- */}
+        <nav className="app-tabbar app-only" aria-label="Primary">
+          <Link
+            href="/dashboard"
+            className={`app-tab${isNavActive(PRIMARY_NAV[0], pathname) ? " active" : ""}`}
+          >
+            {Icons.home}
+            <span>Home</span>
+          </Link>
+          <Link
+            href="/my-work"
+            className={`app-tab${isNavActive(PRIMARY_NAV[1], pathname) ? " active" : ""}`}
+          >
+            {Icons.checkCircle}
+            <span>Tasks</span>
+          </Link>
+          <button
+            type="button"
+            className="app-tab-new"
+            aria-label="New task"
+            onClick={() => {
+              void haptic("light");
+              setNewTaskOpen(true);
+            }}
+          >
+            {Icons.plus}
+          </button>
+          <Link
+            href="/inbox"
+            className={`app-tab${isNavActive(PRIMARY_NAV[2], pathname) ? " active" : ""}`}
+          >
+            {Icons.inbox}
+            <span>Inbox</span>
+            {unreadCount > 0 && (
+              <span className="app-tab-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+            )}
+          </Link>
+          <button
+            type="button"
+            className={`app-tab${sheetOpen ? " active" : ""}`}
+            onClick={() => setSheetOpen((v) => !v)}
+          >
+            {Icons.more}
+            <span>Menu</span>
+          </button>
+        </nav>
+
+        {/* ---- Native app chrome: full-screen Menu sheet ---- */}
+        {sheetOpen && (
+          <div className="app-sheet app-only" role="dialog" aria-label="Menu">
+            <div className="app-sheet-head">
+              <span className="app-sheet-title">Menu</span>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close menu"
+                onClick={() => setSheetOpen(false)}
+              >
+                {Icons.close}
+              </button>
+            </div>
+            <div className="app-sheet-list">
+              {PRIMARY_NAV.filter((i) => !NATIVE_TAB_HREFS.includes(i.href)).map(
+                (item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`app-sheet-link${isNavActive(item, pathname) ? " active" : ""}`}
+                    onClick={() => setSheetOpen(false)}
+                  >
+                    {Icons[item.icon]}
+                    {item.label}
+                    {item.href === "/chat" && chatUnread > 0 && (
+                      <span className="nav-badge">
+                        {chatUnread > 99 ? "99+" : chatUnread}
+                      </span>
+                    )}
+                  </Link>
+                ),
+              )}
+              <button
+                type="button"
+                className="app-sheet-link"
+                onClick={() => {
+                  setSheetOpen(false);
+                  router.push("/select");
+                }}
+              >
+                {Icons.switch}
+                Switch workspace
+              </button>
+              <button type="button" className="app-sheet-link" onClick={cycleTheme}>
+                {theme === "system"
+                  ? Icons.monitor
+                  : theme === "light"
+                    ? Icons.sun
+                    : Icons.moon}
+                Theme: {theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
