@@ -1,0 +1,75 @@
+name: Build & publish server image
+
+# Builds the StackUp server Docker image (API + bundled web export) on GitHub's
+# free runners and pushes it to the GitHub Container Registry (GHCR). Render can
+# then DEPLOY this prebuilt image instead of building it itself — so Render's
+# build-pipeline minutes are never consumed and build-minute limits can never
+# block a deploy again.
+#
+# One-time setup (see docs/deploy-prebuilt-image.md):
+#   1. Make the published GHCR package public (or give Render a pull token).
+#   2. Create a Render "Existing image" web service pointing at
+#      ghcr.io/simboni/smp-planning:latest, with the same env vars + domain.
+#   3. Copy that service's Deploy Hook into the repo secret RENDER_DEPLOY_HOOK
+#      so each new image auto-deploys.
+
+on:
+  push:
+    branches:
+      - claude/clickup-recreation-9vk6m2
+      - main
+    paths-ignore:
+      - "mobile/**"
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: server-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase image name
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$HOOK" ]; then
+            echo "Triggering Render deploy…"
+            curl -fsSL -X POST "$HOOK" && echo "Deploy triggered."
+          else
+            echo "RENDER_DEPLOY_HOOK secret not set — image published, skipping Render trigger."
+          fi
