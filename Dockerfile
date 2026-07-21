@@ -14,9 +14,20 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY . .
+# Copy ONLY the files that define the dependency graph first, so the (slow)
+# `pnpm install` layer is cached and only re-runs when a manifest or the
+# lockfile changes — not on every source edit. This keeps a code-only rebuild
+# from re-downloading every dependency, cutting most builds from ~3 min to
+# well under one (and using far fewer build-pipeline minutes).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
 # Install the whole workspace (api, web, shared) so we can build all three.
 RUN pnpm install --frozen-lockfile
+# Now bring in the source. A code-only change invalidates the cache from HERE,
+# reusing the cached install layer above.
+COPY . .
 # Shared first (api + web both import it). The web is built with an EMPTY API
 # base so the browser calls the API on the SAME origin that serves the app —
 # single-origin deploy, no CORS. The API then serves apps/web/out via WEB_DIST.
