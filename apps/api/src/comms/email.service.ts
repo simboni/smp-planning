@@ -80,4 +80,16 @@ export class EmailService {
     this.logger.log(`email → ${message.to}: ${message.subject}`);
     return { ok: true, provider: "log", detail: "logged (no delivery channel configured)" };
   }
+
+  /** Send a canned test message so an admin can verify delivery is live. */
+  async sendTest(to: string): Promise<EmailResult> {
+    return this.send({
+      to,
+      subject: "StackUp email is working ✅",
+      text:
+        "This is a test message from StackUp.\n\n" +
+        "If it reached your inbox, outbound email is configured correctly — " +
+        "notifications and task emails will now be delivered.\n\n— StackUp",
+    });
+  }
 }

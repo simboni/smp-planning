@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   apiTokensApi,
   commsApi,
+  getUser,
   hierarchyApi,
   importExportApi,
   webhooksApi,
@@ -169,10 +170,35 @@ function SlackCard() {
 
 function EmailCard() {
   const [status, setStatus] = useState<EmailStatus | null>(null);
+  const [sending, setSending] = useState(false);
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const myEmail = getUser()?.email ?? "";
 
   useEffect(() => {
     commsApi.emailStatus().then(setStatus).catch(() => setStatus(null));
   }, []);
+
+  const sendTest = async () => {
+    if (!myEmail) return;
+    setSending(true);
+    setTestMsg(null);
+    try {
+      const r = await commsApi.testEmail(myEmail);
+      setTestMsg({
+        ok: r.ok,
+        text: r.ok
+          ? `Sent to ${myEmail} — check your inbox (and spam).`
+          : `Couldn't send: ${r.detail}`,
+      });
+    } catch (e) {
+      setTestMsg({
+        ok: false,
+        text: e instanceof Error ? e.message : "Couldn't send the test email.",
+      });
+    } finally {
+      setSending(false);
+    }
+  };
 
   if (status === null) return null;
 
@@ -202,6 +228,32 @@ function EmailCard() {
         </div>
         <span style={{ fontWeight: 600 }}>{label}</span>
       </div>
+      <div className="setting-row">
+        <div>
+          <div className="setting-label">Send a test email</div>
+          <div className="setting-hint">
+            {status.configured
+              ? `Delivers a test message to your address (${myEmail}) so you can confirm sending works.`
+              : "Email is in log-only mode — a test won't be delivered until a relay is configured."}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn btn-soft"
+          onClick={sendTest}
+          disabled={sending || !myEmail}
+        >
+          {sending ? <span className="spinner" /> : "Send test"}
+        </button>
+      </div>
+      {testMsg && (
+        <div
+          className={`inline-note ${testMsg.ok ? "ok" : "err"}`}
+          style={{ marginTop: 4 }}
+        >
+          {testMsg.text}
+        </div>
+      )}
     </div>
   );
 }

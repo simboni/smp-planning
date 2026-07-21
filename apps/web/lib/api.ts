@@ -951,6 +951,11 @@ export const commsApi = {
       method: "POST",
       auth: "access",
     }),
+  testEmail: (to: string) =>
+    api<{ ok: boolean; provider: string; detail: string }>(
+      "/integrations/email/test",
+      { method: "POST", body: { to }, auth: "access" },
+    ),
 };
 
 /* ------------------------------------------------------------------ *

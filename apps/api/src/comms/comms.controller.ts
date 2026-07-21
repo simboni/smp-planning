@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Post,
@@ -9,9 +11,12 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
+import { roleAtLeast } from "@stackup/shared";
 import { AuthedRequest, JwtAuthGuard, WorkspaceGuard } from "../auth/guards";
 import { EmailService } from "./email.service";
 import { SlackService } from "./slack.service";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Module 22 — comms & integrations surface: read the active email-delivery
@@ -29,6 +34,23 @@ export class CommsController {
   @Get("email")
   emailStatus() {
     return { provider: this.email.providerName(), configured: this.email.configured() };
+  }
+
+  /** Send a test email (admin only) so delivery can be verified end-to-end. */
+  @Post("email/test")
+  @HttpCode(200)
+  async testEmail(
+    @Req() req: AuthedRequest,
+    @Body() body: { to?: string },
+  ) {
+    if (!roleAtLeast(req.role!, "admin")) {
+      throw new ForbiddenException("Only admins can send a test email");
+    }
+    const to = (body?.to ?? "").trim();
+    if (!EMAIL_RE.test(to)) {
+      throw new BadRequestException("A valid recipient email is required");
+    }
+    return this.email.sendTest(to);
   }
 
   @Get("slack")

@@ -251,6 +251,15 @@ select.input { cursor: pointer; appearance: none;
   font-size: 0.86rem;
   margin-top: 4px;
 }
+.inline-note {
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
+  font-size: 0.85rem;
+  font-weight: 550;
+}
+.inline-note.ok { background: var(--brand-soft); color: var(--brand-700); }
+.inline-note.err { background: var(--danger-soft); color: var(--danger); }
+
 .form-error {
   display: flex;
   align-items: center;
