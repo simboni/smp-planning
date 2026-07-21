@@ -15,12 +15,45 @@ import {
 import { Icons, type IconKey } from "@/components/icons";
 import { firstName, formatDueDate, timeAgo } from "@/lib/format";
 
-const CHECKLIST = [
-  { title: "Create your workspace", sub: "You're in — nice work.", done: true },
-  { title: "Invite your teammates", sub: "Work is better together.", done: false, href: "/members", cta: "Invite" },
-  { title: "Set up your first Space", sub: "Organize teams, folders and lists.", done: false, href: "/everything", cta: "Open" },
-  { title: "Create your first task", sub: "Open a list and add your first task.", done: false, href: "/everything", cta: "Open" },
-];
+/**
+ * Onboarding checklist. `done` is derived from real workspace counts (see
+ * buildChecklist), so each step ticks off as it's actually accomplished and
+ * the whole card disappears once everything's complete.
+ */
+type ChecklistItem = {
+  title: string;
+  sub: string;
+  done: boolean;
+  href?: string;
+  cta?: string;
+};
+
+function buildChecklist(ov: HomeOverview | null): ChecklistItem[] {
+  return [
+    { title: "Create your workspace", sub: "You're in — nice work.", done: true },
+    {
+      title: "Invite your teammates",
+      sub: "Work is better together.",
+      done: (ov?.members ?? 0) > 1,
+      href: "/members",
+      cta: "Invite",
+    },
+    {
+      title: "Set up your first Space",
+      sub: "Organize teams, folders and lists.",
+      done: (ov?.spaces ?? 0) > 0,
+      href: "/everything",
+      cta: "Open",
+    },
+    {
+      title: "Create your first task",
+      sub: "Open a list and add your first task.",
+      done: (ov?.tasks ?? 0) > 0,
+      href: "/everything",
+      cta: "Open",
+    },
+  ];
+}
 
 /** The at-a-glance stat buttons, in display order. */
 const STATS: {
@@ -70,8 +103,11 @@ export default function DashboardPage() {
   const taskHref = (t: { listId: string; id: string }) =>
     `/list?id=${t.listId}&task=${t.id}`;
 
-  const doneCount = CHECKLIST.filter((c) => c.done).length;
-  const progress = Math.round((doneCount / CHECKLIST.length) * 100);
+  const checklist = buildChecklist(overview);
+  const doneCount = checklist.filter((c) => c.done).length;
+  const progress = Math.round((doneCount / checklist.length) * 100);
+  // Once every step is done, retire the onboarding card entirely.
+  const allDone = overview !== null && doneCount === checklist.length;
   const name = user ? firstName(user.fullName) : "there";
 
   return (
@@ -107,35 +143,37 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* top row: getting started + members */}
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="card-head">
-            <h3>Getting started</h3>
-            <span className="badge badge-soft">
-              {doneCount}/{CHECKLIST.length} done
-            </span>
+      {/* top row: getting started (until complete) + at-a-glance stats */}
+      <div className={`grid${allDone ? "" : " grid-2"}`}>
+        {!allDone && (
+          <div className="card">
+            <div className="card-head">
+              <h3>Getting started</h3>
+              <span className="badge badge-soft">
+                {doneCount}/{checklist.length} done
+              </span>
+            </div>
+            <div className="progress" style={{ marginBottom: 12 }}>
+              <span style={{ width: `${progress}%` }} />
+            </div>
+            <div className="checklist">
+              {checklist.map((c) => (
+                <div key={c.title} className={`check-item${c.done ? " done" : ""}`}>
+                  <span className="check-box">{c.done && Icons.check}</span>
+                  <span className="check-body">
+                    <span className="check-title">{c.title}</span>
+                    <span className="check-sub">{c.sub}</span>
+                  </span>
+                  {c.href && !c.done && (
+                    <Link href={c.href} className="btn btn-soft btn-sm">
+                      {c.cta}
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="progress" style={{ marginBottom: 12 }}>
-            <span style={{ width: `${progress}%` }} />
-          </div>
-          <div className="checklist">
-            {CHECKLIST.map((c) => (
-              <div key={c.title} className={`check-item${c.done ? " done" : ""}`}>
-                <span className="check-box">{c.done && Icons.check}</span>
-                <span className="check-body">
-                  <span className="check-title">{c.title}</span>
-                  <span className="check-sub">{c.sub}</span>
-                </span>
-                {c.href && !c.done && (
-                  <Link href={c.href} className="btn btn-soft btn-sm">
-                    {c.cta}
-                  </Link>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
 
         <div className="card">
           <div className="card-head">

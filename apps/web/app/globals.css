@@ -1232,6 +1232,26 @@ a.tree-label:hover { text-decoration: none; }
 }
 .tree-row:hover .tree-actions { opacity: 1; }
 .tree-menu ~ .tree-actions, .tree-row:focus-within .tree-actions { opacity: 1; }
+/* Touch devices and the native app have no hover, so any control that only
+   appears on row hover (the "…" menus for spaces/lists/tasks/views, the
+   section "+" add buttons) would be permanently invisible and unusable.
+   Reveal them all where there's no hover. */
+@media (hover: none) {
+  .tree-actions,
+  .tree-head-add,
+  .task-row-more,
+  .view-tab-more,
+  .tp-item-del {
+    opacity: 1;
+  }
+}
+html[data-app="native"] .tree-actions,
+html[data-app="native"] .tree-head-add,
+html[data-app="native"] .task-row-more,
+html[data-app="native"] .view-tab-more,
+html[data-app="native"] .tp-item-del {
+  opacity: 1;
+}
 
 .tree-act {
   width: 22px; height: 22px;

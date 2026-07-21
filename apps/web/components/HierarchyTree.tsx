@@ -19,6 +19,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
+  ApiError,
   hierarchyApi,
   permissionAtLeast,
   type FolderWithLists,
@@ -29,6 +30,7 @@ import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { ShareDialog } from "@/components/ShareDialog";
 import { colorFor } from "@/lib/format";
+import { showToast } from "@/lib/toast";
 
 const EXPANDED_KEY = "stackup.tree.expanded";
 
@@ -184,7 +186,13 @@ export function HierarchyTree() {
     try {
       await fn();
       await reload();
-    } catch {
+    } catch (e) {
+      // Surface the reason instead of failing silently, so a rejected delete
+      // (permissions, a server error) is visible rather than looking like a
+      // no-op.
+      showToast(
+        e instanceof ApiError ? e.message : "Something went wrong — please try again.",
+      );
       await reload(); // resync on failure
     } finally {
       setBusy(false);
