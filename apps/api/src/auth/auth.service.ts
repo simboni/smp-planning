@@ -20,6 +20,7 @@ import type {
 } from "@stackup/shared";
 import { loadConfig } from "../config";
 import { DbService } from "../db/db.service";
+import { EmailService } from "../comms/email.service";
 import { GoogleOAuthClient } from "./google-oauth.client";
 
 export interface SignupInput {
@@ -77,6 +78,7 @@ export class AuthService {
     private readonly db: DbService,
     private readonly jwt: JwtService,
     private readonly google: GoogleOAuthClient,
+    private readonly email: EmailService,
   ) {}
 
   /**
@@ -432,6 +434,80 @@ export class AuthService {
     await this.db.query(
       "UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL",
       [sha256(refreshToken)],
+    );
+  }
+
+  /**
+   * Start a password reset. If the email belongs to a user we mint a
+   * single-use token (SHA-256 hash stored, 1-hour TTL) and email a link; if
+   * not, we do nothing. Either way the response is identical, so this never
+   * reveals whether an address is registered.
+   */
+  async requestPasswordReset(email: string, baseUrl: string): Promise<void> {
+    const res = await this.db.query(
+      "SELECT id, full_name FROM users WHERE lower(email) = lower($1)",
+      [email],
+    );
+    const user = res.rows[0] as { id: string; full_name: string } | undefined;
+    if (!user) return;
+
+    const token = randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await this.db.query(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, sha256(token), expires],
+    );
+    const link = `${baseUrl.replace(/\/+$/, "")}/reset?token=${token}`;
+    const first = (user.full_name || "there").split(" ")[0];
+    await this.email
+      .send({
+        to: email,
+        subject: "Reset your StackUp password",
+        text:
+          `Hi ${first},\n\n` +
+          "We received a request to reset your StackUp password. Click the link " +
+          "below to choose a new one — it expires in 1 hour:\n\n" +
+          `${link}\n\n` +
+          "If you didn't request this, you can safely ignore this email; your " +
+          "password won't change.\n\n— StackUp",
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Complete a reset: validate the token, set the new password, and revoke
+   * every refresh token for that user so any stolen session is cut off. The
+   * token is single-use.
+   */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const tokenHash = sha256(token);
+    const res = await this.db.query(
+      `SELECT id, user_id FROM password_reset_tokens
+       WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()`,
+      [tokenHash],
+    );
+    const row = res.rows[0] as { id: string; user_id: string } | undefined;
+    if (!row) {
+      throw new BadRequestException(
+        "This reset link is invalid or has expired. Request a new one.",
+      );
+    }
+    const passwordHash = await argon2.hash(newPassword, {
+      type: argon2.argon2id,
+    });
+    await this.db.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
+      passwordHash,
+      row.user_id,
+    ]);
+    await this.db.query(
+      "UPDATE password_reset_tokens SET used_at = now() WHERE id = $1",
+      [row.id],
+    );
+    // Security: a password change invalidates all existing sessions.
+    await this.db.query(
+      "UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
+      [row.user_id],
     );
   }
 

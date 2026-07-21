@@ -18,7 +18,7 @@ import {
 import { Icons, StackMark, GoogleMark } from "@/components/icons";
 import { initDeepLinks, isNativeApp } from "@/lib/native";
 
-type Mode = "login" | "signup";
+type Mode = "login" | "signup" | "forgot";
 type Health = "checking" | "ok" | "down";
 
 const FEATURES: { icon: keyof typeof Icons; label: string; desc: string }[] = [
@@ -42,6 +42,7 @@ export default function LoginPage() {
   // Second-factor step: set to the challenge token once login says 2FA is on.
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
   // Whether Google SSO is configured (drives the button); and a busy flag
   // while we finish an SSO redirect.
   const [googleSso, setGoogleSso] = useState(false);
@@ -199,6 +200,27 @@ export default function LoginPage() {
   const switchMode = (m: Mode): void => {
     setMode(m);
     setError("");
+    setForgotSent(false);
+  };
+
+  const submitForgot = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await authApi.forgotPassword(email.trim());
+      setForgotSent(true);
+    } catch (err) {
+      // The endpoint never fails on unknown emails; only surface real errors.
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -298,6 +320,68 @@ export default function LoginPage() {
                 </button>
               </p>
             </>
+          ) : mode === "forgot" ? (
+            <>
+              <h1 className="auth-title">Reset your password</h1>
+              {forgotSent ? (
+                <>
+                  <p className="auth-sub">
+                    If an account exists for <strong>{email.trim()}</strong>,
+                    we've sent a link to reset your password. Check your inbox
+                    (and spam) — the link expires in 1 hour.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-lg btn-block"
+                    style={{ marginTop: 8 }}
+                    onClick={() => switchMode("login")}
+                  >
+                    Back to log in
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="auth-sub">
+                    Enter your email and we'll send you a link to set a new
+                    password.
+                  </p>
+                  <form onSubmit={(e) => void submitForgot(e)}>
+                    {error && <div className="form-error">{error}</div>}
+                    <div className="field">
+                      <label className="label" htmlFor="forgot-email">
+                        Email
+                      </label>
+                      <input
+                        id="forgot-email"
+                        className="input"
+                        type="email"
+                        inputMode="email"
+                        autoCapitalize="none"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@company.com"
+                        autoFocus
+                        required
+                      />
+                    </div>
+                    <button
+                      className="btn btn-primary btn-lg btn-block"
+                      type="submit"
+                      disabled={busy}
+                      style={{ marginTop: 8 }}
+                    >
+                      {busy ? <span className="spinner" /> : "Send reset link"}
+                    </button>
+                  </form>
+                  <p className="auth-alt">
+                    <button type="button" onClick={() => switchMode("login")}>
+                      Back to log in
+                    </button>
+                  </p>
+                </>
+              )}
+            </>
           ) : (
           <>
           <div className="tabs" role="tablist">
@@ -395,6 +479,15 @@ export default function LoginPage() {
                   {Icons.eye}
                 </button>
               </div>
+              {mode === "login" && (
+                <button
+                  type="button"
+                  className="auth-forgot-link"
+                  onClick={() => switchMode("forgot")}
+                >
+                  Forgot password?
+                </button>
+              )}
             </div>
 
             <button

@@ -8,6 +8,7 @@ import {
   chatApi,
   clearTokens,
   eventsApi,
+  getRefreshToken,
   getUser,
   getWorkspace,
   notificationsApi,
@@ -316,6 +317,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [menuOpen, bellOpen]);
 
   const signOut = (): void => {
+    // Best-effort server-side revoke of the refresh token, then clear locally.
+    const rt = getRefreshToken();
+    if (rt) void authApi.logout(rt).catch(() => undefined);
     clearTokens();
     router.replace("/login");
   };
@@ -770,6 +774,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     ? Icons.sun
                     : Icons.moon}
                 Theme: {theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"}
+              </button>
+              <Link
+                href="/settings"
+                className="app-sheet-link"
+                onClick={() => setSheetOpen(false)}
+              >
+                {Icons.settings}
+                Settings
+              </Link>
+              <button
+                type="button"
+                className="app-sheet-link danger"
+                onClick={() => {
+                  setSheetOpen(false);
+                  signOut();
+                }}
+              >
+                {Icons.signout}
+                Sign out
               </button>
             </div>
           </div>

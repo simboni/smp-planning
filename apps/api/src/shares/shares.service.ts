@@ -146,6 +146,49 @@ export class SharesService {
     if (n === 0) throw new NotFoundException("Share link not found");
   }
 
+  /**
+   * PUBLIC, lightweight: resolve a token to just enough for social-preview
+   * (Open Graph) meta tags — the entity's title, type and workspace. Returns
+   * null for an unknown/revoked token so the server serves the page plainly.
+   */
+  async resolveMeta(
+    token: string,
+  ): Promise<{ title: string; entityType: ShareEntityType; workspaceName: string } | null> {
+    if (typeof token !== "string" || !token) return null;
+    const share = await this.db.withShareToken(token, async (c) => {
+      const res = await c.query(
+        `SELECT workspace_id, entity_type, entity_id FROM public_shares WHERE token = $1`,
+        [token],
+      );
+      return res.rows[0] as
+        | { workspace_id: string; entity_type: ShareEntityType; entity_id: string }
+        | undefined;
+    });
+    if (!share) return null;
+    const TABLE: Record<ShareEntityType, string> = {
+      space: "spaces",
+      folder: "folders",
+      list: "lists",
+      task: "tasks",
+      doc: "docs",
+      dashboard: "dashboards",
+    };
+    return this.db.withWorkspaceSystem(share.workspace_id, async (c) => {
+      const ws = await c.query("SELECT name FROM workspaces WHERE id = $1", [
+        share.workspace_id,
+      ]);
+      const ent = await c.query(
+        `SELECT name FROM ${TABLE[share.entity_type]} WHERE id = $1`,
+        [share.entity_id],
+      );
+      return {
+        title: (ent.rows[0]?.name as string) ?? "Shared with you",
+        entityType: share.entity_type,
+        workspaceName: (ws.rows[0]?.name as string) ?? "StackUp",
+      };
+    });
+  }
+
   /** PUBLIC: resolve a token to its entity's read-only content. */
   async resolve(token: string): Promise<SharedView> {
     if (typeof token !== "string" || !token) {

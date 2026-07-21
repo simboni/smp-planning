@@ -161,6 +161,48 @@ export class AuthController {
     await this.auth.logout(body?.refreshToken ?? "");
   }
 
+  /**
+   * Start a password reset. Always answers 200 with the same body, whether or
+   * not the email is registered — so it can't be used to probe for accounts.
+   */
+  @Post("forgot-password")
+  @HttpCode(200)
+  @Throttle(AUTH_THROTTLE)
+  async forgotPassword(
+    @Req() req: Request,
+    @Body() body: { email?: string },
+  ) {
+    const email = (body?.email ?? "").trim();
+    if (email && EMAIL_RE.test(email)) {
+      // Build an absolute base for the emailed link: configured web origin, or
+      // the request's own host behind the proxy.
+      const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "";
+      const proto =
+        (req.headers["x-forwarded-proto"] as string) ??
+        (req.secure ? "https" : "http");
+      const base = this.config.webBaseUrl || (host ? `${proto}://${host}` : "");
+      await this.auth.requestPasswordReset(email, base);
+    }
+    return { ok: true };
+  }
+
+  /** Complete a password reset with the emailed token + a new password. */
+  @Post("reset-password")
+  @HttpCode(200)
+  @Throttle(AUTH_THROTTLE)
+  async resetPassword(@Body() body: { token?: string; password?: string }) {
+    const token = (body?.token ?? "").trim();
+    const password = body?.password ?? "";
+    if (!token) throw new BadRequestException("A reset token is required");
+    if (password.length < MIN_PASSWORD) {
+      throw new BadRequestException(
+        `Password must be at least ${MIN_PASSWORD} characters`,
+      );
+    }
+    await this.auth.resetPassword(token, password);
+    return { ok: true };
+  }
+
   /** Any valid token (identity or access) resolves to the same identity. */
   @Get("me")
   @UseGuards(JwtAuthGuard)

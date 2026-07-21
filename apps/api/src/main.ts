@@ -1,12 +1,77 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import express from "express";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import type { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { loadConfig } from "./config";
 import { autoMigrate } from "./db/migrator";
+import { SharesService } from "./shares/shares.service";
+
+/** Escape a string for safe inclusion in an HTML attribute. */
+function htmlAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+const SHARE_TYPE_LABEL: Record<string, string> = {
+  space: "Space",
+  folder: "Folder",
+  list: "List",
+  task: "Task",
+  doc: "Doc",
+  dashboard: "Dashboard",
+};
+
+/**
+ * Serve the /s share page with Open Graph / Twitter meta injected, so a shared
+ * link unfurls into a rich card in Slack / WhatsApp / iMessage / etc. Falls
+ * back to the plain page on any error or unknown token.
+ */
+async function injectShareMeta(
+  root: string,
+  shares: SharesService | null,
+  token: string,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const file = ["/s.html", "/s/index.html"]
+    .map((c) => resolve(root, `.${c}`))
+    .find((f) => f.startsWith(root) && existsSync(f));
+  if (!file) return next();
+  try {
+    let meta: Awaited<ReturnType<SharesService["resolveMeta"]>> = null;
+    try {
+      meta = shares ? await shares.resolveMeta(token) : null;
+    } catch {
+      meta = null;
+    }
+    let html = readFileSync(file, "utf8");
+    if (meta) {
+      const label = SHARE_TYPE_LABEL[meta.entityType] ?? "Shared";
+      const title = `${meta.title} · StackUp`;
+      const desc = `${label} shared from ${meta.workspaceName} on StackUp — open to view it, no account needed.`;
+      const tags = [
+        `<meta property="og:title" content="${htmlAttr(title)}">`,
+        `<meta property="og:description" content="${htmlAttr(desc)}">`,
+        `<meta property="og:type" content="website">`,
+        `<meta property="og:site_name" content="StackUp">`,
+        `<meta name="twitter:card" content="summary">`,
+        `<meta name="twitter:title" content="${htmlAttr(title)}">`,
+        `<meta name="twitter:description" content="${htmlAttr(desc)}">`,
+      ].join("");
+      html = html.replace("</head>", `${tags}</head>`);
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch {
+    res.sendFile(file);
+  }
+}
 
 /**
  * Last-resort safety net: the API should degrade, not die. Anything that
@@ -86,6 +151,7 @@ async function bootstrap(): Promise<void> {
   const webDir = process.env.WEB_DIST ?? join(__dirname, "..", "web");
   if (existsSync(webDir)) {
     const root = resolve(webDir);
+    const sharesService = app.get(SharesService, { strict: false });
     // redirect:false so /settings isn't 301'd to /settings/ before we can map it.
     app.use(express.static(root, { index: false, redirect: false }));
     app.use((req: Request, res: Response, next: NextFunction) => {
@@ -94,6 +160,17 @@ async function bootstrap(): Promise<void> {
       // An asset path (has an extension) that wasn't found above is a real 404.
       if (extname(req.path)) return next();
       const p = req.path.replace(/\/+$/, "") || "/index";
+
+      // Social-preview cards: for a public share page (/s?t=<token>), inject
+      // Open Graph / Twitter meta so links unfurl with a title in chat apps.
+      // Crawlers don't run JS, so the client-rendered page can't do this.
+      const token =
+        p === "/s" && typeof req.query.t === "string" ? req.query.t : "";
+      if (token) {
+        void injectShareMeta(root, sharesService, token, res, next);
+        return;
+      }
+
       // A route may be exported as <p>.html (leaf) or <p>/index.html (has
       // children, e.g. /settings alongside /settings/integrations).
       for (const cand of [`.${p}.html`, `.${p}/index.html`]) {

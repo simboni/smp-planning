@@ -666,6 +666,28 @@ export const authApi = {
       auth: "none",
     }),
   me: () => api<{ user: PublicUser }>("/auth/me", { auth: "identity" }),
+  /** Revoke the given refresh token server-side (best-effort on sign-out). */
+  logout: (refreshToken: string) =>
+    api<void>("/auth/logout", {
+      method: "POST",
+      body: { refreshToken },
+      auth: "none",
+    }),
+  /** Request a password-reset email (always resolves — never reveals if the
+   * address exists). */
+  forgotPassword: (email: string) =>
+    api<{ ok: true }>("/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+      auth: "none",
+    }),
+  /** Complete a reset with the emailed token + a new password. */
+  resetPassword: (token: string, password: string) =>
+    api<{ ok: true }>("/auth/reset-password", {
+      method: "POST",
+      body: { token, password },
+      auth: "none",
+    }),
   /** Which SSO providers are enabled (M18). */
   ssoProviders: () =>
     api<{ google: boolean }>("/auth/sso/providers", { auth: "none" }),

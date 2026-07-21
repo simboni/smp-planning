@@ -7192,3 +7192,18 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   background: var(--brand-soft); border-radius: var(--r-lg, 14px); padding: 18px 20px; margin-top: 22px;
 }
 .sv-cta-title { font-weight: 800; font-size: 1.02rem; }
+
+/* Forgot-password link under the password field */
+.auth-forgot-link {
+  display: inline-block;
+  margin-top: 8px;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--brand);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.auth-forgot-link:hover { text-decoration: underline; }
