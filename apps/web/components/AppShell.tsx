@@ -370,6 +370,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/settings" onClick={() => setMenuOpen(false)}>
             {Icons.settings} Settings
           </Link>
+          <Link href="/guide" onClick={() => setMenuOpen(false)}>
+            {Icons.book} Guide &amp; help
+          </Link>
           <button
             type="button"
             onClick={() => {

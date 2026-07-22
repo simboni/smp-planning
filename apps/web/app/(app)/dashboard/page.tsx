@@ -327,6 +327,10 @@ export default function DashboardPage() {
 
   return (
     <div className="page">
+      {overview !== null && (
+        <GuideBanner doneCount={doneCount} total={checklist.length} allDone={allDone} />
+      )}
+
       {/* greeting hero */}
       <div className="hero-card">
         <h1>Good to see you, {name} 👋</h1>
@@ -344,17 +348,10 @@ export default function DashboardPage() {
             {Icons.invite}
             Invite teammates
           </Link>
-          <button
-            className="btn btn-ghost"
-            onClick={() =>
-              window.dispatchEvent(
-                new KeyboardEvent("keydown", { key: "k", metaKey: true }),
-              )
-            }
-          >
-            {Icons.search}
-            Quick search
-          </button>
+          <Link href="/guide" className="btn btn-ghost">
+            {Icons.book}
+            Guide
+          </Link>
         </div>
       </div>
 
@@ -506,6 +503,87 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Points new and struggling users to the Knowledge Base. A first-time visitor
+ * gets a welcome nudge; if they're still stuck after a few days (most of the
+ * getting-started checklist undone), the nudge changes to a "need a hand?"
+ * message and reappears even if previously dismissed.
+ */
+function GuideBanner({
+  doneCount,
+  total,
+  allDone,
+}: {
+  doneCount: number;
+  total: number;
+  allDone: boolean;
+}) {
+  const SEEN_KEY = "stackup.firstSeen";
+  const DISMISS_KEY = "stackup.guide.dismissed";
+  const [show, setShow] = useState(false);
+  const [struggling, setStruggling] = useState(false);
+
+  useEffect(() => {
+    if (allDone) return;
+    let firstSeen = 0;
+    try {
+      const raw = window.localStorage.getItem(SEEN_KEY);
+      if (raw) {
+        firstSeen = Number(raw);
+      } else {
+        firstSeen = Date.now();
+        window.localStorage.setItem(SEEN_KEY, String(firstSeen));
+      }
+    } catch {
+      firstSeen = Date.now();
+    }
+    const days = (Date.now() - firstSeen) / 86_400_000;
+    const stuck = days >= 3 && doneCount <= Math.ceil(total / 2);
+    setStruggling(stuck);
+    let dismissed = false;
+    try {
+      dismissed = window.localStorage.getItem(DISMISS_KEY) === "1";
+    } catch {
+      /* ignore */
+    }
+    // Struggling users see the nudge again even if they dismissed the welcome.
+    setShow(stuck || !dismissed);
+  }, [allDone, doneCount, total]);
+
+  if (!show || allDone) return null;
+
+  const dismiss = () => {
+    setShow(false);
+    try {
+      window.localStorage.setItem(DISMISS_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className={`guide-banner${struggling ? " struggling" : ""}`}>
+      <span className="guide-banner-ic">{Icons.book}</span>
+      <div className="guide-banner-body">
+        <div className="guide-banner-title">
+          {struggling ? "Need a hand getting set up?" : "New to StackUp? Start here"}
+        </div>
+        <div className="guide-banner-sub">
+          {struggling
+            ? "You've still got a few setup steps left. The guide walks through everything, step by step."
+            : "The guide explains the whole product — from tasks all the way up to spaces. Perfect for you and your team."}
+        </div>
+      </div>
+      <Link href="/guide" className="btn btn-primary btn-sm guide-banner-cta">
+        Open the guide
+      </Link>
+      <button type="button" className="guide-banner-x" aria-label="Dismiss" onClick={dismiss}>
+        {Icons.close}
+      </button>
     </div>
   );
 }
