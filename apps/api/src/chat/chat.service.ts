@@ -1034,7 +1034,13 @@ export class ChatService {
     // M22: attempt real delivery through the pluggable provider (a no-op
     // logger by default). Delivery is best-effort — a failure never undoes the
     // logged task_email above; the outcome is returned for the UI.
-    const delivery = await this.email.send({ to, subject, text: body });
+    const delivery = await this.email.sendBranded({
+      to,
+      subject,
+      heading: subject,
+      preheader: subject,
+      body,
+    });
     this.events.publish(workspaceId, {
       type: "task.changed",
       payload: { taskId },

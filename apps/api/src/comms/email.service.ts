@@ -1,10 +1,23 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { loadConfig } from "../config";
+import {
+  brandedText,
+  renderBrandedEmail,
+  type BrandedEmail,
+} from "./email.template";
 
 export interface EmailMessage {
   to: string;
   subject: string;
   text: string;
+  /** Optional branded HTML body. When present it's sent alongside `text`. */
+  html?: string;
+}
+
+/** A message whose body is rendered from the branded StackUp template. */
+export interface BrandedMessage extends BrandedEmail {
+  to: string;
+  subject: string;
 }
 
 export interface EmailResult {
@@ -22,8 +35,9 @@ export interface EmailResult {
  *
  * Providers:
  *   - "log"  (default): records the message and returns ok — no network.
- *   - "http" : POSTs { from, to, subject, text } as JSON to EMAIL_RELAY_URL,
- *              the seam a provider (SES/SendGrid/SMTP-bridge) plugs into.
+ *   - "http" : POSTs { from, to, subject, text, html? } as JSON to
+ *              EMAIL_RELAY_URL, the seam a provider (Resend/SES/SendGrid)
+ *              plugs into. When `html` is present it's a branded message.
  *
  * Tests override this whole service with a fake that captures messages.
  */
@@ -64,6 +78,9 @@ export class EmailService {
             to: message.to,
             subject: message.subject,
             text: message.text,
+            // Resend (and most relays) render `html` when present, falling
+            // back to `text` for plain-text clients. Only sent when branded.
+            ...(message.html ? { html: message.html } : {}),
           }),
           signal: controller.signal,
         }).finally(() => clearTimeout(timer));
@@ -81,15 +98,34 @@ export class EmailService {
     return { ok: true, provider: "log", detail: "logged (no delivery channel configured)" };
   }
 
-  /** Send a canned test message so an admin can verify delivery is live. */
-  async sendTest(to: string): Promise<EmailResult> {
+  /**
+   * Send a message rendered from the branded StackUp template. The HTML is
+   * built from the merge vars and a matching plain-text part is derived, so
+   * every branded email degrades gracefully in text-only clients.
+   */
+  async sendBranded(message: BrandedMessage): Promise<EmailResult> {
+    const { to, subject, ...fields } = message;
     return this.send({
       to,
+      subject,
+      text: brandedText(fields),
+      html: renderBrandedEmail(fields),
+    });
+  }
+
+  /** Send a canned test message so an admin can verify delivery is live. */
+  async sendTest(to: string): Promise<EmailResult> {
+    return this.sendBranded({
+      to,
       subject: "StackUp email is working ✅",
-      text:
+      heading: "Your email is working",
+      preheader: "Outbound email is configured correctly.",
+      body:
         "This is a test message from StackUp.\n\n" +
         "If it reached your inbox, outbound email is configured correctly — " +
-        "notifications and task emails will now be delivered.\n\n— StackUp",
+        "password resets, invites and task notifications will now be delivered to your team.",
+      buttonLabel: "Open StackUp",
+      buttonUrl: "https://www.stackup.co.ke",
     });
   }
 }

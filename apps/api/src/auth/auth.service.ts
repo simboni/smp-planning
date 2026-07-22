@@ -461,16 +461,19 @@ export class AuthService {
     const link = `${baseUrl.replace(/\/+$/, "")}/reset?token=${token}`;
     const first = (user.full_name || "there").split(" ")[0];
     await this.email
-      .send({
+      .sendBranded({
         to: email,
         subject: "Reset your StackUp password",
-        text:
+        heading: "Reset your password",
+        preheader: "Choose a new StackUp password — this link expires in 1 hour.",
+        body:
           `Hi ${first},\n\n` +
-          "We received a request to reset your StackUp password. Click the link " +
-          "below to choose a new one — it expires in 1 hour:\n\n" +
-          `${link}\n\n` +
+          "We received a request to reset your StackUp password. Use the button " +
+          "below to choose a new one — it expires in 1 hour.\n\n" +
           "If you didn't request this, you can safely ignore this email; your " +
-          "password won't change.\n\n— StackUp",
+          "password won't change.",
+        buttonLabel: "Reset password",
+        buttonUrl: link,
       })
       .catch(() => undefined);
   }
