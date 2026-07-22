@@ -7746,3 +7746,30 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 }
 .viz-empty-ic svg { width: 20px; height: 20px; }
 .viz-empty p { max-width: 380px; }
+
+/* Public (external) link block inside the Share dialog. */
+.share-public {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.share-public-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.share-public-ic {
+  flex: none; display: inline-flex; width: 30px; height: 30px; border-radius: 8px;
+  align-items: center; justify-content: center; background: var(--brand-soft); color: var(--brand-700);
+}
+.share-public-ic svg { width: 17px; height: 17px; }
+.share-public-sub { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+/* On narrow screens let the link row wrap so Copy stays reachable. */
+@media (max-width: 560px) {
+  .pshare-linkrow { flex-wrap: wrap; }
+  .pshare-linkrow .btn { width: 100%; justify-content: center; }
+}
+
+/* Share dialog: on narrow screens let the add-row wrap so the permission
+   select isn't clipped off the right edge. */
+@media (max-width: 520px) {
+  .share-add-row { flex-wrap: wrap; }
+  .share-add-input { flex: 1 1 100%; }
+  .share-add-perm { flex: 1 1 100%; width: 100%; }
+}

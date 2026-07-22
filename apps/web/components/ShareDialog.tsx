@@ -22,11 +22,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   accessApi,
+  sharesApi,
+  shareUrl,
   teamsApi,
   workspacesApi,
   type AccessEntry,
   type Member,
   type Permission,
+  type ShareSummary,
   type SpaceAccess,
   type Team,
 } from "@/lib/api";
@@ -75,7 +78,14 @@ export function ShareDialog({
   const [addPermission, setAddPermission] = useState<Permission>("edit");
   const pickerRef = useRef<HTMLDivElement>(null);
 
+  // Public (external) link state — anyone with the link can view, no account.
+  const [pubShare, setPubShare] = useState<ShareSummary | null>(null);
+  const [pubBusy, setPubBusy] = useState(false);
+  const [pubCopied, setPubCopied] = useState(false);
+  const [pubError, setPubError] = useState("");
+
   const canManage = access?.canManage ?? false;
+  const pubUrl = pubShare ? shareUrl(pubShare.token) : "";
 
   const loadAccess = async (): Promise<void> => {
     try {
@@ -100,8 +110,54 @@ export function ShareDialog({
       .list()
       .then((r) => setTeams(r.teams))
       .catch(() => undefined);
+    // Current external public link for this space, if any.
+    sharesApi
+      .forEntity("space", spaceId)
+      .then((r) => setPubShare(r.share))
+      .catch(() => setPubShare(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaceId]);
+
+  const createPublicLink = async (): Promise<void> => {
+    if (pubBusy) return;
+    setPubBusy(true);
+    setPubError("");
+    try {
+      const r = await sharesApi.create("space", spaceId, "view");
+      setPubShare(r.share);
+    } catch (err) {
+      setPubError(
+        err instanceof ApiError ? err.message : "Couldn't create the link. Please try again.",
+      );
+    } finally {
+      setPubBusy(false);
+    }
+  };
+
+  const copyPublicLink = async (): Promise<void> => {
+    if (!pubUrl) return;
+    try {
+      await navigator.clipboard.writeText(pubUrl);
+      setPubCopied(true);
+      setTimeout(() => setPubCopied(false), 1600);
+    } catch {
+      /* clipboard blocked — the field is selectable as a fallback */
+    }
+  };
+
+  const revokePublicLink = async (): Promise<void> => {
+    if (!pubShare || pubBusy) return;
+    setPubBusy(true);
+    setPubError("");
+    try {
+      await sharesApi.revoke(pubShare.id);
+      setPubShare(null);
+    } catch (err) {
+      setPubError(err instanceof ApiError ? err.message : "Couldn't stop sharing.");
+    } finally {
+      setPubBusy(false);
+    }
+  };
 
   // Esc closes the modal.
   useEffect(() => {
@@ -461,6 +517,55 @@ export function ShareDialog({
                       )}
                     </div>
                   ))
+                )}
+              </div>
+
+              {/* Public (external) link */}
+              <div className="share-public">
+                <div className="share-public-head">
+                  <span className="share-public-ic">{Icons.globe}</span>
+                  <div>
+                    <div className="share-list-title" style={{ margin: 0 }}>Public link</div>
+                    <div className="share-public-sub">
+                      Anyone with the link can view this — no account needed.
+                    </div>
+                  </div>
+                </div>
+                {pubError && <div className="form-error" style={{ marginBottom: 8 }}>{pubError}</div>}
+                {pubShare ? (
+                  <>
+                    <div className="pshare-linkrow">
+                      <input
+                        className="input pshare-input"
+                        value={pubUrl}
+                        readOnly
+                        onFocus={(e) => e.currentTarget.select()}
+                      />
+                      <button type="button" className="btn btn-primary btn-sm" onClick={copyPublicLink}>
+                        {pubCopied ? Icons.check : Icons.copy}
+                        {pubCopied ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="pshare-revoke"
+                        onClick={revokePublicLink}
+                        disabled={pubBusy}
+                      >
+                        {Icons.trash} Stop sharing
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-soft btn-block"
+                    onClick={createPublicLink}
+                    disabled={pubBusy}
+                  >
+                    {pubBusy ? <span className="spinner" /> : <>{Icons.link} Create public link</>}
+                  </button>
                 )}
               </div>
 
