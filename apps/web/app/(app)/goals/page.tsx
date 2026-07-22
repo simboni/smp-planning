@@ -543,7 +543,7 @@ export default function GoalsPage() {
     loadRef.current();
     workspacesApi
       .members()
-      .then((r) => setMembers(r.members))
+      .then((r) => setMembers(r.members ?? []))
       .catch(() => undefined);
   }, []);
 

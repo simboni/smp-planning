@@ -164,7 +164,7 @@ export default function TemplatesPage() {
   const load = (): void => {
     templatesApi
       .list()
-      .then((r) => setTemplates(r.templates))
+      .then((r) => setTemplates(r.templates ?? []))
       .catch(() => setError("Couldn't load templates."));
   };
 

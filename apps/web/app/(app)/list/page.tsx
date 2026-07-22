@@ -104,7 +104,7 @@ function ListShell() {
   const [managingStatuses, setManagingStatuses] = useState(false);
   const pendingViewTab = useRef<string | null>(null);
 
-  const spaceId = meta?.space.id;
+  const spaceId = meta?.space?.id;
   const me = getUser();
 
   // Edit gating from the space's effective permission (from the shared tree).

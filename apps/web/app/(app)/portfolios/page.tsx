@@ -157,7 +157,7 @@ export default function PortfoliosPage() {
   useEffect(() => {
     portfoliosApi
       .list()
-      .then((r) => setPortfolios(r.portfolios))
+      .then((r) => setPortfolios(r.portfolios ?? []))
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : "Couldn't load your portfolios.");
         setPortfolios([]);

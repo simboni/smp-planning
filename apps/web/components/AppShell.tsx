@@ -156,21 +156,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     notificationsApi
       .list()
       .then((r) => {
-        setNotifications(r.notifications);
-        setUnreadCount(r.unreadCount);
+        setNotifications(r.notifications ?? []);
+        setUnreadCount(r.unreadCount ?? 0);
       })
       .catch(() => undefined);
   };
   const loadOnline = (): void => {
     eventsApi
       .online()
-      .then((r) => setOnline(r.online))
+      .then((r) => setOnline(r.online ?? []))
       .catch(() => undefined);
   };
   const loadChatUnread = (): void => {
     chatApi
       .list()
-      .then((r) => setChatUnread(r.channels.reduce((sum, c) => sum + (c.unread || 0), 0)))
+      .then((r) => setChatUnread((r.channels ?? []).reduce((sum, c) => sum + (c.unread || 0), 0)))
       .catch(() => undefined);
   };
 

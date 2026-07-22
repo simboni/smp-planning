@@ -83,7 +83,7 @@ export default function TimesheetPage() {
   const loadTeam = (ws: string): void => {
     timeApi
       .teamTimesheets(ws)
-      .then((r) => setRows(r.rows))
+      .then((r) => setRows(r.rows ?? []))
       .catch(() => setRows([]));
   };
 

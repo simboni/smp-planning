@@ -107,7 +107,7 @@ export default function DashboardsPage() {
   useEffect(() => {
     dashboardsApi
       .list()
-      .then((r) => setDashboards(r.dashboards))
+      .then((r) => setDashboards(r.dashboards ?? []))
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : "Couldn't load dashboards.");
         setDashboards([]);

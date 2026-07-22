@@ -55,6 +55,7 @@ export class WorkspacesService {
         [workspaceId, userId],
       );
       const row = res.rows[0];
+      if (!row) throw new NotFoundException();
       return {
         id: row.id,
         name: row.name,

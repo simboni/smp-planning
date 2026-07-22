@@ -122,7 +122,7 @@ const CARD_CATALOG: CardDef[] = [
     link: { href: "/my-work", label: "My Work" },
     body: ({ home }) => {
       const attention: TaskCard[] = home
-        ? [...home.overdue, ...home.dueToday].slice(0, 6)
+        ? [...(home.overdue ?? []), ...(home.dueToday ?? [])].slice(0, 6)
         : [];
       if (home === null) {
         return (
@@ -148,7 +148,7 @@ const CARD_CATALOG: CardDef[] = [
       return (
         <div className="home-list">
           {attention.map((t) => {
-            const overdue = home.overdue.some((o) => o.id === t.id);
+            const overdue = (home.overdue ?? []).some((o) => o.id === t.id);
             return (
               <Link key={t.id} href={taskHref(t)} className="home-row">
                 <span
@@ -184,7 +184,8 @@ const CARD_CATALOG: CardDef[] = [
           </>
         );
       }
-      if (home.recent.length === 0) {
+      const recent = home.recent ?? [];
+      if (recent.length === 0) {
         return (
           <div className="home-empty">
             <span className="home-empty-ic">{Icons.clock}</span>
@@ -199,7 +200,7 @@ const CARD_CATALOG: CardDef[] = [
       }
       return (
         <div className="home-list">
-          {home.recent.slice(0, 6).map((r, i) => (
+          {recent.slice(0, 6).map((r, i) => (
             <Link
               key={`${r.taskId}-${i}`}
               href={`/list?id=${r.listId}&task=${r.taskId}`}

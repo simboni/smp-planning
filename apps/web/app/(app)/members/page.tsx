@@ -33,7 +33,7 @@ export default function MembersPage() {
   const load = (): void => {
     workspacesApi
       .members()
-      .then((r) => setMembers(r.members))
+      .then((r) => setMembers(r.members ?? []))
       .catch((err) => {
         setLoadError(err instanceof ApiError ? err.message : "Couldn't load members.");
         setMembers([]);

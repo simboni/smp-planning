@@ -164,7 +164,7 @@ export default function DocsPage() {
   useEffect(() => {
     docsApi
       .list()
-      .then((r) => setDocs(r.docs))
+      .then((r) => setDocs(r.docs ?? []))
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : "Couldn't load your docs.");
         setDocs([]);

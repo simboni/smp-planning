@@ -533,7 +533,7 @@ export default function TeamsPage() {
   const loadTeams = (): void => {
     teamsApi
       .list()
-      .then((r) => setTeams(r.teams))
+      .then((r) => setTeams(r.teams ?? []))
       .catch((err) => {
         setLoadError(err instanceof ApiError ? err.message : "Couldn't load teams.");
         setTeams([]);
@@ -549,7 +549,7 @@ export default function TeamsPage() {
       .catch(() => undefined);
     workspacesApi
       .members()
-      .then((r) => setMembers(r.members))
+      .then((r) => setMembers(r.members ?? []))
       .catch(() => undefined);
     loadTeams();
   }, []);
