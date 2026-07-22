@@ -169,11 +169,11 @@ export function AutomationBuilder({
   onSaved: () => void;
 }) {
   const [triggerType, setTriggerType] = useState<AutomationTriggerType>(
-    existing?.trigger.type ?? "task.created",
+    existing?.trigger?.type ?? "task.created",
   );
-  const [toStatusId, setToStatusId] = useState(existing?.trigger.toStatusId ?? "");
+  const [toStatusId, setToStatusId] = useState(existing?.trigger?.toStatusId ?? "");
   const [toPriority, setToPriority] = useState<Priority | "">(
-    existing?.trigger.toPriority ?? "",
+    existing?.trigger?.toPriority ?? "",
   );
   const [rows, setRows] = useState<ActionRow[]>(() =>
     existing && existing.actions.length > 0

@@ -1190,7 +1190,7 @@ export function TaskPanel({
         {managingFields && detail && (
           <FieldManager
             spaceId={detail.spaceId}
-            spaceName={bc?.space.name}
+            spaceName={bc?.space?.name}
             onClose={() => setManagingFields(false)}
             onChanged={() => {
               void reload();

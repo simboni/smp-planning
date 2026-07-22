@@ -146,7 +146,7 @@ function ListBody({ list }: { list: NonNullable<SharedView["list"]> }) {
 function DocBody({ doc }: { doc: NonNullable<SharedView["doc"]> }) {
   return (
     <div className="sv-card sv-doc">
-      {doc.pages.map((p) => (
+      {(doc.pages ?? []).map((p) => (
         <section key={p.id} className="sv-page">
           <h2>{p.title}</h2>
           <div
