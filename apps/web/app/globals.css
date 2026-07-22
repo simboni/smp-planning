@@ -7417,11 +7417,19 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .kb-topbar {
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 0 20px; height: 60px;
+  gap: 12px; padding: env(safe-area-inset-top, 0px) 20px 0;
+  height: calc(60px + env(safe-area-inset-top, 0px));
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
 }
+/* Inside the native shell the status bar overlays the page; push the bar
+   below it (with the same floor the app chrome uses). */
+[data-app="native"] .kb-topbar {
+  padding-top: var(--su-safe-top);
+  height: calc(60px + var(--su-safe-top));
+}
+[data-app="native"] .kb-toc { top: calc(60px + var(--su-safe-top)); }
 .kb-brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; color: var(--ink); }
 .kb-brand-mark {
   display: inline-flex; width: 30px; height: 30px; border-radius: 8px;
@@ -7451,7 +7459,7 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 }
 
 /* Sidebar TOC */
-.kb-toc { position: sticky; top: 60px; align-self: start; height: calc(100vh - 60px); overflow-y: auto; padding: 28px 0; }
+.kb-toc { position: sticky; top: calc(60px + env(safe-area-inset-top, 0px)); align-self: start; height: calc(100vh - 60px); overflow-y: auto; padding: 28px 0; }
 .kb-toc-label {
   padding: 0 12px 8px; font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
@@ -7588,21 +7596,28 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   .kb-shell { grid-template-columns: 1fr; gap: 0; padding: 0 18px; }
   .kb-nav-toggle { display: inline-flex; }
   .kb-hide-sm { display: none; }
+  .kb-topbar { padding-left: 14px; padding-right: 14px; gap: 8px; }
   .kb-toc {
-    position: fixed; top: 60px; left: 0; bottom: 0; z-index: 45;
+    position: fixed; top: calc(60px + env(safe-area-inset-top, 0px)); left: 0; bottom: 0; z-index: 45;
     width: 280px; height: auto; padding: 18px 12px;
     background: var(--card); border-right: 1px solid var(--line);
     transform: translateX(-102%); transition: transform 0.22s ease;
     box-shadow: var(--shadow-3);
   }
+  [data-app="native"] .kb-toc { top: calc(60px + var(--su-safe-top)); }
   .kb-toc.open { transform: translateX(0); }
-  .kb-scrim { display: block; position: fixed; inset: 60px 0 0; z-index: 44; background: rgba(0,0,0,0.35); }
+  .kb-scrim { display: block; position: fixed; inset: calc(60px + env(safe-area-inset-top, 0px)) 0 0; z-index: 44; background: rgba(0,0,0,0.35); }
   .kb-hero h1 { font-size: 1.6rem; }
   .kb-hero { padding: 26px 22px; }
   .kb-ladder-row.depth-1 { margin-left: 12px; }
   .kb-ladder-row.depth-2 { margin-left: 24px; }
   .kb-ladder-row.depth-3 { margin-left: 36px; }
   .kb-ladder-row.depth-4 { margin-left: 48px; }
+}
+/* On the narrowest screens, drop the "GUIDE" pill so the bar isn't crowded. */
+@media (max-width: 430px) {
+  .kb-brand-tag { display: none; }
+  .kb-brand-name { font-size: 1rem; }
 }
 
 /* Knowledge-base nudge banner on Home. */
