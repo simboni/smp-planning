@@ -876,6 +876,82 @@ select.input { cursor: pointer; appearance: none;
 .stat-big { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; }
 
 /* Home "at a glance" stat buttons */
+/* Customizable Home dashboard board. */
+.home-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 12px;
+}
+.home-toolbar-title { font-size: 1.05rem; font-weight: 750; }
+.home-toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.home-add { position: relative; }
+.home-add-menu { top: calc(100% + 6px); min-width: 260px; }
+.home-add-menu .menu-label {
+  padding: 6px 10px 4px;
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted);
+}
+.home-add-opt { align-items: flex-start !important; gap: 10px !important; }
+.home-add-ic {
+  display: inline-flex; flex: none; width: 30px; height: 30px;
+  align-items: center; justify-content: center;
+  border-radius: var(--r-sm); background: var(--card-2); color: var(--brand);
+}
+.home-add-body { display: flex; flex-direction: column; min-width: 0; }
+.home-add-name { font-weight: 650; font-size: 0.88rem; }
+.home-add-desc { font-size: 0.76rem; color: var(--muted); white-space: normal; }
+
+.home-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.home-card { margin-bottom: 0; }
+.home-card.editing {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+}
+.home-card .card-head h3 { display: inline-flex; align-items: center; gap: 8px; }
+.home-card-ic { display: inline-flex; color: var(--brand); }
+.home-card-ic svg { width: 17px; height: 17px; }
+.home-card-tools { display: inline-flex; gap: 2px; }
+.home-card-tools .icon-btn.danger { color: var(--danger); }
+.home-card-tools .icon-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* Quick links card. */
+.quicklinks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.quicklink {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--card-2); color: var(--ink);
+  text-decoration: none; font-weight: 600; font-size: 0.88rem;
+  transition: border-color 0.12s ease, transform 0.08s ease;
+}
+.quicklink:hover { transform: translateY(-1px); border-color: var(--brand); }
+.quicklink-ic { display: inline-flex; color: var(--brand); }
+.quicklink-ic svg { width: 16px; height: 16px; }
+
+/* Notepad card. */
+.notepad-area {
+  width: 100%;
+  resize: vertical;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--card-2); color: var(--ink);
+  font: inherit; font-size: 0.9rem; line-height: 1.5;
+}
+.notepad-area:focus { outline: none; border-color: var(--brand); }
+.notepad-foot { margin-top: 6px; font-size: 0.74rem; }
+
+@media (max-width: 720px) {
+  .home-board { grid-template-columns: 1fr; }
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -71,42 +71,257 @@ const STATS: {
   { key: "members", label: "Members", href: "/members", icon: "members", color: "#E5578C" },
 ];
 
+/* ------------------------------------------------------------------ *
+ * Customizable Home cards. Each card is a self-contained widget the user
+ * can add, remove and reorder. The chosen layout persists per user in
+ * localStorage, so everyone shapes their own home base.
+ * ------------------------------------------------------------------ */
+type CardCtx = { home: HomeData | null; overview: HomeOverview | null };
+
+type CardDef = {
+  id: string;
+  title: string;
+  icon: IconKey;
+  /** One-line description shown in the "Add card" catalog. */
+  desc: string;
+  link?: { href: string; label: string };
+  body: (ctx: CardCtx) => React.ReactNode;
+};
+
+const taskHref = (t: { listId: string; id: string }) =>
+  `/list?id=${t.listId}&task=${t.id}`;
+
+const CARD_CATALOG: CardDef[] = [
+  {
+    id: "stats",
+    title: "Workspace at a glance",
+    icon: "dashboards",
+    desc: "Counts of spaces, tasks, docs, goals and more.",
+    link: { href: "/everything", label: "Browse" },
+    body: ({ overview }) => (
+      <div className="stat-grid">
+        {STATS.map((s) => (
+          <Link key={s.key} href={s.href} className="stat-tile">
+            <span className="stat-tile-ic" style={{ background: s.color }}>
+              {Icons[s.icon]}
+            </span>
+            <span className="stat-tile-num">
+              {overview ? overview[s.key] : <span className="skel stat-tile-skel" />}
+            </span>
+            <span className="stat-tile-label">{s.label}</span>
+          </Link>
+        ))}
+      </div>
+    ),
+  },
+  {
+    id: "attention",
+    title: "Needs your attention",
+    icon: "flag",
+    desc: "Tasks that are overdue or due today.",
+    link: { href: "/my-work", label: "My Work" },
+    body: ({ home }) => {
+      const attention: TaskCard[] = home
+        ? [...home.overdue, ...home.dueToday].slice(0, 6)
+        : [];
+      if (home === null) {
+        return (
+          <>
+            <span className="skel" style={{ width: "100%", height: 44, marginBottom: 8 }} />
+            <span className="skel" style={{ width: "100%", height: 44 }} />
+          </>
+        );
+      }
+      if (attention.length === 0) {
+        return (
+          <div className="home-empty">
+            <span className="home-empty-ic">{Icons.checkCircle}</span>
+            <div>
+              <div className="home-empty-title">You're all caught up 🎉</div>
+              <div className="muted" style={{ fontSize: "0.86rem" }}>
+                Nothing overdue or due today. Nice work.
+              </div>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="home-list">
+          {attention.map((t) => {
+            const overdue = home.overdue.some((o) => o.id === t.id);
+            return (
+              <Link key={t.id} href={taskHref(t)} className="home-row">
+                <span
+                  className="home-row-dot"
+                  style={{ background: t.status.color || "var(--muted)" }}
+                />
+                <span className="home-row-main">
+                  <span className="home-row-name">{t.name}</span>
+                  <span className="home-row-sub">{t.status.name}</span>
+                </span>
+                <span className={`home-due${overdue ? " overdue" : ""}`}>
+                  {formatDueDate(t.dueDate)}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      );
+    },
+  },
+  {
+    id: "activity",
+    title: "Recent activity",
+    icon: "clock",
+    desc: "The latest changes across your tasks.",
+    link: { href: "/my-work", label: "View all" },
+    body: ({ home }) => {
+      if (home === null) {
+        return (
+          <>
+            <span className="skel" style={{ width: "100%", height: 40, marginBottom: 8 }} />
+            <span className="skel" style={{ width: "100%", height: 40 }} />
+          </>
+        );
+      }
+      if (home.recent.length === 0) {
+        return (
+          <div className="home-empty">
+            <span className="home-empty-ic">{Icons.clock}</span>
+            <div>
+              <div className="home-empty-title">No activity yet</div>
+              <div className="muted" style={{ fontSize: "0.86rem" }}>
+                Create or update a task and it'll show up here.
+              </div>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="home-list">
+          {home.recent.slice(0, 6).map((r, i) => (
+            <Link
+              key={`${r.taskId}-${i}`}
+              href={`/list?id=${r.listId}&task=${r.taskId}`}
+              className="home-row"
+            >
+              <span className="home-row-ic">{Icons.checkCircle}</span>
+              <span className="home-row-main">
+                <span className="home-row-name">{r.taskName}</span>
+                <span className="home-row-sub">{humanizeKind(r.kind)}</span>
+              </span>
+              <span className="home-due">{timeAgo(r.createdAt)}</span>
+            </Link>
+          ))}
+        </div>
+      );
+    },
+  },
+  {
+    id: "quicklinks",
+    title: "Quick links",
+    icon: "bolt",
+    desc: "One-tap shortcuts to the places you work most.",
+    body: () => (
+      <div className="quicklinks">
+        {QUICK_LINKS.map((q) => (
+          <Link key={q.href} href={q.href} className="quicklink">
+            <span className="quicklink-ic">{Icons[q.icon]}</span>
+            {q.label}
+          </Link>
+        ))}
+      </div>
+    ),
+  },
+  {
+    id: "notepad",
+    title: "Notepad",
+    icon: "docs",
+    desc: "A private scratchpad that stays on this device.",
+    body: () => <NotepadCard />,
+  },
+];
+
+const QUICK_LINKS: { href: string; label: string; icon: IconKey }[] = [
+  { href: "/my-work", label: "My Work", icon: "checkCircle" },
+  { href: "/inbox", label: "Inbox", icon: "inbox" },
+  { href: "/docs", label: "Docs", icon: "docs" },
+  { href: "/goals", label: "Goals", icon: "goals" },
+  { href: "/dashboards", label: "Dashboards", icon: "dashboards" },
+  { href: "/timesheet", label: "Timesheet", icon: "clock" },
+];
+
+const DEFAULT_LAYOUT = ["stats", "attention", "activity"];
+
+function layoutKey(userId: string | undefined): string {
+  return `stackup.home.layout.${userId ?? "anon"}`;
+}
+
+function loadLayout(userId: string | undefined): string[] {
+  if (typeof window === "undefined") return DEFAULT_LAYOUT;
+  try {
+    const raw = window.localStorage.getItem(layoutKey(userId));
+    if (!raw) return DEFAULT_LAYOUT;
+    const ids = (JSON.parse(raw) as string[]).filter((id) =>
+      CARD_CATALOG.some((c) => c.id === id),
+    );
+    return ids.length ? ids : DEFAULT_LAYOUT;
+  } catch {
+    return DEFAULT_LAYOUT;
+  }
+}
+
 export default function DashboardPage() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
   const [overview, setOverview] = useState<HomeOverview | null>(null);
   const [home, setHome] = useState<HomeData | null>(null);
-  // Accordion: only one panel open at a time (opening one closes the other).
-  const [openPanel, setOpenPanel] = useState<"attention" | "activity" | null>(
-    "attention",
-  );
-  const toggle = (p: "attention" | "activity") =>
-    setOpenPanel((cur) => (cur === p ? null : p));
+  const [layout, setLayout] = useState<string[]>(DEFAULT_LAYOUT);
+  const [customizing, setCustomizing] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    setUser(getUser());
+    const u = getUser();
+    setUser(u);
     setWorkspace(getWorkspace());
-    homeApi
-      .overview()
-      .then(setOverview)
-      .catch(() => setOverview(null));
-    homeApi
-      .get()
-      .then(setHome)
-      .catch(() => setHome(null));
+    setLayout(loadLayout(u?.id));
+    homeApi.overview().then(setOverview).catch(() => setOverview(null));
+    homeApi.get().then(setHome).catch(() => setHome(null));
   }, []);
 
-  // Tasks that need attention now: overdue first, then due today.
-  const attention: TaskCard[] = home
-    ? [...home.overdue, ...home.dueToday].slice(0, 6)
-    : [];
-  const taskHref = (t: { listId: string; id: string }) =>
-    `/list?id=${t.listId}&task=${t.id}`;
+  // Persist the layout whenever the user reshapes it.
+  const persist = (next: string[]) => {
+    setLayout(next);
+    try {
+      window.localStorage.setItem(layoutKey(user?.id), JSON.stringify(next));
+    } catch {
+      /* storage disabled — layout stays for this session only */
+    }
+  };
+
+  const addCard = (id: string) => {
+    if (!layout.includes(id)) persist([...layout, id]);
+    setAdding(false);
+  };
+  const removeCard = (id: string) => persist(layout.filter((c) => c !== id));
+  const move = (id: string, dir: -1 | 1) => {
+    const i = layout.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= layout.length) return;
+    const next = [...layout];
+    [next[i], next[j]] = [next[j], next[i]];
+    persist(next);
+  };
+
+  const ctx: CardCtx = { home, overview };
+  const cards = layout
+    .map((id) => CARD_CATALOG.find((c) => c.id === id))
+    .filter((c): c is CardDef => Boolean(c));
+  const available = CARD_CATALOG.filter((c) => !layout.includes(c.id));
 
   const checklist = buildChecklist(overview);
   const doneCount = checklist.filter((c) => c.done).length;
   const progress = Math.round((doneCount / checklist.length) * 100);
-  // Once every step is done, retire the onboarding card entirely.
   const allDone = overview !== null && doneCount === checklist.length;
   const name = user ? firstName(user.fullName) : "there";
 
@@ -143,186 +358,193 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* top row: getting started (until complete) + at-a-glance stats */}
-      <div className={`grid${allDone ? "" : " grid-2"}`}>
-        {!allDone && (
-          <div className="card">
-            <div className="card-head">
-              <h3>Getting started</h3>
-              <span className="badge badge-soft">
-                {doneCount}/{checklist.length} done
-              </span>
-            </div>
-            <div className="progress" style={{ marginBottom: 12 }}>
-              <span style={{ width: `${progress}%` }} />
-            </div>
-            <div className="checklist">
-              {checklist.map((c) => (
-                <div key={c.title} className={`check-item${c.done ? " done" : ""}`}>
-                  <span className="check-box">{c.done && Icons.check}</span>
-                  <span className="check-body">
-                    <span className="check-title">{c.title}</span>
-                    <span className="check-sub">{c.sub}</span>
-                  </span>
-                  {c.href && !c.done && (
-                    <Link href={c.href} className="btn btn-soft btn-sm">
-                      {c.cta}
-                    </Link>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="card">
+      {/* onboarding checklist — auto-retires once every step is done */}
+      {!allDone && (
+        <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-head">
-            <h3>Workspace at a glance</h3>
-            <Link href="/everything" className="badge badge-soft" style={{ textDecoration: "none" }}>
-              Browse
-            </Link>
+            <h3>Getting started</h3>
+            <span className="badge badge-soft">
+              {doneCount}/{checklist.length} done
+            </span>
           </div>
-          <div className="stat-grid">
-            {STATS.map((s) => (
-              <Link key={s.key} href={s.href} className="stat-tile">
-                <span className="stat-tile-ic" style={{ background: s.color }}>
-                  {Icons[s.icon]}
+          <div className="progress" style={{ marginBottom: 12 }}>
+            <span style={{ width: `${progress}%` }} />
+          </div>
+          <div className="checklist">
+            {checklist.map((c) => (
+              <div key={c.title} className={`check-item${c.done ? " done" : ""}`}>
+                <span className="check-box">{c.done && Icons.check}</span>
+                <span className="check-body">
+                  <span className="check-title">{c.title}</span>
+                  <span className="check-sub">{c.sub}</span>
                 </span>
-                <span className="stat-tile-num">
-                  {overview ? overview[s.key] : <span className="skel stat-tile-skel" />}
-                </span>
-                <span className="stat-tile-label">{s.label}</span>
-              </Link>
+                {c.href && !c.done && (
+                  <Link href={c.href} className="btn btn-soft btn-sm">
+                    {c.cta}
+                  </Link>
+                )}
+              </div>
             ))}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* second row: accordion — needs attention / recent activity */}
-      <div className="accordion">
-        <section className={`acc-item${openPanel === "attention" ? " open" : ""}`}>
-          <button
-            type="button"
-            className="acc-head"
-            aria-expanded={openPanel === "attention"}
-            onClick={() => toggle("attention")}
-          >
-            <span className="acc-chevron">{Icons.chevronDown}</span>
-            <span className="acc-title">Needs your attention</span>
-            {home && attention.length > 0 && (
-              <span className="acc-count">{attention.length}</span>
-            )}
-            <Link
-              href="/my-work"
-              className="badge badge-soft acc-link"
-              style={{ textDecoration: "none" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              My Work
-            </Link>
-          </button>
-          <div className="acc-body">
-            <div className="acc-body-inner">
-              {home === null ? (
-                <>
-                  <span className="skel" style={{ width: "100%", height: 44, marginBottom: 8 }} />
-                  <span className="skel" style={{ width: "100%", height: 44 }} />
-                </>
-              ) : attention.length === 0 ? (
-                <div className="home-empty">
-                  <span className="home-empty-ic">{Icons.checkCircle}</span>
-                  <div>
-                    <div className="home-empty-title">You're all caught up 🎉</div>
-                    <div className="muted" style={{ fontSize: "0.86rem" }}>
-                      Nothing overdue or due today. Nice work.
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="home-list">
-                  {attention.map((t) => {
-                    const overdue = home.overdue.some((o) => o.id === t.id);
-                    return (
-                      <Link key={t.id} href={taskHref(t)} className="home-row">
-                        <span
-                          className="home-row-dot"
-                          style={{ background: t.status.color || "var(--muted)" }}
-                        />
-                        <span className="home-row-main">
-                          <span className="home-row-name">{t.name}</span>
-                          <span className="home-row-sub">{t.status.name}</span>
-                        </span>
-                        <span className={`home-due${overdue ? " overdue" : ""}`}>
-                          {formatDueDate(t.dueDate)}
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className={`acc-item${openPanel === "activity" ? " open" : ""}`}>
-          <button
-            type="button"
-            className="acc-head"
-            aria-expanded={openPanel === "activity"}
-            onClick={() => toggle("activity")}
-          >
-            <span className="acc-chevron">{Icons.chevronDown}</span>
-            <span className="acc-title">Recent activity</span>
-            {home && home.recent.length > 0 && (
-              <span className="acc-count">{home.recent.length}</span>
-            )}
-            <Link
-              href="/my-work"
-              className="badge badge-soft acc-link"
-              style={{ textDecoration: "none" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              View all
-            </Link>
-          </button>
-          <div className="acc-body">
-            <div className="acc-body-inner">
-              {home === null ? (
-                <>
-                  <span className="skel" style={{ width: "100%", height: 40, marginBottom: 8 }} />
-                  <span className="skel" style={{ width: "100%", height: 40 }} />
-                </>
-              ) : home.recent.length === 0 ? (
-                <div className="home-empty">
-                  <span className="home-empty-ic">{Icons.clock}</span>
-                  <div>
-                    <div className="home-empty-title">No activity yet</div>
-                    <div className="muted" style={{ fontSize: "0.86rem" }}>
-                      Create or update a task and it'll show up here.
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="home-list">
-                  {home.recent.slice(0, 6).map((r, i) => (
-                    <Link
-                      key={`${r.taskId}-${i}`}
-                      href={`/list?id=${r.listId}&task=${r.taskId}`}
-                      className="home-row"
+      {/* customize toolbar */}
+      <div className="home-toolbar">
+        <h2 className="home-toolbar-title">Your dashboard</h2>
+        <div className="home-toolbar-actions">
+          {customizing && available.length > 0 && (
+            <div className="home-add">
+              <button
+                type="button"
+                className="btn btn-soft btn-sm"
+                onClick={() => setAdding((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={adding}
+              >
+                {Icons.plus} Add card
+              </button>
+              {adding && (
+                <div className="menu home-add-menu" role="menu">
+                  <div className="menu-label">Add a card</div>
+                  {available.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="menuitem"
+                      className="home-add-opt"
+                      onClick={() => addCard(c.id)}
                     >
-                      <span className="home-row-ic">{Icons.checkCircle}</span>
-                      <span className="home-row-main">
-                        <span className="home-row-name">{r.taskName}</span>
-                        <span className="home-row-sub">{humanizeKind(r.kind)}</span>
+                      <span className="home-add-ic">{Icons[c.icon]}</span>
+                      <span className="home-add-body">
+                        <span className="home-add-name">{c.title}</span>
+                        <span className="home-add-desc">{c.desc}</span>
                       </span>
-                      <span className="home-due">{timeAgo(r.createdAt)}</span>
-                    </Link>
+                    </button>
                   ))}
                 </div>
               )}
             </div>
+          )}
+          <button
+            type="button"
+            className={`btn btn-sm ${customizing ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => {
+              setCustomizing((v) => !v);
+              setAdding(false);
+            }}
+          >
+            {customizing ? <>{Icons.check} Done</> : <>{Icons.settings} Customize</>}
+          </button>
+        </div>
+      </div>
+
+      {/* the customizable card board */}
+      {cards.length === 0 ? (
+        <div className="card">
+          <div className="home-empty">
+            <span className="home-empty-ic">{Icons.plus}</span>
+            <div>
+              <div className="home-empty-title">Your dashboard is empty</div>
+              <div className="muted" style={{ fontSize: "0.86rem" }}>
+                Hit <strong>Customize → Add card</strong> to build your home base.
+              </div>
+            </div>
           </div>
-        </section>
+        </div>
+      ) : (
+        <div className="home-board">
+          {cards.map((c, i) => (
+            <section key={c.id} className={`card home-card${customizing ? " editing" : ""}`}>
+              <div className="card-head">
+                <h3>
+                  <span className="home-card-ic">{Icons[c.icon]}</span> {c.title}
+                </h3>
+                {customizing ? (
+                  <div className="home-card-tools">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label="Move up"
+                      disabled={i === 0}
+                      onClick={() => move(c.id, -1)}
+                    >
+                      {Icons.arrowUp}
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label="Move down"
+                      disabled={i === cards.length - 1}
+                      onClick={() => move(c.id, 1)}
+                    >
+                      {Icons.arrowDown}
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn danger"
+                      aria-label={`Remove ${c.title}`}
+                      onClick={() => removeCard(c.id)}
+                    >
+                      {Icons.close}
+                    </button>
+                  </div>
+                ) : (
+                  c.link && (
+                    <Link
+                      href={c.link.href}
+                      className="badge badge-soft"
+                      style={{ textDecoration: "none" }}
+                    >
+                      {c.link.label}
+                    </Link>
+                  )
+                )}
+              </div>
+              <div className="home-card-body">{c.body(ctx)}</div>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A private, device-local scratchpad card. */
+function NotepadCard() {
+  const KEY = "stackup.home.notepad";
+  const [text, setText] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    try {
+      setText(window.localStorage.getItem(KEY) ?? "");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const onChange = (v: string) => {
+    setText(v);
+    try {
+      window.localStorage.setItem(KEY, v);
+      setSaved(true);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className="notepad">
+      <textarea
+        className="notepad-area"
+        value={text}
+        placeholder="Jot down a quick note, a link, a reminder…"
+        onChange={(e) => onChange(e.target.value)}
+        rows={5}
+      />
+      <div className="notepad-foot muted">
+        {saved ? "Saved on this device" : "Private to this device"}
       </div>
     </div>
   );
