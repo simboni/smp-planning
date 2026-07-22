@@ -6126,12 +6126,24 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
     z-index: 30; box-shadow: var(--shadow-3);
   }
 }
+/* Mobile back button in the thread header (hidden on desktop). */
+.chat-back {
+  display: none; flex: none; width: 34px; height: 34px; margin-right: 4px;
+  align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--ink); cursor: pointer;
+}
+.chat-back svg { width: 22px; height: 22px; }
+
 @media (max-width: 620px) {
   .chat-shell { height: calc(100vh - 52px); }
-  .chat-rail { width: 64px; }
-  .chat-rail-title span, .chat-rail-name, .chat-rail-section-head span:first-child,
-  .chat-rail-badge { display: none; }
-  .chat-rail-item { justify-content: center; }
+  /* Native chat pattern: the channel list is full-width until you open a
+     channel, then the thread takes over full-width with a back button —
+     instead of a cramped 64px icon rail. */
+  .chat-rail { width: 100%; border-right: 0; }
+  .chat-main { display: none; }
+  .chat-shell.has-active .chat-rail { display: none; }
+  .chat-shell.has-active .chat-main { display: flex; }
+  .chat-back { display: inline-flex; }
 }
 
 /* ==================================================================== *

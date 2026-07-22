@@ -808,12 +808,25 @@ function ChatView() {
       .catch(() => undefined);
   }, [loadChannels]);
 
-  // If no channel is selected, land on the first one.
+  // Track narrow screens so the channel list and thread swap full-width on
+  // mobile (native chat pattern) instead of squeezing both into one row.
+  const [isNarrow, setIsNarrow] = useState(false);
   useEffect(() => {
-    if (!activeId && channels && channels.length > 0) {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 620px)");
+    const sync = (): void => setIsNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  // On wide screens (two-pane), land on the first channel automatically. On
+  // mobile we show the channel list first so it isn't skipped.
+  useEffect(() => {
+    if (!isNarrow && !activeId && channels && channels.length > 0) {
       router.replace(`/chat?c=${channels[0].id}`);
     }
-  }, [activeId, channels, router]);
+  }, [isNarrow, activeId, channels, router]);
 
   const loadMessages = useCallback(async (channelId: string): Promise<void> => {
     setMessages(null);
@@ -1011,7 +1024,7 @@ function ChatView() {
   const goChannel = (id: string): void => router.push(`/chat?c=${id}`);
 
   return (
-    <div className="chat-shell">
+    <div className={`chat-shell${activeChannel ? " has-active" : ""}`}>
       {/* LEFT rail */}
       <aside className="chat-rail">
         <div className="chat-rail-head">
@@ -1114,6 +1127,14 @@ function ChatView() {
         ) : (
           <>
             <header className="chat-header">
+              <button
+                type="button"
+                className="chat-back"
+                aria-label="Back to channels"
+                onClick={() => router.replace("/chat")}
+              >
+                {Icons.chevronLeft}
+              </button>
               <div className="chat-header-title">
                 {activeChannel.isDm ? (
                   <span className="chat-header-name">
