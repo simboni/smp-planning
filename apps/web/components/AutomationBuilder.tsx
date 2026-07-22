@@ -503,7 +503,7 @@ export function AutomationRunsModal({
   useEffect(() => {
     automationsApi
       .runs(automation.id)
-      .then((r) => setRuns(r.runs))
+      .then((r) => setRuns(r.runs ?? []))
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : "Couldn't load the runs.");
         setRuns([]);

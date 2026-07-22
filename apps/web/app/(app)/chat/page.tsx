@@ -804,7 +804,7 @@ function ChatView() {
     void loadChannels();
     workspacesApi
       .members()
-      .then((r) => setMembers(r.members))
+      .then((r) => setMembers(r.members ?? []))
       .catch(() => undefined);
   }, [loadChannels]);
 

@@ -263,7 +263,7 @@ function SprintsSection({ spaceId, canEdit }: { spaceId: string; canEdit: boolea
   const load = (): void => {
     sprintsApi
       .list(spaceId)
-      .then((r) => setSprints(r.sprints))
+      .then((r) => setSprints(r.sprints ?? []))
       .catch(() => setSprints([]));
   };
 
@@ -518,7 +518,7 @@ function AutomationsSection({ spaceId, canEdit }: { spaceId: string; canEdit: bo
   const load = (): void => {
     automationsApi
       .list(spaceId)
-      .then((r) => setAutomations(r.automations))
+      .then((r) => setAutomations(r.automations ?? []))
       .catch(() => setAutomations([]));
   };
 

@@ -37,7 +37,7 @@ export default function SelectPage() {
     if (user) setGreeting(firstName(user.fullName));
     workspacesApi
       .list()
-      .then((r) => setWorkspaces(r.workspaces))
+      .then((r) => setWorkspaces(r.workspaces ?? []))
       .catch((err) => {
         setLoadError(err instanceof ApiError ? err.message : "Couldn't load your workspaces.");
         setWorkspaces([]);

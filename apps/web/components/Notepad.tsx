@@ -143,7 +143,7 @@ export function Notepad() {
     if (!open) return;
     notesApi
       .list()
-      .then((r) => setNotes(r.notes))
+      .then((r) => setNotes(r.notes ?? []))
       .catch(() => setNotes([]));
   }, [open]);
 

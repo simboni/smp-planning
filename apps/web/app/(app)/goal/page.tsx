@@ -658,7 +658,7 @@ function GoalView() {
     loadRef.current();
     workspacesApi
       .members()
-      .then((r) => setMembers(r.members))
+      .then((r) => setMembers(r.members ?? []))
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalId]);

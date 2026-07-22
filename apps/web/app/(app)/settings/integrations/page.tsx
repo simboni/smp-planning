@@ -268,7 +268,7 @@ function ApiTokensCard() {
   const [busy, setBusy] = useState(false);
 
   const load = () =>
-    apiTokensApi.list().then((r) => setTokens(r.tokens)).catch(() => setTokens([]));
+    apiTokensApi.list().then((r) => setTokens(r.tokens ?? [])).catch(() => setTokens([]));
   useEffect(() => {
     load();
   }, []);
@@ -383,7 +383,7 @@ function WebhooksCard() {
   const [busy, setBusy] = useState(false);
 
   const load = () =>
-    webhooksApi.list().then((r) => setHooks(r.webhooks)).catch(() => setHooks([]));
+    webhooksApi.list().then((r) => setHooks(r.webhooks ?? [])).catch(() => setHooks([]));
   useEffect(() => {
     load();
   }, []);

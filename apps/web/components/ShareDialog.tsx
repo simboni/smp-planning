@@ -104,11 +104,11 @@ export function ShareDialog({
     // Members + teams feed the picker; failures are non-fatal.
     workspacesApi
       .members()
-      .then((r) => setMembers(r.members))
+      .then((r) => setMembers(r.members ?? []))
       .catch(() => undefined);
     teamsApi
       .list()
-      .then((r) => setTeams(r.teams))
+      .then((r) => setTeams(r.teams ?? []))
       .catch(() => undefined);
     // Current external public link for this space, if any.
     sharesApi

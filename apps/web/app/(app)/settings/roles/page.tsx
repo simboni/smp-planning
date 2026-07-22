@@ -34,9 +34,9 @@ export default function RolesPage() {
   const [creating, setCreating] = useState(false);
 
   const loadRoles = () =>
-    governanceApi.listRoles().then((r) => setRoles(r.roles)).catch(() => setRoles([]));
+    governanceApi.listRoles().then((r) => setRoles(r.roles ?? [])).catch(() => setRoles([]));
   const loadMembers = () =>
-    workspacesApi.members().then((r) => setMembers(r.members)).catch(() => setMembers([]));
+    workspacesApi.members().then((r) => setMembers(r.members ?? [])).catch(() => setMembers([]));
 
   useEffect(() => {
     workspacesApi

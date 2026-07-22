@@ -226,11 +226,11 @@ export function TaskPanel({
     if (!detail) return;
     tagsApi
       .list(detail.spaceId)
-      .then((r) => setTags(r.tags))
+      .then((r) => setTags(r.tags ?? []))
       .catch(() => undefined);
     taskTypesApi
       .list(detail.spaceId)
-      .then((r) => setTaskTypes(r.taskTypes))
+      .then((r) => setTaskTypes(r.taskTypes ?? []))
       .catch(() => undefined);
   }, [detail?.spaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1992,7 +1992,7 @@ function TaskPickerPop({
   useEffect(() => {
     tasksApi
       .listForList(listId)
-      .then((r) => setTasks(r.tasks))
+      .then((r) => setTasks(r.tasks ?? []))
       .catch(() => setTasks([]));
   }, [listId]);
 

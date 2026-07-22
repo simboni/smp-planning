@@ -127,7 +127,7 @@ function ListShell() {
     if (!id) return Promise.resolve();
     return tasksApi
       .listForList(id)
-      .then((r) => setTasks(r.tasks))
+      .then((r) => setTasks(r.tasks ?? []))
       .catch((err) =>
         setError(err instanceof ApiError ? err.message : "Couldn't load tasks."),
       );
@@ -143,7 +143,7 @@ function ListShell() {
   const loadTags = useCallback((sid: string): Promise<void> => {
     return tagsApi
       .list(sid)
-      .then((r) => setTags(r.tags))
+      .then((r) => setTags(r.tags ?? []))
       .catch(() => undefined);
   }, []);
 
@@ -210,7 +210,7 @@ function ListShell() {
   useEffect(() => {
     workspacesApi
       .members()
-      .then((r) => setMembers(r.members))
+      .then((r) => setMembers(r.members ?? []))
       .catch(() => undefined);
   }, []);
 
