@@ -6432,6 +6432,61 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 .sec-danger { color: var(--danger); }
 .sec-danger:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-soft); }
 
+/* Collapsible card header (Active sessions) — the whole head is the toggle. */
+.sec-collapse-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.sec-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand-soft, color-mix(in srgb, var(--brand) 14%, transparent));
+  color: var(--brand-700, var(--brand));
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.sec-chevron {
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform 0.18s ease;
+}
+.sec-chevron.open { transform: rotate(180deg); }
+
+/* Owner-only destructive "Danger zone" card. */
+.danger-zone {
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
+}
+.danger-zone .card-head h3 { color: var(--danger); }
+.danger-confirm {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.danger-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 @media (max-width: 560px) {
   .sec-enroll { gap: 16px; }
   .sec-qr { margin: 0 auto; }
@@ -6942,18 +6997,19 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   align-items: center;
   gap: 8px;
   height: calc(var(--su-appbar-h) + var(--su-safe-top));
-  padding: var(--su-safe-top) 8px 0 16px;
-  background: color-mix(in srgb, var(--card) 86%, transparent);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--line);
+  padding: var(--su-safe-top) 8px 0 18px;
+  /* Branded gradient header — flows out of the purple status bar. */
+  background: linear-gradient(115deg, #7b68ee 0%, #6a5ae2 55%, #5b5fef 100%);
+  border-bottom: 0;
+  box-shadow: 0 4px 16px rgb(72 58 160 / 0.28);
 }
 .app-appbar-title {
   flex: 1;
   min-width: 0;
-  font-size: 1.05rem;
+  font-size: 1.12rem;
   font-weight: 800;
-  color: var(--ink);
+  letter-spacing: -0.01em;
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6963,6 +7019,18 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   align-items: center;
   gap: 2px;
 }
+/* White controls on the gradient header. */
+.app-appbar .icon-btn { color: rgba(255, 255, 255, 0.92); }
+.app-appbar .icon-btn:hover,
+.app-appbar .icon-btn:active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.app-appbar .acct-btn { margin-left: 2px; }
+.app-appbar .acct-btn .avatar {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+.app-appbar .bell-badge { background: #fff; color: var(--brand-700); }
 /* The shared notifications panel hangs from the app bar on mobile. */
 [data-app="native"] .app-appbar .bell-panel {
   position: fixed;

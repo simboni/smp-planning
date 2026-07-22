@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -76,6 +77,14 @@ export class WorkspacesController {
     return {
       workspace: await this.workspaces.update(req.workspaceId!, req.userId!, body),
     };
+  }
+
+  @Delete("current")
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
+  @Roles("owner") // owner only — permanently destroys the whole tenant
+  async remove(@Req() req: AuthedRequest) {
+    await this.workspaces.remove(req.workspaceId!, req.userId!);
   }
 
   @Get("current/members")

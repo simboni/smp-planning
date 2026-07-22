@@ -221,6 +221,9 @@ function TwoFactorCard() {
 function SessionsCard() {
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  // Keep the session log collapsed by default — it's a rarely-needed audit
+  // list, so it shouldn't crowd the Security page until the user asks for it.
+  const [open, setOpen] = useState(false);
 
   const load = () =>
     securityApi
@@ -228,9 +231,10 @@ function SessionsCard() {
       .then((r) => setSessions(r.sessions))
       .catch(() => setSessions([]));
 
+  // Load lazily the first time the card is expanded.
   useEffect(() => {
-    load();
-  }, []);
+    if (open && sessions === null) load();
+  }, [open, sessions]);
 
   const revoke = async (id: string) => {
     setRevoking(id);
@@ -242,48 +246,62 @@ function SessionsCard() {
     }
   };
 
+  const count = sessions?.length ?? null;
+
   return (
     <div className="card intg-card">
-      <div className="card-head">
+      <button
+        type="button"
+        className="card-head sec-collapse-head"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
         <h3>
           <span className="intg-ic">{Icons.globe}</span> Active sessions
+          {count !== null && <span className="sec-count">{count}</span>}
         </h3>
-      </div>
-      <p className="intg-desc">
-        Devices signed in to your account. Sign out any you don&apos;t recognize.
-      </p>
+        <span className={`sec-chevron${open ? " open" : ""}`}>{Icons.chevronDown}</span>
+      </button>
 
-      <div className="intg-list">
-        {sessions === null && <div className="skel" style={{ height: 40 }} />}
-        {sessions?.length === 0 && (
-          <div className="intg-empty">No active sessions.</div>
-        )}
-        {sessions?.map((s) => (
-          <div key={s.id} className="intg-row">
-            <div>
-              <div className="intg-row-title">
-                {deviceLabel(s.userAgent)}
-                {s.current && (
-                  <span className="badge sec-badge-current">This device</span>
+      {open && (
+        <>
+          <p className="intg-desc">
+            Devices signed in to your account. Sign out any you don&apos;t recognize.
+          </p>
+
+          <div className="intg-list">
+            {sessions === null && <div className="skel" style={{ height: 40 }} />}
+            {sessions?.length === 0 && (
+              <div className="intg-empty">No active sessions.</div>
+            )}
+            {sessions?.map((s) => (
+              <div key={s.id} className="intg-row">
+                <div>
+                  <div className="intg-row-title">
+                    {deviceLabel(s.userAgent)}
+                    {s.current && (
+                      <span className="badge sec-badge-current">This device</span>
+                    )}
+                  </div>
+                  <div className="intg-row-sub">
+                    <span>{lastUsedLabel(s)}</span>
+                  </div>
+                </div>
+                {!s.current && (
+                  <button
+                    className="btn btn-ghost intg-danger"
+                    onClick={() => revoke(s.id)}
+                    disabled={revoking === s.id}
+                    title="Sign out"
+                  >
+                    {Icons.signout} Sign out
+                  </button>
                 )}
               </div>
-              <div className="intg-row-sub">
-                <span>{lastUsedLabel(s)}</span>
-              </div>
-            </div>
-            {!s.current && (
-              <button
-                className="btn btn-ghost intg-danger"
-                onClick={() => revoke(s.id)}
-                disabled={revoking === s.id}
-                title="Sign out"
-              >
-                {Icons.signout} Sign out
-              </button>
-            )}
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </div>
   );
 }

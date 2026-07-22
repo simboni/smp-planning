@@ -189,6 +189,26 @@ export class WorkspacesService {
   }
 
   /**
+   * Permanently delete the workspace and everything it owns. Owner-only
+   * (verified inside the SECURITY DEFINER delete_workspace function, which is
+   * the app role's only DELETE path to `workspaces`). Every workspace-owned
+   * table cascades from the workspaces row, so this one call removes the whole
+   * tenant. Goes through the non-transactional pool path — the function binds
+   * and restores its own tenant context.
+   */
+  async remove(workspaceId: string, userId: string): Promise<void> {
+    try {
+      await this.db.query("SELECT delete_workspace($1, $2)", [workspaceId, userId]);
+    } catch (err: unknown) {
+      // insufficient_privilege — caller is not the owner.
+      if ((err as { code?: string }).code === "42501") {
+        throw new BadRequestException("Only the workspace owner can delete the workspace");
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Members of the current workspace. Runs under withWorkspace, so RLS
    * confines the memberships join to this workspace — the WHERE clause is
    * intent, the policy is enforcement.

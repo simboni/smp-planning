@@ -769,6 +769,9 @@ export const workspacesApi = {
       body,
       auth: "access",
     }),
+  /** Permanently delete the current workspace and everything in it. Owner only. */
+  remove: () =>
+    api<void>("/workspaces/current", { method: "DELETE", auth: "access" }),
 };
 
 /* ------------------------------------------------------------------ *

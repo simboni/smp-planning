@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  clearWorkspace,
   getWorkspace,
   limitsApi,
   setWorkspace as persistWorkspace,
@@ -35,6 +37,7 @@ export default function SettingsPage() {
 
   const color = workspace?.color || (workspace ? colorFor(workspace.id) : "#7B68EE");
   const isAdmin = workspace?.role === "owner" || workspace?.role === "admin";
+  const isOwner = workspace?.role === "owner";
 
   return (
     <div className="page">
@@ -145,6 +148,99 @@ export default function SettingsPage() {
       <div className="sec-heading">Security</div>
       <SecuritySettings />
 
+      {isOwner && workspace && <DangerZone workspace={workspace} />}
+
+    </div>
+  );
+}
+
+/**
+ * Owner-only "Danger zone" — permanently delete the whole workspace. Requires
+ * typing the workspace name to arm the button, mirroring GitHub/Stripe's
+ * destructive-action pattern so it can't be triggered by a stray click.
+ */
+function DangerZone({ workspace }: { workspace: WorkspaceSummary }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const armed = confirm.trim() === workspace.name.trim();
+
+  const remove = async () => {
+    if (!armed) return;
+    setBusy(true);
+    setError("");
+    try {
+      await workspacesApi.remove();
+      // Drop the now-dead workspace session (keeps the login) and send the
+      // owner to the workspace picker.
+      clearWorkspace();
+      router.replace("/select");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete the workspace.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card danger-zone" style={{ marginTop: 28, marginBottom: 20 }}>
+      <div className="card-head">
+        <h3>Danger zone</h3>
+      </div>
+
+      <div className="setting-row">
+        <div>
+          <div className="setting-label">Delete this workspace</div>
+          <div className="setting-hint">
+            Permanently removes <strong>{workspace.name}</strong> and everything in it —
+            spaces, tasks, docs, dashboards, members and files. This cannot be undone.
+          </div>
+        </div>
+        {!open && (
+          <button className="btn btn-danger btn-sm" onClick={() => setOpen(true)}>
+            Delete workspace
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="danger-confirm">
+          <label className="label">
+            Type the workspace name <span className="mono">{workspace.name}</span> to confirm
+          </label>
+          <input
+            className="input"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder={workspace.name}
+            autoFocus
+            disabled={busy}
+          />
+          {error && <div className="form-error">{error}</div>}
+          <div className="danger-actions">
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setOpen(false);
+                setConfirm("");
+                setError("");
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={remove}
+              disabled={!armed || busy}
+            >
+              {busy ? <span className="spinner" /> : "Permanently delete"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -334,6 +334,59 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const currentNav = PRIMARY_NAV.find((i) => isNavActive(i, pathname));
   const pageLabel = currentNav?.label ?? workspace?.name ?? "StackUp";
 
+  const accountAvatar = user ? (
+    <Avatar name={user.fullName || user.email} id={user.id} avatarUrl={user.avatarUrl} />
+  ) : (
+    <span className="avatar" style={{ background: colorFor("u") }}>
+      •
+    </span>
+  );
+
+  // The account avatar + dropdown — shared by the desktop topbar and the
+  // native app bar (only one wrap is visible at a time).
+  const accountButton = (
+    <div className="acct">
+      <button
+        type="button"
+        className="acct-btn"
+        aria-label="Account"
+        onClick={(e) => {
+          e.stopPropagation();
+          setBellOpen(false);
+          setMenuOpen((v) => !v);
+        }}
+      >
+        {accountAvatar}
+      </button>
+      {menuOpen && (
+        <div className="menu" onClick={(e) => e.stopPropagation()}>
+          <div className="menu-head">
+            {accountAvatar}
+            <span className="menu-head-body">
+              <span className="menu-name">{user?.fullName ?? "Your account"}</span>
+              <span className="menu-email">{user?.email ?? ""}</span>
+            </span>
+          </div>
+          <Link href="/settings" onClick={() => setMenuOpen(false)}>
+            {Icons.settings} Settings
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              router.push("/select");
+            }}
+          >
+            {Icons.switch} Switch workspace
+          </button>
+          <button type="button" className="danger" onClick={signOut}>
+            {Icons.signout} Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   // The notifications panel — shared by the desktop bell and the native
   // app-bar bell (only one of the two wraps is visible at a time).
   const bellPanel = (
@@ -605,58 +658,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {bellOpen && bellPanel}
             </div>
 
-            <div className="acct">
-              <button
-                type="button"
-                className="acct-btn"
-                aria-label="Account"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setBellOpen(false);
-                  setMenuOpen((v) => !v);
-                }}
-              >
-                {user ? (
-                  <Avatar
-                    name={user.fullName || user.email}
-                    id={user.id}
-                    avatarUrl={user.avatarUrl}
-                  />
-                ) : (
-                  <span className="avatar" style={{ background: colorFor("u") }}>
-                    •
-                  </span>
-                )}
-              </button>
-              {menuOpen && (
-                <div className="menu" onClick={(e) => e.stopPropagation()}>
-                  <div className="menu-head">
-                    {user ? (
-                      <Avatar
-                        name={user.fullName || user.email}
-                        id={user.id}
-                        avatarUrl={user.avatarUrl}
-                      />
-                    ) : (
-                      <span className="avatar" style={{ background: colorFor("u") }}>
-                        •
-                      </span>
-                    )}
-                    <span className="menu-head-body">
-                      <span className="menu-name">{user?.fullName ?? "Your account"}</span>
-                      <span className="menu-email">{user?.email ?? ""}</span>
-                    </span>
-                  </div>
-                  <Link href="/settings">{Icons.settings} Settings</Link>
-                  <button type="button" onClick={() => router.push("/select")}>
-                    {Icons.switch} Switch workspace
-                  </button>
-                  <button type="button" className="danger" onClick={signOut}>
-                    {Icons.signout} Sign out
-                  </button>
-                </div>
-              )}
-            </div>
+            {accountButton}
           </div>
         </header>
 
@@ -694,6 +696,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
               {bellOpen && bellPanel}
             </div>
+            {accountButton}
           </span>
         </header>
 
