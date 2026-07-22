@@ -17,13 +17,13 @@
 -- course remove its memberships and its audit trail with it.
 
 -- memberships.workspace_id -> workspaces(id): NO ACTION -> CASCADE.
-ALTER TABLE memberships DROP CONSTRAINT memberships_workspace_id_fkey;
+ALTER TABLE memberships DROP CONSTRAINT IF EXISTS memberships_workspace_id_fkey;
 ALTER TABLE memberships
   ADD CONSTRAINT memberships_workspace_id_fkey
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE;
 
 -- audit_log.workspace_id -> workspaces(id): NO ACTION -> CASCADE.
-ALTER TABLE audit_log DROP CONSTRAINT audit_log_workspace_id_fkey;
+ALTER TABLE audit_log DROP CONSTRAINT IF EXISTS audit_log_workspace_id_fkey;
 ALTER TABLE audit_log
   ADD CONSTRAINT audit_log_workspace_id_fkey
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE;

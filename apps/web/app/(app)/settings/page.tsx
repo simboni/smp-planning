@@ -361,11 +361,15 @@ function BrandingCard({
     setError("");
     setSaved(false);
     try {
-      const r = await workspacesApi.update({
-        name: name.trim(),
-        color,
-        avatarUrl: logo.trim() || null,
-      });
+      // Only send what actually changed — a name-only edit shouldn't trip the
+      // branding (paid) gate just because the unchanged color rides along.
+      const body: { name?: string; color?: string; avatarUrl?: string | null } = {};
+      if (name.trim() !== workspace.name) body.name = name.trim();
+      if (color.toLowerCase() !== (workspace.color || "").toLowerCase()) body.color = color;
+      if ((logo.trim() || null) !== (workspace.avatarUrl ?? null)) {
+        body.avatarUrl = logo.trim() || null;
+      }
+      const r = await workspacesApi.update(body);
       onSaved(r.workspace);
       setSaved(true);
     } catch (e) {

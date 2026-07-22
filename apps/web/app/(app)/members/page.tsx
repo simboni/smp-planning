@@ -55,20 +55,20 @@ export default function MembersPage() {
   const canInvite = role === "owner" || role === "admin";
   const canManage = canInvite;
 
-  // Apply a member action and reconcile local state from the response.
-  const applyMember = async (
+  // Update a member in place from the endpoint's response (role / status).
+  const updateMember = async (
     userId: string,
-    fn: () => Promise<Member | void>,
+    body: { role?: WorkspaceRole; status?: "active" | "suspended" },
   ): Promise<void> => {
     setActionError("");
     try {
-      const updated = await fn();
-      if (updated) {
+      const updated = await workspacesApi.updateMember(userId, body);
+      // Only swap in a well-formed member; never replace a row with an empty
+      // body (which would crash the render).
+      if (updated && updated.id) {
         setMembers((prev) =>
           prev ? prev.map((m) => (m.id === userId ? updated : m)) : prev,
         );
-      } else {
-        setMembers((prev) => (prev ? prev.filter((m) => m.id !== userId) : prev));
       }
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Action failed.");
@@ -76,11 +76,19 @@ export default function MembersPage() {
   };
 
   const changeRole = (userId: string, r: WorkspaceRole) =>
-    applyMember(userId, () => workspacesApi.updateMember(userId, { role: r }));
+    updateMember(userId, { role: r });
   const setStatus = (userId: string, status: "active" | "suspended") =>
-    applyMember(userId, () => workspacesApi.updateMember(userId, { status }));
-  const remove = (userId: string) =>
-    applyMember(userId, () => workspacesApi.removeMember(userId));
+    updateMember(userId, { status });
+  // Removal returns no body — drop the row from the list.
+  const remove = async (userId: string): Promise<void> => {
+    setActionError("");
+    try {
+      await workspacesApi.removeMember(userId);
+      setMembers((prev) => (prev ? prev.filter((m) => m.id !== userId) : prev));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Action failed.");
+    }
+  };
 
   const guestCount = (members ?? []).filter((m) => m.role === "guest").length;
   const memberCount = (members ?? []).length - guestCount;

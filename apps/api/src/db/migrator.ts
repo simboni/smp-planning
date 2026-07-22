@@ -70,22 +70,29 @@ export async function autoMigrate(): Promise<void> {
           (r: { filename: string }) => r.filename,
         ),
       );
-      // Baseline mode: an empty ledger against a database that already has the
-      // core schema (e.g. bootstrapped by pasting SQL into a managed console).
-      // Re-running early migrations there would fail on "already exists"; in
-      // this mode only such duplicate-object errors are tolerated — the object
-      // is recorded as applied and we move on — so genuinely-missing migrations
-      // (the ones causing the post-deploy errors) still apply cleanly.
+      // Tolerant mode: whenever the database already carries the core schema,
+      // an early migration re-run can fail on "already exists". This happens
+      // both with an empty ledger (a console-pasted bootstrap) AND — critically
+      // — with a PARTIALLY-DRIFTED ledger, where the recorded set trails the
+      // real schema (e.g. an object was applied out-of-band). In the drifted
+      // case the strict path would throw on the first duplicate and STOP,
+      // leaving every later migration (the ones actually causing post-deploy
+      // 500s) unapplied. So we tolerate duplicate-object errors whenever the
+      // core schema exists: the already-present migration is recorded and we
+      // move on, and genuinely-missing migrations still apply cleanly, letting
+      // a drifted database self-heal on the next deploy.
       const usersExists =
         (
           await client.query(
             "SELECT to_regclass('public.users') IS NOT NULL AS ok",
           )
         ).rows[0]?.ok === true;
-      const baseline = applied.size === 0 && usersExists;
-      if (baseline) {
+      const tolerant = usersExists;
+      if (tolerant) {
         console.log(
-          "[migrate] existing schema with empty ledger — baselining (tolerating already-applied objects).",
+          applied.size === 0
+            ? "[migrate] existing schema with empty ledger — baselining (tolerating already-applied objects)."
+            : "[migrate] existing schema — tolerating already-applied objects so a drifted ledger can catch up.",
         );
       }
       // SQLSTATEs for "object already exists" (table/column/object/function/schema).
@@ -109,8 +116,9 @@ export async function autoMigrate(): Promise<void> {
         } catch (err) {
           await client.query("ROLLBACK").catch(() => undefined);
           const code = (err as { code?: string }).code;
-          if (baseline && code && DUP.has(code)) {
-            // Already present from the manual bootstrap — just record it.
+          if (tolerant && code && DUP.has(code)) {
+            // The object already exists (bootstrap or drift) — record and move
+            // on so later, genuinely-missing migrations still apply.
             await client.query(
               "INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING",
               [file],
