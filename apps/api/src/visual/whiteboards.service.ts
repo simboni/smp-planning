@@ -19,7 +19,17 @@ import {
 } from "../tasks/tasks.support";
 import { MAX_ELEMENTS_BYTES, iso, serializeCapped } from "./visual.support";
 
-export interface WhiteboardSummary {
+/** Optional cross-references a board can point at (M31). */
+export interface WhiteboardLinks {
+  folderId: string | null;
+  folderName: string | null;
+  listId: string | null;
+  listName: string | null;
+  taskId: string | null;
+  taskName: string | null;
+}
+
+export interface WhiteboardSummary extends WhiteboardLinks {
   id: string;
   name: string;
   spaceId: string | null;
@@ -29,7 +39,7 @@ export interface WhiteboardSummary {
   elementCount: number;
 }
 
-export interface WhiteboardOut {
+export interface WhiteboardOut extends WhiteboardLinks {
   id: string;
   name: string;
   spaceId: string | null;
@@ -39,9 +49,27 @@ export interface WhiteboardOut {
 
 const WB_SELECT = `
   SELECT w.id, w.name, w.space_id, w.elements, w.created_by, w.updated_by,
-         w.updated_at, s.name AS space_name,
+         w.updated_at, w.folder_id, w.list_id, w.task_id,
+         s.name AS space_name, f.name AS folder_name,
+         l.name AS list_name, t.name AS task_name,
          jsonb_array_length(w.elements)::int AS element_count
-  FROM whiteboards w LEFT JOIN spaces s ON s.id = w.space_id`;
+  FROM whiteboards w
+    LEFT JOIN spaces s  ON s.id = w.space_id
+    LEFT JOIN folders f ON f.id = w.folder_id
+    LEFT JOIN lists l   ON l.id = w.list_id
+    LEFT JOIN tasks t   ON t.id = w.task_id`;
+
+/** Pull the link fields out of a WB_SELECT row. */
+function linksOf(r: Record<string, unknown>): WhiteboardLinks {
+  return {
+    folderId: (r.folder_id as string | null) ?? null,
+    folderName: (r.folder_name as string | null) ?? null,
+    listId: (r.list_id as string | null) ?? null,
+    listName: (r.list_name as string | null) ?? null,
+    taskId: (r.task_id as string | null) ?? null,
+    taskName: (r.task_name as string | null) ?? null,
+  };
+}
 
 /**
  * Module 12: Whiteboards — one jsonb `elements` document per board,
@@ -72,7 +100,27 @@ export class WhiteboardsService {
       spaceId: (r.space_id as string | null) ?? null,
       elements: (r.elements as unknown[]) ?? [],
       updatedAt: iso(r.updated_at)!,
+      ...linksOf(r),
     };
+  }
+
+  /**
+   * Resolve an optional link id: undefined/null clears it; a value must be a
+   * uuid that exists in THIS workspace (the SELECT is RLS-scoped, so this also
+   * blocks cross-tenant links that a raw FK would otherwise allow).
+   */
+  private async resolveLink(
+    client: PoolClient,
+    table: "folders" | "lists" | "tasks",
+    value: string | null | undefined,
+    label: string,
+  ): Promise<string | null | undefined> {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    const id = requireUuid(value, label);
+    const res = await client.query(`SELECT 1 FROM ${table} WHERE id = $1`, [id]);
+    if (!res.rows[0]) throw new BadRequestException(`${label} not found`);
+    return id;
   }
 
   /** Load a board and enforce read visibility (attached -> space visible). */
@@ -122,6 +170,7 @@ export class WhiteboardsService {
           updatedAt: iso(r.updated_at)!,
           updatedBy: (r.updated_by as string | null) ?? null,
           elementCount: r.element_count as number,
+          ...linksOf(r),
         }));
     });
   }
@@ -130,7 +179,14 @@ export class WhiteboardsService {
     workspaceId: string,
     userId: string,
     role: Role,
-    body: { name?: string; spaceId?: string },
+    body: {
+      name?: string;
+      spaceId?: string;
+      elements?: unknown;
+      folderId?: string | null;
+      listId?: string | null;
+      taskId?: string | null;
+    },
   ): Promise<WhiteboardOut> {
     this.noGuests(role);
     const name = requireName(body?.name);
@@ -138,15 +194,24 @@ export class WhiteboardsService {
       body?.spaceId === undefined || body?.spaceId === null
         ? null
         : requireUuid(body.spaceId, "spaceId");
+    // Optional starter content (templates seed a board on creation).
+    const elementsJson =
+      body?.elements !== undefined ? this.validElements(body.elements) : undefined;
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       if (spaceId !== null) {
         await requireSpaceEdit(this.access, client, userId, role, spaceId);
       }
+      const folderId = await this.resolveLink(client, "folders", body?.folderId, "folderId");
+      const listId = await this.resolveLink(client, "lists", body?.listId, "listId");
+      const taskId = await this.resolveLink(client, "tasks", body?.taskId, "taskId");
       const ins = await client.query(
         `INSERT INTO whiteboards
-           (workspace_id, space_id, name, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $4) RETURNING id`,
-        [workspaceId, spaceId, name, userId],
+           (workspace_id, space_id, name, elements, folder_id, list_id, task_id,
+            created_by, updated_by)
+         VALUES ($1, $2, $3, COALESCE($4::jsonb, '[]'::jsonb), $5, $6, $7, $8, $8)
+         RETURNING id`,
+        [workspaceId, spaceId, name, elementsJson ?? null,
+         folderId ?? null, listId ?? null, taskId ?? null, userId],
       );
       const id = ins.rows[0].id as string;
       await this.audit.record(client, {
@@ -178,7 +243,14 @@ export class WhiteboardsService {
     userId: string,
     role: Role,
     id: string,
-    body: { name?: string; elements?: unknown; spaceId?: string | null },
+    body: {
+      name?: string;
+      elements?: unknown;
+      spaceId?: string | null;
+      folderId?: string | null;
+      listId?: string | null;
+      taskId?: string | null;
+    },
   ): Promise<WhiteboardOut> {
     this.noGuests(role);
     const name = optionalName(body?.name);
@@ -217,6 +289,22 @@ export class WhiteboardsService {
           }
           sets.push(`space_id = $${i++}`);
           params.push(spaceId);
+        }
+        // Optional cross-reference links (folder / list / task).
+        const folderId = await this.resolveLink(client, "folders", body?.folderId, "folderId");
+        if (folderId !== undefined) {
+          sets.push(`folder_id = $${i++}`);
+          params.push(folderId);
+        }
+        const listId = await this.resolveLink(client, "lists", body?.listId, "listId");
+        if (listId !== undefined) {
+          sets.push(`list_id = $${i++}`);
+          params.push(listId);
+        }
+        const taskId = await this.resolveLink(client, "tasks", body?.taskId, "taskId");
+        if (taskId !== undefined) {
+          sets.push(`task_id = $${i++}`);
+          params.push(taskId);
         }
         if (sets.length > 0) {
           sets.push(`updated_by = $${i++}`, `updated_at = now()`);

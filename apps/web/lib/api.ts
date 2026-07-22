@@ -2693,8 +2693,18 @@ export interface WhiteboardElement {
   fontSize?: number;
 }
 
+/** Optional cross-reference links a board can carry (M31). */
+export interface WhiteboardLinks {
+  folderId: string | null;
+  folderName: string | null;
+  listId: string | null;
+  listName: string | null;
+  taskId: string | null;
+  taskName: string | null;
+}
+
 /** A whiteboard as listed on the visual hub. */
-export interface WhiteboardSummary {
+export interface WhiteboardSummary extends WhiteboardLinks {
   id: string;
   name: string;
   /** Space the board is attached to; null = workspace-level. */
@@ -2706,7 +2716,7 @@ export interface WhiteboardSummary {
 }
 
 /** The full board including its element array. */
-export interface WhiteboardDetail {
+export interface WhiteboardDetail extends WhiteboardLinks {
   id: string;
   name: string;
   spaceId: string | null;
@@ -2714,13 +2724,23 @@ export interface WhiteboardDetail {
   updatedAt: string;
 }
 
+/** Fields accepted when creating a board (name + optional placement/links/seed). */
+export interface WhiteboardCreate {
+  name: string;
+  spaceId?: string | null;
+  elements?: WhiteboardElement[];
+  folderId?: string | null;
+  listId?: string | null;
+  taskId?: string | null;
+}
+
 export const whiteboardsApi = {
   list: () =>
     api<{ whiteboards: WhiteboardSummary[] }>("/whiteboards", {
       auth: "access",
     }),
-  create: (body: { name: string; spaceId?: string | null }) =>
-    api<{ whiteboard: WhiteboardSummary }>("/whiteboards", {
+  create: (body: WhiteboardCreate) =>
+    api<{ whiteboard: WhiteboardDetail }>("/whiteboards", {
       method: "POST",
       body,
       auth: "access",
@@ -2735,6 +2755,9 @@ export const whiteboardsApi = {
       name?: string;
       elements?: WhiteboardElement[];
       spaceId?: string | null;
+      folderId?: string | null;
+      listId?: string | null;
+      taskId?: string | null;
     },
   ) =>
     api<{ whiteboard: WhiteboardDetail }>(`/whiteboards/${id}`, {

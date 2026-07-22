@@ -36,7 +36,15 @@ export class WhiteboardsController {
   @Post()
   async create(
     @Req() req: AuthedRequest,
-    @Body() body: { name?: string; spaceId?: string },
+    @Body()
+    body: {
+      name?: string;
+      spaceId?: string;
+      elements?: unknown;
+      folderId?: string | null;
+      listId?: string | null;
+      taskId?: string | null;
+    },
   ) {
     return {
       whiteboard: await this.whiteboards.create(...this.ctx(req), body ?? {}),
@@ -55,7 +63,15 @@ export class WhiteboardsController {
   async update(
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,
-    @Body() body: { name?: string; elements?: unknown; spaceId?: string | null },
+    @Body()
+    body: {
+      name?: string;
+      elements?: unknown;
+      spaceId?: string | null;
+      folderId?: string | null;
+      listId?: string | null;
+      taskId?: string | null;
+    },
   ) {
     return {
       whiteboard: await this.whiteboards.update(

@@ -7638,3 +7638,96 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   .guide-banner { flex-wrap: wrap; }
   .guide-banner-cta { order: 3; }
 }
+
+/* ============================================================== *
+ * Visual hub (/whiteboards) — compact, dense layout. Previously
+ * these classes were undefined and the hub rendered unstyled.
+ * ============================================================== */
+.viz-search { position: relative; display: flex; align-items: center; min-width: 220px; }
+.viz-search-ic {
+  position: absolute; left: 10px; display: inline-flex; color: var(--muted); pointer-events: none;
+}
+.viz-search-ic svg { width: 16px; height: 16px; }
+.viz-search .input { padding-left: 32px; height: 38px; }
+
+/* Start-from-a-template row */
+.viz-templates {
+  margin: 4px 0 22px; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card-2);
+}
+.viz-templates-label {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted); margin-bottom: 10px;
+}
+.viz-template-row {
+  display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px;
+}
+.viz-template {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  width: 92px; padding: 6px; border: 1px solid transparent; border-radius: var(--r-md);
+  background: transparent; cursor: pointer; color: var(--ink); font: inherit;
+  transition: border-color 0.12s ease, transform 0.08s ease;
+}
+.viz-template:hover { border-color: var(--brand); transform: translateY(-1px); }
+.viz-template-thumb {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 60px; border-radius: var(--r-sm); color: var(--brand-700);
+}
+.viz-template-thumb svg { width: 22px; height: 22px; }
+.viz-template-name { font-size: 0.78rem; font-weight: 600; }
+
+/* Section headers */
+.viz-section-head {
+  display: flex; align-items: center; gap: 9px; margin: 22px 0 12px;
+}
+.viz-section-ic { display: inline-flex; color: var(--brand); }
+.viz-section-ic svg { width: 18px; height: 18px; }
+.viz-section-head h2 { font-size: 1.1rem; font-weight: 750; }
+.viz-section-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: var(--card-2); color: var(--muted); font-size: 0.72rem; font-weight: 700;
+}
+.viz-section-spacer { flex: 1; }
+
+/* Card grid — dense auto-fill so cards take less space */
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.viz-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card);
+  text-decoration: none; color: var(--ink); min-height: 96px;
+}
+.viz-card-ic {
+  display: inline-flex; width: 32px; height: 32px; border-radius: 9px;
+  align-items: center; justify-content: center; color: #fff;
+}
+.viz-card-ic svg { width: 18px; height: 18px; }
+.viz-card-ic-board { background: var(--brand); }
+.viz-card-ic-map { background: #00B8D9; }
+.viz-card-name { font-weight: 650; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.viz-card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.viz-card-sub { font-size: 0.76rem; color: var(--muted); }
+.viz-link-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+  background: var(--brand-soft); color: var(--brand-700);
+}
+.viz-link-chip svg { width: 12px; height: 12px; }
+
+/* Empty state */
+.viz-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 30px 20px; text-align: center;
+  border: 1px dashed var(--line); border-radius: var(--r-md); background: var(--card-2);
+  color: var(--muted);
+}
+.viz-empty-ic {
+  display: inline-flex; width: 40px; height: 40px; border-radius: 12px;
+  align-items: center; justify-content: center; background: var(--brand-soft); color: var(--brand-700);
+}
+.viz-empty-ic svg { width: 20px; height: 20px; }
+.viz-empty p { max-width: 380px; }
