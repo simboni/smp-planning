@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  ApiError,
   sharesApi,
   shareUrl,
   type ShareEntityType,
@@ -30,6 +31,7 @@ export function PublicShareButton({
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Load the current link the first time the popover opens.
@@ -63,11 +65,14 @@ export function PublicShareButton({
 
   const createLink = async () => {
     setBusy(true);
+    setError("");
     try {
       const r = await sharesApi.create(type, id, "view");
       setShare(r.share);
-    } catch {
-      /* surfaced by disabled state; keep the popover open */
+    } catch (e) {
+      setError(
+        e instanceof ApiError ? e.message : "Couldn't create the link. Please try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -151,6 +156,7 @@ export function PublicShareButton({
             </div>
           ) : (
             <div className="pshare-body">
+              {error && <div className="form-error" style={{ marginBottom: 8 }}>{error}</div>}
               <button
                 type="button"
                 className="btn btn-primary btn-block"
