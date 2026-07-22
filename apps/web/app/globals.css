@@ -3030,11 +3030,15 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 .bell-wrap { position: relative; }
 .bell-btn { position: relative; color: var(--ink-2); }
 .bell-badge {
-  position: absolute; top: -4px; right: -6px; min-width: 17px; height: 17px;
+  /* Anchored over the bell glyph's top-right corner (the glyph is 17px,
+     centered in a 32px button), so the count hugs the icon instead of
+     drifting into the gap toward the profile avatar. */
+  position: absolute; top: -1px; right: 1px; min-width: 16px; height: 16px;
   border-radius: 999px; background: var(--danger); color: #fff;
-  font-size: 0.66rem; font-weight: 800; display: inline-flex;
+  font-size: 0.62rem; font-weight: 800; line-height: 1; display: inline-flex;
   align-items: center; justify-content: center; padding: 0 4px;
-  border: 2px solid var(--card);
+  border: 2px solid var(--card); box-sizing: border-box;
+  pointer-events: none;
 }
 .bell-panel {
   position: absolute; right: 0; top: calc(100% + 8px); width: 360px; max-width: 92vw;
