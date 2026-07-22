@@ -36,6 +36,7 @@ async function injectShareMeta(
   root: string,
   shares: SharesService | null,
   token: string,
+  origin: string,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -55,14 +56,23 @@ async function injectShareMeta(
       const label = SHARE_TYPE_LABEL[meta.entityType] ?? "Shared";
       const title = `${meta.title} · StackUp`;
       const desc = `${label} shared from ${meta.workspaceName} on StackUp — open to view it, no account needed.`;
+      const image = `${origin}/og-share.png`;
+      const pageUrl = `${origin}/s?t=${encodeURIComponent(token)}`;
       const tags = [
         `<meta property="og:title" content="${htmlAttr(title)}">`,
         `<meta property="og:description" content="${htmlAttr(desc)}">`,
         `<meta property="og:type" content="website">`,
         `<meta property="og:site_name" content="StackUp">`,
-        `<meta name="twitter:card" content="summary">`,
+        `<meta property="og:url" content="${htmlAttr(pageUrl)}">`,
+        `<meta property="og:image" content="${htmlAttr(image)}">`,
+        `<meta property="og:image:width" content="1200">`,
+        `<meta property="og:image:height" content="630">`,
+        `<meta property="og:image:alt" content="Shared on StackUp">`,
+        `<meta name="twitter:card" content="summary_large_image">`,
         `<meta name="twitter:title" content="${htmlAttr(title)}">`,
         `<meta name="twitter:description" content="${htmlAttr(desc)}">`,
+        `<meta name="twitter:image" content="${htmlAttr(image)}">`,
+        `<title>${htmlAttr(title)}</title>`,
       ].join("");
       html = html.replace("</head>", `${tags}</head>`);
     }
@@ -167,7 +177,12 @@ async function bootstrap(): Promise<void> {
       const token =
         p === "/s" && typeof req.query.t === "string" ? req.query.t : "";
       if (token) {
-        void injectShareMeta(root, sharesService, token, res, next);
+        const host = req.get("host") ?? "";
+        const proto =
+          (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0] ||
+          (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+        const origin = `${proto}://${host}`;
+        void injectShareMeta(root, sharesService, token, origin, res, next);
         return;
       }
 
