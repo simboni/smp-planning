@@ -106,20 +106,32 @@ export class WhiteboardsService {
 
   /**
    * Resolve an optional link id: undefined/null clears it; a value must be a
-   * uuid that exists in THIS workspace (the SELECT is RLS-scoped, so this also
-   * blocks cross-tenant links that a raw FK would otherwise allow).
+   * uuid that exists in THIS workspace (the SELECT is RLS-scoped) AND whose
+   * space the caller can actually see — otherwise a member could link a board
+   * to (and read the name of) an entity in a private space they have no access
+   * to. Every linkable table carries a denormalized space_id we visibility-check
+   * via AccessService.
    */
   private async resolveLink(
     client: PoolClient,
     table: "folders" | "lists" | "tasks",
     value: string | null | undefined,
     label: string,
+    userId: string,
+    role: Role,
   ): Promise<string | null | undefined> {
     if (value === undefined) return undefined;
     if (value === null) return null;
     const id = requireUuid(value, label);
-    const res = await client.query(`SELECT 1 FROM ${table} WHERE id = $1`, [id]);
+    const res = await client.query(
+      `SELECT space_id FROM ${table} WHERE id = $1`,
+      [id],
+    );
     if (!res.rows[0]) throw new BadRequestException(`${label} not found`);
+    const spaceId = res.rows[0].space_id as string | null;
+    if (spaceId) {
+      await requireSpaceVisible(this.access, client, userId, role, spaceId);
+    }
     return id;
   }
 
@@ -201,9 +213,9 @@ export class WhiteboardsService {
       if (spaceId !== null) {
         await requireSpaceEdit(this.access, client, userId, role, spaceId);
       }
-      const folderId = await this.resolveLink(client, "folders", body?.folderId, "folderId");
-      const listId = await this.resolveLink(client, "lists", body?.listId, "listId");
-      const taskId = await this.resolveLink(client, "tasks", body?.taskId, "taskId");
+      const folderId = await this.resolveLink(client, "folders", body?.folderId, "folderId", userId, role);
+      const listId = await this.resolveLink(client, "lists", body?.listId, "listId", userId, role);
+      const taskId = await this.resolveLink(client, "tasks", body?.taskId, "taskId", userId, role);
       const ins = await client.query(
         `INSERT INTO whiteboards
            (workspace_id, space_id, name, elements, folder_id, list_id, task_id,
@@ -291,17 +303,17 @@ export class WhiteboardsService {
           params.push(spaceId);
         }
         // Optional cross-reference links (folder / list / task).
-        const folderId = await this.resolveLink(client, "folders", body?.folderId, "folderId");
+        const folderId = await this.resolveLink(client, "folders", body?.folderId, "folderId", userId, role);
         if (folderId !== undefined) {
           sets.push(`folder_id = $${i++}`);
           params.push(folderId);
         }
-        const listId = await this.resolveLink(client, "lists", body?.listId, "listId");
+        const listId = await this.resolveLink(client, "lists", body?.listId, "listId", userId, role);
         if (listId !== undefined) {
           sets.push(`list_id = $${i++}`);
           params.push(listId);
         }
-        const taskId = await this.resolveLink(client, "tasks", body?.taskId, "taskId");
+        const taskId = await this.resolveLink(client, "tasks", body?.taskId, "taskId", userId, role);
         if (taskId !== undefined) {
           sets.push(`task_id = $${i++}`);
           params.push(taskId);

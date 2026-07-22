@@ -5,7 +5,7 @@
 -- refresh_tokens design. Global identity-layer table — no RLS, like users and
 -- refresh_tokens.
 
-CREATE TABLE password_reset_tokens (
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   token_hash text NOT NULL UNIQUE,
@@ -13,6 +13,6 @@ CREATE TABLE password_reset_tokens (
   used_at    timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX password_reset_user_idx ON password_reset_tokens (user_id);
+CREATE INDEX IF NOT EXISTS password_reset_user_idx ON password_reset_tokens (user_id);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON password_reset_tokens TO stackup_app;

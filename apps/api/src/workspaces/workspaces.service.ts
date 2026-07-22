@@ -126,12 +126,18 @@ export class WorkspacesService {
     const sets: string[] = [];
     const params: unknown[] = [workspaceId];
     if (input.name !== undefined) {
+      if (typeof input.name !== "string") {
+        throw new BadRequestException("name must be a string");
+      }
       const name = input.name.trim();
       if (!name) throw new BadRequestException("Workspace name cannot be empty");
       params.push(name);
       sets.push(`name = $${params.length}`);
     }
     if (input.color !== undefined) {
+      if (typeof input.color !== "string") {
+        throw new BadRequestException("color must be a string");
+      }
       const color = input.color.trim();
       if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
         throw new BadRequestException("Color must be a #rrggbb hex value");
@@ -140,6 +146,9 @@ export class WorkspacesService {
       sets.push(`color = $${params.length}`);
     }
     if (input.avatarUrl !== undefined) {
+      if (input.avatarUrl !== null && typeof input.avatarUrl !== "string") {
+        throw new BadRequestException("avatarUrl must be a string or null");
+      }
       const url = input.avatarUrl?.trim() || null;
       if (url && url.length > 2000) {
         throw new BadRequestException("Logo URL is too long");
