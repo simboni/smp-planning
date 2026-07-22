@@ -794,6 +794,17 @@ select.input { cursor: pointer; appearance: none;
   .topbar-search .label, .topbar-search kbd { display: none; }
   .topbar-search { width: 38px; height: 38px; justify-content: center; padding: 0; }
   .page { padding: 20px 16px 64px; }
+
+  /* Mobile browser topbar: the full desktop tool cluster (invite label,
+     theme, help, presence, timer) overflows a phone-width viewport and made
+     every page scroll sideways. Tighten spacing and drop the non-essential
+     controls so the bar fits without horizontal overflow. */
+  .topbar { padding: 10px 12px; gap: 8px; }
+  .topbar-tools { gap: 4px; }
+  .topbar-tools .btn-primary { display: none; }   /* Invite — reachable via Members in the drawer */
+  .topbar-tools .presence-row { display: none; }
+  .timer-chip { max-width: 148px; }
+  .timer-chip-name { max-width: 62px; }
 }
 
 /* ============================================================
@@ -949,7 +960,10 @@ select.input { cursor: pointer; appearance: none;
 .notepad-foot { margin-top: 6px; font-size: 0.74rem; }
 
 @media (max-width: 720px) {
-  .home-board { grid-template-columns: 1fr; }
+  /* minmax(0,1fr) — a plain 1fr keeps an implicit auto minimum, so a long
+     unbreakable task name in a card would stretch the track past the
+     viewport and scroll the whole page sideways. */
+  .home-board { grid-template-columns: minmax(0, 1fr); }
 }
 
 .stat-grid {
@@ -1157,6 +1171,11 @@ table.data th {
   gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line-soft);
 }
 .setting-row:last-child { border-bottom: 0; }
+/* On phones, let the trailing value/action group wrap under the label
+   instead of forcing the row wider than the viewport. */
+@media (max-width: 560px) {
+  .setting-row { flex-wrap: wrap; gap: 10px; }
+}
 .setting-label { font-weight: 600; font-size: 0.92rem; }
 .setting-hint { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
 .swatch { display: inline-flex; align-items: center; gap: 10px; }
@@ -1878,6 +1897,20 @@ a.crumb:hover { text-decoration: none; color: var(--brand-700); }
 
 /* ---- list header actions ---- */
 .list-head-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Phone: the list header packs a title + star + share + up to three action
+   buttons into one non-wrapping row, which ran off the right edge. Let the
+   row wrap, truncate a long list name, and drop the actions onto their own
+   full-width line. */
+@media (max-width: 640px) {
+  .list-head { flex-wrap: wrap; gap: 8px 10px; }
+  .list-head h1 {
+    min-width: 0; flex: 1 1 auto;
+    font-size: 1.4rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .list-head-actions { margin-left: 0; flex-basis: 100%; }
+}
 
 /* ---- task groups ---- */
 .task-groups { display: flex; flex-direction: column; gap: 16px; }
@@ -3817,6 +3850,14 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   .wl-name { width: 110px; }
   .wl-tracked-label { display: none; }
   .wl-tasks { padding-left: 24px; }
+}
+@media (max-width: 560px) {
+  /* The fixed name + bar + label columns plus gaps exceeded a phone width and
+     scrolled the page sideways. Shrink each and let the bar flex down. */
+  .wl-row-main { gap: 8px; }
+  .wl-name { width: 88px; }
+  .wl-bars { min-width: 52px; }
+  .wl-label { width: 58px; font-size: 0.8rem; }
 }
 
 /* ============================================================
