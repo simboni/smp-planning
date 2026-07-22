@@ -199,6 +199,13 @@ export const Icons = {
       <path d="M18.5 14.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" />
     </svg>
   ),
+  help: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.4 9a2.6 2.6 0 0 1 5 1c0 1.7-2.4 2-2.4 3.6" />
+      <circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none" />
+    </svg>
+  ),
   book: (
     <svg viewBox="0 0 24 24" {...s}>
       <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v15H5.5A1.5 1.5 0 0 0 4 20.5z" />

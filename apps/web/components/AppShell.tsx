@@ -638,6 +638,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   : Icons.moon}
             </button>
 
+            <Link href="/guide" className="icon-btn" aria-label="Guide & help" title="Guide & help">
+              {Icons.help}
+            </Link>
+
             <div className="bell-wrap">
               <button
                 type="button"
@@ -678,6 +682,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               {Icons.search}
             </button>
+            <Link href="/guide" className="icon-btn" aria-label="Guide & help" title="Guide & help">
+              {Icons.help}
+            </Link>
             <div className="bell-wrap">
               <button
                 type="button"
