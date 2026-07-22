@@ -103,6 +103,7 @@ export async function autoMigrate(): Promise<void> {
         .sort();
       let count = 0;
       let baselined = 0;
+      let skipped = 0;
       for (const file of files) {
         if (applied.has(file)) continue;
         const sql = readFileSync(join(dir, file), "utf8");
@@ -126,11 +127,27 @@ export async function autoMigrate(): Promise<void> {
             baselined += 1;
             continue;
           }
+          if (tolerant) {
+            // On an existing (possibly drifted) database, one failing migration
+            // must NOT block every later one — that's how a single stuck file
+            // leaves whole features broken (e.g. a new column never added, so
+            // the deployed code 500s). The rollback already undid this file, so
+            // there's no partial state; leave it UNRECORDED (it retries next
+            // boot) and keep applying the rest so the schema moves forward.
+            console.error(
+              `[migrate] ${file} failed (skipping so later migrations still apply; will retry next boot): ${(err as Error).message}`,
+            );
+            skipped += 1;
+            continue;
+          }
           throw new Error(`migration ${file} failed: ${(err as Error).message}`);
         }
       }
       if (baselined > 0) {
         console.log(`[migrate] baselined ${baselined} pre-existing migration(s).`);
+      }
+      if (skipped > 0) {
+        console.warn(`[migrate] skipped ${skipped} failing migration(s) — see errors above.`);
       }
       console.log(
         count === 0 ? "[migrate] schema up to date." : `[migrate] applied ${count} migration(s).`,
