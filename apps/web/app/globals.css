@@ -6487,6 +6487,39 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   margin-top: 4px;
 }
 
+/* Members table — per-row actions menu. */
+.col-actions { width: 44px; text-align: right; }
+.row-actions { position: relative; display: inline-flex; }
+.row-actions-btn { color: var(--muted); }
+.row-actions-menu { top: calc(100% + 4px); min-width: 210px; }
+.row-actions-menu .menu-label {
+  padding: 6px 10px 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.row-actions-menu button[disabled] { opacity: 0.55; cursor: default; }
+.row-actions-menu button[disabled]:hover { background: transparent; }
+.menu-ic-gap { width: 16px; height: 16px; display: inline-block; flex: none; }
+.menu-sep { height: 1px; background: var(--line-soft); margin: 6px 4px; }
+/* Dim suspended members so the table reads at a glance. */
+.row-suspended td { opacity: 0.6; }
+.row-suspended .col-actions { opacity: 1; }
+.cell-you {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--card-2);
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
 @media (max-width: 560px) {
   .sec-enroll { gap: 16px; }
   .sec-qr { margin: 0 auto; }

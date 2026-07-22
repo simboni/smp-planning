@@ -762,6 +762,22 @@ export const workspacesApi = {
       body,
       auth: "access",
     }),
+  /** Change a member's role or suspend / reactivate them. Owner/admin only. */
+  updateMember: (
+    userId: string,
+    body: { role?: WorkspaceRole; status?: "active" | "suspended" },
+  ) =>
+    api<Member>(`/workspaces/current/members/${userId}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  /** Remove a member from the workspace. Owner/admin only. */
+  removeMember: (userId: string) =>
+    api<void>(`/workspaces/current/members/${userId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
   /** Update workspace branding (name / accent color / logo). Admin only. */
   update: (body: { name?: string; color?: string; avatarUrl?: string | null }) =>
     api<{ workspace: WorkspaceSummary }>("/workspaces/current", {

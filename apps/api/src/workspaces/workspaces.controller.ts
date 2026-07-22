@@ -116,4 +116,26 @@ export class WorkspacesController {
       role,
     );
   }
+
+  @Patch("current/members/:userId")
+  @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
+  @Roles("admin") // owner + admin
+  async updateMember(
+    @Req() req: AuthedRequest,
+    @Param("userId", ParseUUIDPipe) userId: string,
+    @Body() body: { role?: Role; status?: string },
+  ) {
+    return this.workspaces.updateMember(req.workspaceId!, req.userId!, userId, body);
+  }
+
+  @Delete("current/members/:userId")
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
+  @Roles("admin") // owner + admin
+  async removeMember(
+    @Req() req: AuthedRequest,
+    @Param("userId", ParseUUIDPipe) userId: string,
+  ) {
+    await this.workspaces.removeMember(req.workspaceId!, req.userId!, userId);
+  }
 }

@@ -293,6 +293,122 @@ export class WorkspacesService {
     });
   }
 
+  /**
+   * Change a member's role or suspend / reactivate them. Owner + admin only
+   * (enforced at the controller). Guards: the workspace owner can never be
+   * demoted or suspended, nobody can be promoted TO owner through this path
+   * (ownership transfer is a separate flow), and you cannot act on yourself.
+   */
+  async updateMember(
+    workspaceId: string,
+    actorUserId: string,
+    targetUserId: string,
+    input: { role?: Role; status?: string },
+  ): Promise<WorkspaceMember> {
+    if (targetUserId === actorUserId) {
+      throw new BadRequestException("You can't change your own membership here");
+    }
+    if (input.role !== undefined && !["admin", "member", "guest"].includes(input.role)) {
+      throw new BadRequestException("role must be 'admin', 'member' or 'guest'");
+    }
+    if (input.status !== undefined && !["active", "suspended"].includes(input.status)) {
+      throw new BadRequestException("status must be 'active' or 'suspended'");
+    }
+    if (input.role === undefined && input.status === undefined) {
+      throw new BadRequestException("Nothing to update");
+    }
+    return this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
+      const cur = await client.query(
+        `SELECT role FROM memberships WHERE workspace_id = $1 AND user_id = $2`,
+        [workspaceId, targetUserId],
+      );
+      if (!cur.rows[0]) throw new NotFoundException("Member not found");
+      if (cur.rows[0].role === "owner") {
+        throw new BadRequestException("The workspace owner can't be modified");
+      }
+      const sets: string[] = [];
+      const params: unknown[] = [workspaceId, targetUserId];
+      if (input.role !== undefined) {
+        params.push(input.role);
+        sets.push(`role = $${params.length}`);
+      }
+      if (input.status !== undefined) {
+        params.push(input.status);
+        sets.push(`status = $${params.length}`);
+      }
+      const res = await client.query(
+        `UPDATE memberships SET ${sets.join(", ")}
+         WHERE workspace_id = $1 AND user_id = $2
+         RETURNING id`,
+        params,
+      );
+      const row = await client.query(
+        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status, m.custom_role_id
+         FROM memberships m JOIN users u ON u.id = m.user_id
+         WHERE m.workspace_id = $1 AND m.user_id = $2`,
+        [workspaceId, targetUserId],
+      );
+      const r = row.rows[0];
+      await this.audit.record(client, {
+        workspaceId,
+        actorUserId,
+        action: input.status !== undefined && input.role === undefined
+          ? (input.status === "suspended" ? "member.suspended" : "member.reactivated")
+          : "member.updated",
+        entity: "membership",
+        entityId: res.rows[0].id,
+        data: { targetUserId, ...input },
+      });
+      return {
+        id: r.id,
+        email: r.email,
+        fullName: r.full_name,
+        avatarUrl: r.avatar_url,
+        role: r.role as Role,
+        status: r.status,
+        customRoleId: r.custom_role_id ?? null,
+      };
+    });
+  }
+
+  /**
+   * Remove a member from the workspace. Owner + admin only. The owner can't be
+   * removed and you can't remove yourself (use "leave workspace" for that, or
+   * delete the workspace). Their created content stays; only the membership
+   * row is dropped.
+   */
+  async removeMember(
+    workspaceId: string,
+    actorUserId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    if (targetUserId === actorUserId) {
+      throw new BadRequestException("You can't remove yourself");
+    }
+    await this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
+      const cur = await client.query(
+        `SELECT id, role FROM memberships WHERE workspace_id = $1 AND user_id = $2`,
+        [workspaceId, targetUserId],
+      );
+      if (!cur.rows[0]) throw new NotFoundException("Member not found");
+      if (cur.rows[0].role === "owner") {
+        throw new BadRequestException("The workspace owner can't be removed");
+      }
+      await client.query(
+        `DELETE FROM memberships WHERE workspace_id = $1 AND user_id = $2`,
+        [workspaceId, targetUserId],
+      );
+      await this.audit.record(client, {
+        workspaceId,
+        actorUserId,
+        action: "member.removed",
+        entity: "membership",
+        entityId: cur.rows[0].id,
+        data: { targetUserId },
+      });
+    });
+  }
+
   /** Look up a user by email (case-insensitive) or create a shell account. */
   private async resolveOrCreateUser(email: string): Promise<string> {
     const found = await this.db.query(

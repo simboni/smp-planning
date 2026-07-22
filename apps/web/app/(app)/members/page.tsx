@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  getUser,
   getWorkspace,
   workspacesApi,
   type Member,
@@ -20,6 +21,8 @@ export default function MembersPage() {
   const [loadError, setLoadError] = useState("");
   const [role, setRole] = useState<WorkspaceRole | null>(null);
   const [filter, setFilter] = useState<MemberFilter>("all");
+  const [myId, setMyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
 
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>("member");
@@ -40,6 +43,7 @@ export default function MembersPage() {
   useEffect(() => {
     const ws = getWorkspace();
     if (ws) setRole(ws.role);
+    setMyId(getUser()?.id ?? null);
     // Confirm role from the source of truth; falls back to the cached value.
     workspacesApi
       .current()
@@ -49,6 +53,34 @@ export default function MembersPage() {
   }, []);
 
   const canInvite = role === "owner" || role === "admin";
+  const canManage = canInvite;
+
+  // Apply a member action and reconcile local state from the response.
+  const applyMember = async (
+    userId: string,
+    fn: () => Promise<Member | void>,
+  ): Promise<void> => {
+    setActionError("");
+    try {
+      const updated = await fn();
+      if (updated) {
+        setMembers((prev) =>
+          prev ? prev.map((m) => (m.id === userId ? updated : m)) : prev,
+        );
+      } else {
+        setMembers((prev) => (prev ? prev.filter((m) => m.id !== userId) : prev));
+      }
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Action failed.");
+    }
+  };
+
+  const changeRole = (userId: string, r: WorkspaceRole) =>
+    applyMember(userId, () => workspacesApi.updateMember(userId, { role: r }));
+  const setStatus = (userId: string, status: "active" | "suspended") =>
+    applyMember(userId, () => workspacesApi.updateMember(userId, { status }));
+  const remove = (userId: string) =>
+    applyMember(userId, () => workspacesApi.removeMember(userId));
 
   const guestCount = (members ?? []).filter((m) => m.role === "guest").length;
   const memberCount = (members ?? []).length - guestCount;
@@ -153,6 +185,7 @@ export default function MembersPage() {
       )}
 
       {loadError && <div className="form-error">{loadError}</div>}
+      {actionError && <div className="form-error">{actionError}</div>}
 
       {/* filter chips + guest legend */}
       {members !== null && members.length > 0 && (
@@ -208,42 +241,166 @@ export default function MembersPage() {
                 <th>Member</th>
                 <th>Role</th>
                 <th>Status</th>
+                {canManage && <th className="col-actions" aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>
-              {visible.map((m) => (
-                <tr key={m.id} className={m.role === "guest" ? "row-guest" : undefined}>
-                  <td>
-                    <div className="cell-user">
-                      <Avatar
-                        name={m.fullName || m.email}
-                        id={m.id}
-                        avatarUrl={m.avatarUrl}
-                        className="avatar-sm"
-                      />
-                      <span className="cell-user-body">
-                        <span className="cell-user-name">{m.fullName || "Invited user"}</span>
-                        <span className="cell-user-email">{m.email}</span>
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`badge role-${m.role}`}>{m.role}</span>
-                  </td>
-                  <td>
-                    <span className={`badge status-${m.status}`}>{m.status}</span>
-                  </td>
-                </tr>
-              ))}
+              {visible.map((m) => {
+                const actionable = canManage && m.role !== "owner" && m.id !== myId;
+                return (
+                  <tr
+                    key={m.id}
+                    className={`${m.role === "guest" ? "row-guest" : ""}${
+                      m.status === "suspended" ? " row-suspended" : ""
+                    }`.trim() || undefined}
+                  >
+                    <td>
+                      <div className="cell-user">
+                        <Avatar
+                          name={m.fullName || m.email}
+                          id={m.id}
+                          avatarUrl={m.avatarUrl}
+                          className="avatar-sm"
+                        />
+                        <span className="cell-user-body">
+                          <span className="cell-user-name">
+                            {m.fullName || "Invited user"}
+                            {m.id === myId && <span className="cell-you">You</span>}
+                          </span>
+                          <span className="cell-user-email">{m.email}</span>
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge role-${m.role}`}>{m.role}</span>
+                    </td>
+                    <td>
+                      <span className={`badge status-${m.status}`}>{m.status}</span>
+                    </td>
+                    {canManage && (
+                      <td className="col-actions">
+                        {actionable && (
+                          <RowActions
+                            member={m}
+                            onChangeRole={(r) => changeRole(m.id, r)}
+                            onSetStatus={(s) => setStatus(m.id, s)}
+                            onRemove={() => remove(m.id)}
+                          />
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="muted" style={{ textAlign: "center", padding: 24 }}>
+                  <td colSpan={canManage ? 4 : 3} className="muted" style={{ textAlign: "center", padding: 24 }}>
                     No {filter === "guests" ? "guests" : "members"} to show.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Per-row actions menu: change role, suspend / reactivate, remove.
+ * ------------------------------------------------------------------ */
+const ROLE_OPTIONS: WorkspaceRole[] = ["admin", "member", "guest"];
+
+function RowActions({
+  member,
+  onChangeRole,
+  onSetStatus,
+  onRemove,
+}: {
+  member: Member;
+  onChangeRole: (role: WorkspaceRole) => void;
+  onSetStatus: (status: "active" | "suspended") => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setConfirming(false);
+      }
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const run = (fn: () => void): void => {
+    setOpen(false);
+    setConfirming(false);
+    fn();
+  };
+
+  return (
+    <div className="row-actions" ref={ref}>
+      <button
+        type="button"
+        className="icon-btn row-actions-btn"
+        aria-label={`Manage ${member.fullName || member.email}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {Icons.more}
+      </button>
+      {open && (
+        <div className="menu row-actions-menu" role="menu">
+          <div className="menu-label">Change role</div>
+          {ROLE_OPTIONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="menuitem"
+              disabled={member.role === r}
+              onClick={() => run(() => onChangeRole(r))}
+            >
+              {member.role === r ? Icons.check : <span className="menu-ic-gap" />}
+              {r[0].toUpperCase() + r.slice(1)}
+            </button>
+          ))}
+          <div className="menu-sep" />
+          {member.status === "suspended" ? (
+            <button type="button" role="menuitem" onClick={() => run(() => onSetStatus("active"))}>
+              {Icons.play} Reactivate
+            </button>
+          ) : (
+            <button type="button" role="menuitem" onClick={() => run(() => onSetStatus("suspended"))}>
+              {Icons.ban} Suspend access
+            </button>
+          )}
+          {confirming ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              onClick={() => run(onRemove)}
+            >
+              {Icons.trash} Really remove?
+            </button>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              onClick={() => setConfirming(true)}
+            >
+              {Icons.trash} Remove from workspace
+            </button>
+          )}
         </div>
       )}
     </div>
