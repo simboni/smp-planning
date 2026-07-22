@@ -3,7 +3,12 @@ import { Test } from "@nestjs/testing";
 import express from "express";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
-import { EmailService, type EmailMessage } from "../src/comms/email.service";
+import {
+  EmailService,
+  type BrandedMessage,
+  type EmailMessage,
+} from "../src/comms/email.service";
+import { brandedText, renderBrandedEmail } from "../src/comms/email.template";
 import { SlackClient } from "../src/comms/slack.client";
 
 /**
@@ -24,6 +29,15 @@ class FakeEmail {
   async send(msg: EmailMessage) {
     sentEmails.push(msg);
     return { ok: true, provider: "fake", detail: "captured" };
+  }
+  async sendBranded(msg: BrandedMessage) {
+    const { to, subject, ...fields } = msg;
+    return this.send({
+      to,
+      subject,
+      text: brandedText(fields),
+      html: renderBrandedEmail(fields),
+    });
   }
 }
 

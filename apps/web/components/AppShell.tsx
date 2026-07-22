@@ -40,6 +40,7 @@ import {
   syncStatusBar,
 } from "@/lib/native";
 import { CommandPalette } from "@/components/CommandPalette";
+import { BuildWithAi } from "@/components/BuildWithAi";
 import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { HierarchyTree } from "@/components/HierarchyTree";
 import { FavoritesNav } from "@/components/FavoritesNav";
@@ -100,6 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspaceState] = useState<WorkspaceSummary | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Module 6 — notifications (bell + Inbox badge) and presence.
@@ -296,6 +298,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Open the AI Builder from anywhere (e.g. the ⌘K palette) via a window event.
+  useEffect(() => {
+    const onBuild = (): void => setBuilderOpen(true);
+    window.addEventListener("stackup:build-with-ai", onBuild);
+    return () => window.removeEventListener("stackup:build-with-ai", onBuild);
   }, []);
 
   // Close transient UI on navigation.
@@ -613,6 +622,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
+            <button
+              type="button"
+              className="btn btn-ai btn-sm"
+              onClick={() => setBuilderOpen(true)}
+              aria-label="Build with AI"
+              title="Build spaces, lists and tasks with AI"
+            >
+              {Icons.sparkles}
+              <span>Build with AI</span>
+            </button>
+
             <Link href="/members" className="btn btn-primary btn-sm">
               {Icons.invite}
               <span>Invite</span>
@@ -681,6 +701,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => setPaletteOpen(true)}
             >
               {Icons.search}
+            </button>
+            <button
+              type="button"
+              className="icon-btn icon-btn-ai"
+              aria-label="Build with AI"
+              title="Build with AI"
+              onClick={() => setBuilderOpen(true)}
+            >
+              {Icons.sparkles}
             </button>
             <Link href="/guide" className="icon-btn" aria-label="Guide & help" title="Guide & help">
               {Icons.help}
@@ -836,6 +865,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <BuildWithAi open={builderOpen} onClose={() => setBuilderOpen(false)} />
       {newTaskOpen && <QuickTaskModal onClose={() => setNewTaskOpen(false)} />}
       <Notepad />
     </div>

@@ -3382,7 +3382,57 @@ export const aiApi = {
       body: { text },
       auth: "access",
     }),
+  /** AI Builder: brief → preview plan (no writes). */
+  buildPlan: (prompt: string) =>
+    api<{ plan: AiBuildPlan; source: AiSource }>("/ai/build/plan", {
+      method: "POST",
+      body: { prompt },
+      auth: "access",
+    }),
+  /** AI Builder: execute a (previewed) plan → created spaces/lists/tasks/docs. */
+  build: (plan: AiBuildPlan) =>
+    api<AiBuildResult>("/ai/build", {
+      method: "POST",
+      body: { plan },
+      auth: "access",
+    }),
 };
+
+/* ---- AI Builder types --------------------------------------------- */
+
+export interface AiPlanTask {
+  name: string;
+  description?: string;
+  priority?: "urgent" | "high" | "normal" | "low";
+  dueInDays?: number;
+}
+export interface AiPlanList {
+  name: string;
+  tasks: AiPlanTask[];
+}
+export interface AiPlanDoc {
+  name: string;
+  icon?: string;
+  content?: string;
+}
+export interface AiPlanSpace {
+  name: string;
+  icon?: string;
+  lists: AiPlanList[];
+  docs?: AiPlanDoc[];
+}
+export interface AiBuildPlan {
+  summary: string;
+  spaces: AiPlanSpace[];
+}
+export interface AiBuildResult {
+  summary: string;
+  spaces: { id: string; name: string; url: string }[];
+  lists: { id: string; name: string; url: string }[];
+  tasks: { id: string; name: string; listId: string }[];
+  docs: { id: string; name: string; url: string }[];
+  counts: { spaces: number; lists: number; tasks: number; docs: number };
+}
 
 /* ---- Module 15: Personal Access Tokens & public API --------------- */
 

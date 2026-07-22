@@ -126,6 +126,17 @@ export function CommandPalette({
   const quickActions: Item[] = useMemo(
     () => [
       {
+        key: "build-with-ai",
+        icon: "sparkles",
+        title: "Build with AI…",
+        subtitle: "Describe a project — AI creates the spaces, lists & tasks",
+        tag: "AI",
+        run: () => {
+          onClose();
+          window.dispatchEvent(new Event("stackup:build-with-ai"));
+        },
+      },
+      {
         key: "new-task",
         icon: "tasks",
         title: "New task…",

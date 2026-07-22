@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { AuthedRequest, JwtAuthGuard, WorkspaceGuard } from "../auth/guards";
 import { AiService, WriteAction } from "./ai.service";
+import { AiBuilderService, type BuildPlan } from "./ai-builder.service";
 
 const WRITE_ACTIONS: WriteAction[] = [
   "improve",
@@ -28,11 +29,40 @@ const WRITE_ACTIONS: WriteAction[] = [
 @Controller("ai")
 @UseGuards(JwtAuthGuard, WorkspaceGuard)
 export class AiController {
-  constructor(private readonly ai: AiService) {}
+  constructor(
+    private readonly ai: AiService,
+    private readonly builder: AiBuilderService,
+  ) {}
 
   @Get("status")
   status() {
     return this.ai.status();
+  }
+
+  /** Turn a natural-language brief into a preview plan (no writes). */
+  @Post("build/plan")
+  async buildPlan(@Body() body: { prompt?: string }) {
+    if (!body.prompt || !body.prompt.trim()) {
+      throw new BadRequestException("prompt is required");
+    }
+    return this.builder.plan(body.prompt);
+  }
+
+  /** Execute a (previewed, possibly edited) plan against the real services. */
+  @Post("build")
+  async build(
+    @Req() req: AuthedRequest,
+    @Body() body: { plan?: BuildPlan },
+  ) {
+    if (!body.plan || !Array.isArray(body.plan.spaces) || body.plan.spaces.length === 0) {
+      throw new BadRequestException("A plan with at least one space is required");
+    }
+    return this.builder.build(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      body.plan,
+    );
   }
 
   @Post("write")
