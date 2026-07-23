@@ -220,16 +220,18 @@ export class AiBuilderService {
     const context = await this.context(workspaceId, userId, role);
 
     if (this.ai.available()) {
-      const out = await this.ai.complete(
-        SYSTEM_PLAN,
-        planPrompt(brief, context),
-        2400,
-      );
-      if (out) {
-        const parsed = tryParsePlan(out, context);
-        if (parsed && parsed.targets.length > 0) {
-          return { plan: clampPlan(parsed), source: "claude", context };
-        }
+      const p = planPrompt(brief, context);
+      // Preferred: schema-constrained structured output (no parse failures).
+      const structured = await this.ai.completeJson(SYSTEM_PLAN, p, PLAN_SCHEMA, 2400);
+      const fromStructured = structured ? normalizePlan(structured, context) : null;
+      if (fromStructured && fromStructured.targets.length > 0) {
+        return { plan: clampPlan(fromStructured), source: "claude", context };
+      }
+      // Fallback: free-text completion + tolerant parse.
+      const out = await this.ai.complete(SYSTEM_PLAN, p, 2400);
+      const parsed = out ? tryParsePlan(out, context) : null;
+      if (parsed && parsed.targets.length > 0) {
+        return { plan: clampPlan(parsed), source: "claude", context };
       }
     }
     return {
@@ -352,12 +354,16 @@ export class AiBuilderService {
   ): Promise<{ form: FormPlan; source: "claude" | "heuristic" }> {
     const brief = prompt.trim();
     if (this.ai.available()) {
-      const out = await this.ai.complete(SYSTEM_FORM, formPrompt(brief), 2000);
-      if (out) {
-        const parsed = tryParseForm(out);
-        if (parsed && parsed.fields.length > 0) {
-          return { form: clampForm(parsed), source: "claude" };
-        }
+      const p = formPrompt(brief);
+      const structured = await this.ai.completeJson(SYSTEM_FORM, p, FORM_SCHEMA, 2000);
+      const fromStructured = structured ? normalizeForm(structured) : null;
+      if (fromStructured && fromStructured.fields.length > 0) {
+        return { form: clampForm(fromStructured), source: "claude" };
+      }
+      const out = await this.ai.complete(SYSTEM_FORM, p, 2000);
+      const parsed = out ? tryParseForm(out) : null;
+      if (parsed && parsed.fields.length > 0) {
+        return { form: clampForm(parsed), source: "claude" };
       }
     }
     return { form: clampForm(heuristicForm(brief)), source: "heuristic" };
@@ -501,31 +507,41 @@ export class AiBuilderService {
 
 /* ---- Plan parsing / clamping -------------------------------------- */
 
+/**
+ * Normalize a raw plan object (from structured output OR a tolerant text
+ * parse) against the workspace context — validating every id, folder and
+ * member. This is the single source of truth for turning a model reply into a
+ * safe BuildPlan; the schema guarantees the SHAPE, this guarantees the VALUES.
+ */
+function normalizePlan(obj: unknown, ctx: BuilderContext): BuildPlan | null {
+  if (!obj || typeof obj !== "object") return null;
+  const o = obj as Record<string, unknown>;
+  const rawTargets = Array.isArray(o.targets) ? o.targets : [];
+  const spaceIds = new Set(ctx.spaces.map((s) => s.id));
+  const listIds = new Set(ctx.spaces.flatMap((s) => s.lists.map((l) => l.id)));
+  // Folders are validated PER SPACE — a folder is only usable for a new list
+  // in the space that owns it (never cross-space, never in a new space).
+  const spaceFolders = new Map(
+    ctx.spaces.map((s) => [s.id, new Set(s.folders.map((f) => f.id))]),
+  );
+  const memberIds = new Set(ctx.members.map((m) => m.id));
+  const targets = rawTargets
+    .map((t) => normalizeTarget(t, spaceIds, listIds, spaceFolders, memberIds))
+    .filter((t): t is PlanTarget => t !== null);
+  return {
+    summary: typeof o.summary === "string" ? o.summary : "AI-generated plan",
+    targets,
+  };
+}
+
+/** Tolerant text→plan parse (fallback when structured output is unavailable). */
 function tryParsePlan(raw: string, ctx: BuilderContext): BuildPlan | null {
   try {
     const cleaned = raw.replace(/```json|```/g, "").trim();
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
     const json = start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
-    const obj = JSON.parse(json) as unknown;
-    if (!obj || typeof obj !== "object") return null;
-    const o = obj as Record<string, unknown>;
-    const rawTargets = Array.isArray(o.targets) ? o.targets : [];
-    const spaceIds = new Set(ctx.spaces.map((s) => s.id));
-    const listIds = new Set(ctx.spaces.flatMap((s) => s.lists.map((l) => l.id)));
-    // Folders are validated PER SPACE — a folder is only usable for a new list
-    // in the space that owns it (never cross-space, never in a new space).
-    const spaceFolders = new Map(
-      ctx.spaces.map((s) => [s.id, new Set(s.folders.map((f) => f.id))]),
-    );
-    const memberIds = new Set(ctx.members.map((m) => m.id));
-    const targets = rawTargets
-      .map((t) => normalizeTarget(t, spaceIds, listIds, spaceFolders, memberIds))
-      .filter((t): t is PlanTarget => t !== null);
-    return {
-      summary: typeof o.summary === "string" ? o.summary : "AI-generated plan",
-      targets,
-    };
+    return normalizePlan(JSON.parse(json), ctx);
   } catch {
     return null;
   }
@@ -661,6 +677,75 @@ function dueDateFromDays(days?: number): string | null {
 
 /* ---- Claude prompt ------------------------------------------------- */
 
+/**
+ * JSON Schema for the build plan, used as the forced tool's input schema so
+ * the model's reply is always a well-formed plan object. Kept intentionally
+ * permissive (optional fields) — id/folder/member VALIDITY is enforced by
+ * normalizePlan against the live workspace context, not by the schema.
+ */
+const PLAN_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    targets: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          space: {
+            type: "object",
+            properties: {
+              existingId: { type: "string" },
+              create: { type: "boolean" },
+              name: { type: "string" },
+              icon: { type: "string" },
+            },
+          },
+          list: {
+            type: "object",
+            properties: {
+              existingId: { type: "string" },
+              create: { type: "boolean" },
+              name: { type: "string" },
+              folderId: { type: "string" },
+            },
+          },
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                description: { type: "string" },
+                priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
+                dueInDays: { type: "number" },
+                assigneeIds: { type: "array", items: { type: "string" } },
+              },
+              required: ["name"],
+            },
+          },
+          docs: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                icon: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["name"],
+            },
+          },
+          needsChoice: { type: "boolean" },
+          note: { type: "string" },
+        },
+        required: ["space", "list", "tasks"],
+      },
+    },
+  },
+  required: ["summary", "targets"],
+};
+
 const SYSTEM_PLAN =
   "You are StackUp's build planner. Turn the user's brief into a JSON plan that " +
   "places tasks into the RIGHT destination in their existing workspace. You are " +
@@ -791,23 +876,28 @@ function titleCase(s: string): string {
 
 /* ---- Form planning ------------------------------------------------- */
 
+/** Normalize a raw form object (structured output OR tolerant text parse). */
+function normalizeForm(obj: unknown): FormPlan | null {
+  if (!obj || typeof obj !== "object") return null;
+  const o = obj as Record<string, unknown>;
+  const rawFields = Array.isArray(o.fields) ? o.fields : [];
+  const fields = rawFields
+    .map(normalizeFormField)
+    .filter((f): f is PlanFormField => f !== null);
+  return {
+    name: str(o.name) ?? "Feedback form",
+    description: str(o.description),
+    fields,
+  };
+}
+
 function tryParseForm(raw: string): FormPlan | null {
   try {
     const cleaned = raw.replace(/```json|```/g, "").trim();
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
     const json = start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
-    const o = JSON.parse(json) as Record<string, unknown>;
-    if (!o || typeof o !== "object") return null;
-    const rawFields = Array.isArray(o.fields) ? o.fields : [];
-    const fields = rawFields
-      .map(normalizeFormField)
-      .filter((f): f is PlanFormField => f !== null);
-    return {
-      name: str(o.name) ?? "Feedback form",
-      description: str(o.description),
-      fields,
-    };
+    return normalizeForm(JSON.parse(json));
   } catch {
     return null;
   }
@@ -850,6 +940,33 @@ function clampForm(form: FormPlan): FormPlan {
   });
   return { name: form.name || "Feedback form", description: form.description, fields };
 }
+
+/** JSON Schema for a drafted form (forced-tool input schema). */
+const FORM_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    name: { type: "string" },
+    description: { type: "string" },
+    fields: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          type: {
+            type: "string",
+            enum: ["text", "textarea", "email", "number", "select", "date", "checkbox"],
+          },
+          required: { type: "boolean" },
+          options: { type: "array", items: { type: "string" } },
+          asTitle: { type: "boolean" },
+        },
+        required: ["label", "type"],
+      },
+    },
+  },
+  required: ["name", "fields"],
+};
 
 const SYSTEM_FORM =
   "You are StackUp's form builder. Turn the user's brief into a concise intake " +

@@ -14,6 +14,18 @@ export interface AiCommand {
   raw: string;
 }
 
+/** Forced-tool schema for command parsing (structured output). */
+const COMMAND_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    intent: { type: "string", enum: ["create_task", "search", "unknown"] },
+    taskName: { type: "string" },
+    listHint: { type: "string" },
+    query: { type: "string" },
+  },
+  required: ["intent"],
+};
+
 /**
  * AI Brain (M15). Every method has two paths: a Claude call via AiProvider
  * when a key is configured, and a deterministic heuristic when it is not —
@@ -150,27 +162,26 @@ export class AiService {
   async command(text: string): Promise<AiCommand> {
     const trimmed = text.trim();
     if (this.ai.available()) {
-      const out = await this.ai.complete(
-        "You convert a user's natural-language request into JSON for a project app. " +
-          'Reply ONLY with JSON: {"intent":"create_task|search|unknown","taskName":string?,"listHint":string?,"query":string?}. No prose.',
+      const out = (await this.ai.completeJson(
+        "You convert a user's natural-language request into a structured command " +
+          "for a project-management app. Pick create_task for add/create requests, " +
+          "search for find/show requests, else unknown.",
         trimmed,
+        COMMAND_SCHEMA,
         300,
-      );
-      if (out) {
-        try {
-          const json = JSON.parse(out.replace(/```json|```/g, "").trim());
-          return {
-            intent: ["create_task", "search"].includes(json.intent)
-              ? json.intent
-              : "unknown",
-            taskName: json.taskName,
-            listHint: json.listHint,
-            query: json.query,
-            raw: trimmed,
-          };
-        } catch {
-          // fall through to heuristic
-        }
+      )) as Partial<AiCommand> | null;
+      if (out && typeof out === "object") {
+        const intent =
+          out.intent === "create_task" || out.intent === "search"
+            ? out.intent
+            : "unknown";
+        return {
+          intent,
+          taskName: typeof out.taskName === "string" ? out.taskName : undefined,
+          listHint: typeof out.listHint === "string" ? out.listHint : undefined,
+          query: typeof out.query === "string" ? out.query : undefined,
+          raw: trimmed,
+        };
       }
     }
     return heuristicCommand(trimmed);
