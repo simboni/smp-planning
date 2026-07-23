@@ -55,6 +55,15 @@ export class FormsController {
     return { form: await this.forms.getForm(...this.ctx(req), id) };
   }
 
+  /** Responses for a form, reconstructed from the tasks it created. */
+  @Get(":id/responses")
+  async listResponses(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return this.forms.listResponses(...this.ctx(req), id);
+  }
+
   @Patch(":id")
   async updateForm(
     @Req() req: AuthedRequest,

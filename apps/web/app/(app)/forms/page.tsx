@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
+import { FormResponses } from "@/components/FormResponses";
 import { copyToClipboard, publicFormUrl, timeAgo } from "@/lib/format";
 import { isNativeApp, share } from "@/lib/native";
 
@@ -176,6 +177,7 @@ function FormRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState("");
+  const [responsesOpen, setResponsesOpen] = useState(false);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -268,6 +270,18 @@ function FormRow({
 
       <button
         type="button"
+        className="frm-responses-btn"
+        onClick={() => setResponsesOpen(true)}
+        title="View form responses"
+      >
+        {Icons.inbox}
+        <span>
+          {form.responseCount} {form.responseCount === 1 ? "response" : "responses"}
+        </span>
+      </button>
+
+      <button
+        type="button"
         className={`frm-active-pill${form.active ? " on" : ""}`}
         onClick={toggleActive}
         title={form.active ? "Accepting responses — click to pause" : "Paused — click to activate"}
@@ -316,6 +330,14 @@ function FormRow({
           </div>
         )}
       </span>
+
+      {responsesOpen && (
+        <FormResponses
+          formId={form.id}
+          formName={form.name}
+          onClose={() => setResponsesOpen(false)}
+        />
+      )}
     </div>
   );
 }

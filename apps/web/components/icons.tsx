@@ -288,6 +288,12 @@ export const Icons = {
       <path d="M12 5v14M6 13l6 6 6-6" />
     </svg>
   ),
+  download: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <path d="M12 3v12M7 10l5 5 5-5" />
+      <path d="M5 21h14" />
+    </svg>
+  ),
   team: (
     <svg viewBox="0 0 24 24" {...s}>
       <circle cx="8" cy="8.5" r="2.8" />

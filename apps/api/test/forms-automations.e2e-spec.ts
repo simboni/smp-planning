@@ -257,6 +257,67 @@ describe("forms", () => {
       .expect(400); // Subject required
   });
 
+  it("reconstructs responses from submissions (with CSV-ready values)", async () => {
+    const { owner, list } = await fixture();
+    const form = await makeForm(owner.accessToken, list.id);
+    const byLabel = new Map(
+      (form.fields as { id: string; label: string }[]).map((f) => [f.label, f.id]),
+    );
+
+    // Two public submissions.
+    await http
+      .post(`/public/forms/${form.publicToken}/submit`)
+      .send({
+        values: {
+          [byLabel.get("Subject")!]: "Login broken",
+          [byLabel.get("Your email")!]: "ana@example.com",
+          [byLabel.get("Category")!]: "Bug",
+          [byLabel.get("Urgent?")!]: true,
+        },
+      })
+      .expect(201);
+    await http
+      .post(`/public/forms/${form.publicToken}/submit`)
+      .send({
+        values: {
+          [byLabel.get("Subject")!]: "Dark mode please",
+          [byLabel.get("Your email")!]: "ben@example.com",
+          [byLabel.get("Category")!]: "Feature",
+        },
+      })
+      .expect(201);
+
+    // Listing reports the response count.
+    const listed = await http.get("/forms").set(auth(owner.accessToken)).expect(200);
+    expect(listed.body.forms[0].responseCount).toBe(2);
+
+    // Responses endpoint returns per-field answers keyed by field id.
+    const res = await http
+      .get(`/forms/${form.id}/responses`)
+      .set(auth(owner.accessToken))
+      .expect(200);
+    expect(res.body.form.fields).toHaveLength(4);
+    expect(res.body.responses).toHaveLength(2);
+
+    const subjectId = byLabel.get("Subject")!;
+    const emailId = byLabel.get("Your email")!;
+    const titles = res.body.responses.map(
+      (r: { values: Record<string, string> }) => r.values[subjectId],
+    );
+    expect(titles).toEqual(
+      expect.arrayContaining(["Login broken", "Dark mode please"]),
+    );
+    const ana = res.body.responses.find(
+      (r: { values: Record<string, string> }) =>
+        r.values[subjectId] === "Login broken",
+    );
+    expect(ana.values[emailId]).toBe("ana@example.com");
+    expect(ana.values[byLabel.get("Category")!]).toBe("Bug");
+    expect(ana.values[byLabel.get("Urgent?")!]).toBe("Yes");
+    expect(ana.title).toBe("Login broken");
+    expect(typeof ana.taskId).toBe("string");
+  });
+
   it("conditional fields (visibleIf) gate required-ness at submit (M21)", async () => {
     const { owner, list } = await fixture();
     // Explicit ids so the condition can reference an earlier field.

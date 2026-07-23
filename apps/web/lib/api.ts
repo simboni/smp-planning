@@ -2107,7 +2107,23 @@ export interface FormSummary {
   active: boolean;
   publicToken: string;
   fieldCount: number;
+  responseCount: number;
   updatedAt: string;
+}
+
+/** One reconstructed form response. */
+export interface FormResponse {
+  taskId: string;
+  title: string;
+  createdAt: string;
+  statusName: string | null;
+  statusColor: string | null;
+  values: Record<string, string>;
+}
+
+export interface FormResponses {
+  form: { id: string; name: string; listId: string; fields: FormField[] };
+  responses: FormResponse[];
 }
 
 /** The full form (builder payload). */
@@ -2139,6 +2155,8 @@ export const formsApi = {
     fields: FormField[];
   }) => api<{ form: FormDetail }>("/forms", { method: "POST", body, auth: "access" }),
   get: (id: string) => api<{ form: FormDetail }>(`/forms/${id}`, { auth: "access" }),
+  responses: (id: string) =>
+    api<FormResponses>(`/forms/${id}/responses`, { auth: "access" }),
   update: (
     id: string,
     body: {

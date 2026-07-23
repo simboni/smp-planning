@@ -31,7 +31,24 @@ export interface FormSummary {
   active: boolean;
   publicToken: string;
   fieldCount: number;
+  responseCount: number;
   updatedAt: string;
+}
+
+/** One reconstructed form response (a task in the form's list). */
+export interface FormResponse {
+  taskId: string;
+  title: string;
+  createdAt: string;
+  statusName: string | null;
+  statusColor: string | null;
+  /** Answers keyed by field id (display strings). */
+  values: Record<string, string>;
+}
+
+export interface FormResponses {
+  form: { id: string; name: string; listId: string; fields: FormField[] };
+  responses: FormResponse[];
 }
 
 export interface FormOut {
@@ -65,6 +82,46 @@ const FORM_SQL = `
 
 function iso(v: unknown): string {
   return v instanceof Date ? v.toISOString() : String(v);
+}
+
+/**
+ * Parse a submission task's description ("Label: value" lines, as written by
+ * validateSubmission) back into per-field answers. Handles multi-line values:
+ * a line only starts a new field when its "key" matches a known field label,
+ * otherwise it's appended to the current field's value. Returns whether any
+ * line matched a field label (used to tell submissions from manual tasks).
+ */
+function parseResponseLines(
+  description: string,
+  fields: FormField[],
+): { matched: boolean; values: Record<string, string> } {
+  const byLabel = new Map<string, string>(); // lower(label) -> field id
+  for (const f of fields) byLabel.set(f.label.trim().toLowerCase(), f.id);
+
+  const values: Record<string, string> = {};
+  let matched = false;
+  let currentId: string | null = null;
+
+  for (const rawLine of description.split("\n")) {
+    const idx = rawLine.indexOf(":");
+    let handled = false;
+    if (idx > 0) {
+      const key = rawLine.slice(0, idx).trim().toLowerCase();
+      const fieldId = byLabel.get(key);
+      if (fieldId) {
+        const val = rawLine.slice(idx + 1).replace(/^\s/, "");
+        values[fieldId] = val;
+        currentId = fieldId;
+        matched = true;
+        handled = true;
+      }
+    }
+    if (!handled && currentId) {
+      // Continuation of a multi-line answer.
+      values[currentId] = `${values[currentId] ?? ""}\n${rawLine}`;
+    }
+  }
+  return { matched, values };
 }
 
 function toForm(r: Record<string, unknown>): FormOut {
@@ -120,7 +177,11 @@ export class FormsService {
       const res = await client.query(
         `SELECT f.id, f.name, f.list_id, f.active, f.public_token,
                 jsonb_array_length(f.fields)::int AS field_count, f.updated_at,
-                l.name AS list_name, l.space_id
+                l.name AS list_name, l.space_id,
+                (SELECT count(*) FROM tasks t
+                   WHERE t.list_id = f.list_id
+                     AND t.parent_task_id IS NULL
+                     AND coalesce(t.description, '') <> '')::int AS response_count
          FROM forms f JOIN lists l ON l.id = f.list_id
          ORDER BY f.created_at DESC, f.id`,
       );
@@ -134,6 +195,7 @@ export class FormsService {
           active: r.active as boolean,
           publicToken: r.public_token as string,
           fieldCount: r.field_count as number,
+          responseCount: r.response_count as number,
           updatedAt: iso(r.updated_at),
         }));
     });
@@ -215,6 +277,68 @@ export class FormsService {
         row.space_id as string,
       );
       return toForm(row);
+    });
+  }
+
+  /**
+   * Reconstruct a form's responses from the tasks it created. Each public
+   * submission becomes one task in the form's list whose description is the
+   * "Label: value" lines produced at submit time; we parse those back into
+   * per-field answers. This needs no extra storage — the tasks ARE the
+   * responses — so it works against existing data with no migration. A task
+   * counts as a response only when at least one of its lines matches a current
+   * field label (excludes blank, manually-added tasks).
+   */
+  async listResponses(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+    id: string,
+  ): Promise<FormResponses> {
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const row = await this.formRow(client, id);
+      await requireSpaceVisible(
+        this.access,
+        client,
+        userId,
+        role,
+        row.space_id as string,
+      );
+      const fields = (row.fields as FormField[]) ?? [];
+      const tasks = await client.query(
+        `SELECT t.id, t.name, t.description, t.created_at,
+                s.name AS status_name, s.color AS status_color
+           FROM tasks t
+           LEFT JOIN statuses s ON s.id = t.status_id
+          WHERE t.list_id = $1 AND t.parent_task_id IS NULL
+          ORDER BY t.created_at DESC, t.id`,
+        [row.list_id as string],
+      );
+      const responses: FormResponse[] = [];
+      for (const t of tasks.rows) {
+        const parsed = parseResponseLines(
+          (t.description as string) ?? "",
+          fields,
+        );
+        if (!parsed.matched) continue; // not a form submission
+        responses.push({
+          taskId: t.id as string,
+          title: t.name as string,
+          createdAt: iso(t.created_at),
+          statusName: (t.status_name as string) ?? null,
+          statusColor: (t.status_color as string) ?? null,
+          values: parsed.values,
+        });
+      }
+      return {
+        form: {
+          id: row.id as string,
+          name: row.name as string,
+          listId: row.list_id as string,
+          fields,
+        },
+        responses,
+      };
     });
   }
 
