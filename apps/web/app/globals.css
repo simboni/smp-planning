@@ -8336,3 +8336,31 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   border-radius:5px;padding:.1rem .4rem;flex-shrink:0;}
 .ask-source-title{flex:1;min-width:0;font-size:.9rem;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ask-source svg{width:15px;height:15px;color:var(--muted);flex-shrink:0;}
+
+/* Copilot — Do (operator) preview */
+.do-ops{display:flex;flex-direction:column;gap:7px;max-height:46vh;overflow-y:auto;margin:4px 0 2px;}
+.do-op{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:11px;
+  padding:10px 12px;cursor:pointer;background:var(--card);transition:border-color .12s,opacity .12s;}
+.do-op:hover{border-color:var(--brand);}
+.do-op.off{opacity:.5;}
+.do-op input{margin-top:3px;width:16px;height:16px;accent-color:var(--brand);flex-shrink:0;}
+.do-op-body{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.do-op-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.do-op-tag{font-family:var(--mono,ui-monospace,Menlo,monospace);font-size:.62rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.04em;border-radius:5px;padding:.12rem .4rem;flex-shrink:0;
+  background:var(--card-2);color:var(--muted);border:1px solid var(--line);}
+.do-op-set_status,.do-op-set_priority,.do-op-set_due{background:var(--brand-soft);color:var(--brand-700);border-color:transparent;}
+.do-op-set_assignees{background:#e6f0ff;color:#2563eb;border-color:transparent;}
+.do-op-add_comment,.do-op-post_message{background:#e8f7ee;color:#16a34a;border-color:transparent;}
+.do-op-create_task{background:#fdeee3;color:#ea580c;border-color:transparent;}
+.do-op-summary{font-weight:600;font-size:.9rem;color:var(--ink);letter-spacing:-.01em;}
+.do-op-reason{font-size:.8rem;color:var(--muted);line-height:1.45;}
+.do-results{display:flex;flex-direction:column;gap:6px;}
+.do-result{display:flex;align-items:center;gap:9px;font-size:.9rem;color:var(--ink);
+  border:1px solid var(--line-soft);border-radius:9px;padding:8px 11px;}
+.do-result.fail{background:var(--crit-soft,rgba(220,38,38,.08));}
+.do-result-ic{display:inline-flex;color:var(--good,#16a34a);}
+.do-result.fail .do-result-ic{color:var(--crit,#dc2626);}
+.do-result-ic svg{width:15px;height:15px;}
+.do-result-text{flex:1;}
+.do-result-detail{font-size:.78rem;color:var(--muted);}

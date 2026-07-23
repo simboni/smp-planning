@@ -3423,6 +3423,20 @@ export const aiApi = {
       body: { question },
       auth: "access",
     }),
+  /** Copilot Do: plan operations for a command (no writes). */
+  doPlan: (command: string) =>
+    api<AiOperationPlan>("/ai/do/plan", {
+      method: "POST",
+      body: { command },
+      auth: "access",
+    }),
+  /** Copilot Do: execute a (previewed) set of operations. */
+  do: (operations: AiOperation[]) =>
+    api<AiDoResult>("/ai/do", {
+      method: "POST",
+      body: { operations },
+      auth: "access",
+    }),
   /** AI Builder: draft a form from a brief (no writes). */
   formPlan: (prompt: string) =>
     api<{ form: AiFormPlan; source: AiSource }>("/ai/form/plan", {
@@ -3451,6 +3465,42 @@ export interface AiAskAnswer {
   answer: string;
   sources: AiAskSource[];
   source: AiSource;
+}
+
+/* Copilot Do (operator) */
+export type AiOpType =
+  | "create_task"
+  | "set_status"
+  | "set_assignees"
+  | "set_priority"
+  | "set_due"
+  | "add_comment"
+  | "post_message";
+export interface AiOperation {
+  type: AiOpType;
+  summary: string;
+  reason?: string;
+  taskId?: string;
+  taskName?: string;
+  listId?: string;
+  name?: string;
+  description?: string;
+  priority?: "urgent" | "high" | "normal" | "low";
+  dueInDays?: number;
+  assigneeIds?: string[];
+  statusName?: string;
+  body?: string;
+  channelId?: string;
+  channelName?: string;
+}
+export interface AiOperationPlan {
+  summary: string;
+  operations: AiOperation[];
+  source: AiSource;
+}
+export interface AiDoResult {
+  results: { summary: string; ok: boolean; detail: string }[];
+  applied: number;
 }
 
 export interface AiPlanTask {

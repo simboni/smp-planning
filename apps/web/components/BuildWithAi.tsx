@@ -24,6 +24,9 @@ import {
   ApiError,
   FORM_FIELD_TYPE_LABEL,
   type AiAskAnswer,
+  type AiDoResult,
+  type AiOperation,
+  type AiOperationPlan,
   type AiBuilderContext,
   type AiBuildPlan,
   type AiBuildResult,
@@ -33,7 +36,7 @@ import {
   type AiSpaceRef,
 } from "@/lib/api";
 
-type Mode = "ask" | "build" | "form";
+type Mode = "ask" | "do" | "build" | "form";
 type Stage = "prompt" | "loading" | "preview" | "building" | "done";
 
 const NEW = "__new__";
@@ -52,9 +55,14 @@ interface Dest {
 }
 
 const ASK_EXAMPLES = [
-  "What's blocking the Q3 launch?",
-  "Which tasks are overdue?",
-  "Summarize what's happening in the Trading space",
+  "How's this week going?",
+  "Which tasks are overdue and who owns them?",
+  "What spaces and projects do we have?",
+];
+const DO_EXAMPLES = [
+  "Reassign overdue tasks to whoever has capacity",
+  "Move my in-progress tasks to Done and comment a summary",
+  "Set the launch tasks to high priority and post a recap in #general",
 ];
 const BUILD_EXAMPLES = [
   "Add 5 tasks to my Marketing list for the Q3 launch",
@@ -72,6 +80,16 @@ const PRIORITY_LABEL: Record<string, string> = {
   high: "High",
   normal: "Normal",
   low: "Low",
+};
+
+const OP_LABEL: Record<string, string> = {
+  create_task: "New task",
+  set_status: "Status",
+  set_assignees: "Assign",
+  set_priority: "Priority",
+  set_due: "Due date",
+  add_comment: "Comment",
+  post_message: "Message",
 };
 
 /** Build an initial Dest from a plan target + context. */
@@ -141,6 +159,11 @@ export function BuildWithAi({
   // Ask mode
   const [answer, setAnswer] = useState<AiAskAnswer | null>(null);
 
+  // Do mode
+  const [opPlan, setOpPlan] = useState<AiOperationPlan | null>(null);
+  const [opOn, setOpOn] = useState<boolean[]>([]);
+  const [doResult, setDoResult] = useState<AiDoResult | null>(null);
+
   // Build mode
   const [plan, setPlan] = useState<AiBuildPlan | null>(null);
   const [context, setContext] = useState<AiBuilderContext>({ spaces: [], members: [] });
@@ -158,6 +181,9 @@ export function BuildWithAi({
       setStage("prompt");
       setPrompt("");
       setAnswer(null);
+      setOpPlan(null);
+      setOpOn([]);
+      setDoResult(null);
       setPlan(null);
       setDests([]);
       setResult(null);
@@ -171,7 +197,13 @@ export function BuildWithAi({
   if (!open) return null;
 
   const examples =
-    mode === "ask" ? ASK_EXAMPLES : mode === "build" ? BUILD_EXAMPLES : FORM_EXAMPLES;
+    mode === "ask"
+      ? ASK_EXAMPLES
+      : mode === "do"
+        ? DO_EXAMPLES
+        : mode === "build"
+          ? BUILD_EXAMPLES
+          : FORM_EXAMPLES;
 
   const generate = async () => {
     const brief = prompt.trim();
@@ -182,6 +214,12 @@ export function BuildWithAi({
       if (mode === "ask") {
         const r = await aiApi.ask(brief);
         setAnswer(r);
+        setSource(r.source);
+        setStage("preview");
+      } else if (mode === "do") {
+        const r = await aiApi.doPlan(brief);
+        setOpPlan(r);
+        setOpOn(r.operations.map(() => true));
         setSource(r.source);
         setStage("preview");
       } else if (mode === "build") {
@@ -229,6 +267,23 @@ export function BuildWithAi({
       void reload();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Couldn't build. Try again.");
+      setStage("preview");
+    }
+  };
+
+  const applyOps = async () => {
+    if (!opPlan) return;
+    const chosen = opPlan.operations.filter((_, i) => opOn[i]);
+    if (chosen.length === 0) return;
+    setStage("building");
+    setError(null);
+    try {
+      const r = await aiApi.do(chosen);
+      setDoResult(r);
+      setStage("done");
+      void reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Couldn't apply. Try again.");
       setStage("preview");
     }
   };
@@ -329,6 +384,14 @@ export function BuildWithAi({
               </button>
               <button
                 type="button"
+                className={`aib-mode${mode === "do" ? " on" : ""}`}
+                onClick={() => setMode("do")}
+                disabled={stage === "loading"}
+              >
+                {Icons.bolt} Do
+              </button>
+              <button
+                type="button"
                 className={`aib-mode${mode === "build" ? " on" : ""}`}
                 onClick={() => setMode("build")}
                 disabled={stage === "loading"}
@@ -347,18 +410,22 @@ export function BuildWithAi({
             <p className="aib-lead">
               {mode === "ask"
                 ? "Ask anything about your workspace — Copilot answers from your real tasks, docs and people, and links to the source."
-                : mode === "build"
-                  ? "Describe the work. AI drafts the tasks and figures out where they belong — you confirm the destination before anything is created."
-                  : "Describe the form. AI drafts the questions; you pick the list it collects into."}
+                : mode === "do"
+                  ? "Tell Copilot what to do — reassign, reprioritize, update status, comment, post a recap. It previews every action before touching anything."
+                  : mode === "build"
+                    ? "Describe the work. AI drafts the tasks and figures out where they belong — you confirm the destination before anything is created."
+                    : "Describe the form. AI drafts the questions; you pick the list it collects into."}
             </p>
             <textarea
               className="aib-input"
               placeholder={
                 mode === "ask"
-                  ? "e.g. What's blocking the Q3 launch?"
-                  : mode === "build"
-                    ? "e.g. Add tasks to my Marketing list for the Q3 launch"
-                    : "e.g. Feedback form about project management apps"
+                  ? "e.g. How's this week going?"
+                  : mode === "do"
+                    ? "e.g. Reassign overdue tasks to whoever has capacity"
+                    : mode === "build"
+                      ? "e.g. Add tasks to my Marketing list for the Q3 launch"
+                      : "e.g. Feedback form about project management apps"
               }
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -396,11 +463,12 @@ export function BuildWithAi({
                 {stage === "loading" ? (
                   <>
                     <span className="aib-spin" aria-hidden="true" />{" "}
-                    {mode === "ask" ? "Thinking…" : "Drafting…"}
+                    {mode === "ask" ? "Thinking…" : mode === "do" ? "Planning…" : "Drafting…"}
                   </>
                 ) : (
                   <>
-                    {Icons.sparkles} {mode === "ask" ? "Ask" : "Generate"}
+                    {Icons.sparkles}{" "}
+                    {mode === "ask" ? "Ask" : mode === "do" ? "Plan actions" : "Generate"}
                   </>
                 )}
               </button>
@@ -450,6 +518,126 @@ export function BuildWithAi({
                 }}
               >
                 Ask another
+              </button>
+              <button type="button" className="btn btn-primary" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 — preview (DO) */}
+        {(stage === "preview" || stage === "building") && mode === "do" && opPlan && (
+          <div className="aib-body">
+            <div className="aib-summary">
+              <div className="aib-summary-text">{opPlan.summary}</div>
+              {source === "heuristic" && (
+                <span className="aib-badge" title="AI key not configured.">
+                  Needs AI key
+                </span>
+              )}
+            </div>
+
+            {opPlan.operations.length === 0 ? (
+              <div className="aib-empty">
+                No actions to take. Try rephrasing, or use Ask to explore first.
+              </div>
+            ) : (
+              <>
+                <div className="aib-counts">
+                  <span>
+                    {opOn.filter(Boolean).length} of {opPlan.operations.length} selected
+                  </span>
+                </div>
+                <div className="do-ops">
+                  {opPlan.operations.map((op, i) => (
+                    <label key={i} className={`do-op${opOn[i] ? "" : " off"}`}>
+                      <input
+                        type="checkbox"
+                        checked={opOn[i]}
+                        onChange={() =>
+                          setOpOn((v) => v.map((x, k) => (k === i ? !x : x)))
+                        }
+                      />
+                      <span className="do-op-body">
+                        <span className="do-op-top">
+                          <span className={`do-op-tag do-op-${op.type}`}>
+                            {OP_LABEL[op.type]}
+                          </span>
+                          <span className="do-op-summary">{op.summary}</span>
+                        </span>
+                        {op.reason && <span className="do-op-reason">{op.reason}</span>}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {error && <div className="aib-error">{error}</div>}
+            <div className="aib-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setStage("prompt")}
+                disabled={stage === "building"}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={applyOps}
+                disabled={stage === "building" || opOn.filter(Boolean).length === 0}
+              >
+                {stage === "building" ? (
+                  <>
+                    <span className="aib-spin" aria-hidden="true" /> Applying…
+                  </>
+                ) : (
+                  <>
+                    Apply {opOn.filter(Boolean).length} action
+                    {opOn.filter(Boolean).length !== 1 ? "s" : ""}
+                    {Icons.arrowRight}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 — done (DO) */}
+        {stage === "done" && mode === "do" && doResult && (
+          <div className="aib-body">
+            <div className="aib-done-head">
+              <span className="aib-done-ic">{Icons.check}</span>
+              <div>
+                <div className="aib-done-title">
+                  Applied {doResult.applied} action{doResult.applied !== 1 ? "s" : ""} ✨
+                </div>
+              </div>
+            </div>
+            <div className="do-results">
+              {doResult.results.map((r, i) => (
+                <div key={i} className={`do-result${r.ok ? "" : " fail"}`}>
+                  <span className="do-result-ic">{r.ok ? Icons.check : Icons.close}</span>
+                  <span className="do-result-text">{r.summary}</span>
+                  {!r.ok && <span className="do-result-detail">{r.detail}</span>}
+                </div>
+              ))}
+            </div>
+            <div className="aib-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setStage("prompt");
+                  setPrompt("");
+                  setOpPlan(null);
+                  setDoResult(null);
+                }}
+              >
+                Do another
               </button>
               <button type="button" className="btn btn-primary" onClick={onClose}>
                 Done
@@ -594,7 +782,7 @@ export function BuildWithAi({
         )}
 
         {/* Step 3 — done */}
-        {stage === "done" && (
+        {stage === "done" && mode !== "do" && (
           <div className="aib-body">
             <div className="aib-done-head">
               <span className="aib-done-ic">{Icons.check}</span>

@@ -19,6 +19,7 @@ import {
   type SpaceRef,
 } from "./ai-builder.service";
 import { AiAskService } from "./ai-ask.service";
+import { AiOperatorService, type Operation } from "./ai-operator.service";
 
 const WRITE_ACTIONS: WriteAction[] = [
   "improve",
@@ -40,6 +41,7 @@ export class AiController {
     private readonly ai: AiService,
     private readonly builder: AiBuilderService,
     private readonly askService: AiAskService,
+    private readonly operator: AiOperatorService,
   ) {}
 
   @Get("status")
@@ -58,6 +60,37 @@ export class AiController {
       req.userId!,
       req.role!,
       body.question,
+    );
+  }
+
+  /** Plan operations for a natural-language command (no writes). */
+  @Post("do/plan")
+  async doPlan(@Req() req: AuthedRequest, @Body() body: { command?: string }) {
+    if (!body.command || !body.command.trim()) {
+      throw new BadRequestException("command is required");
+    }
+    return this.operator.plan(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      body.command,
+    );
+  }
+
+  /** Execute a (previewed) set of operations. */
+  @Post("do")
+  async doRun(
+    @Req() req: AuthedRequest,
+    @Body() body: { operations?: Operation[] },
+  ) {
+    if (!Array.isArray(body.operations) || body.operations.length === 0) {
+      throw new BadRequestException("operations are required");
+    }
+    return this.operator.run(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      body.operations,
     );
   }
 

@@ -1,17 +1,20 @@
 import { Injectable } from "@nestjs/common";
 import type { Role } from "@stackup/shared";
 import { AiProvider } from "./ai.provider";
+import { AiContextService, type WorkspaceSnapshot } from "./ai-context.service";
 import { SearchService, type SearchResults } from "../search/search.service";
 
 /**
- * Ask (Copilot Q&A) — answers a natural-language question grounded in the
- * user's workspace instead of building anything.
+ * Ask (Copilot Q&A) — answers a natural-language question about the workspace.
  *
- * Grounding: we run the workspace search (permission-safe — it only returns
- * items the caller can see) and hand the hits to Claude as numbered sources.
- * The model must answer ONLY from those sources and report which ones it used,
- * so every answer is attributable (no confidently-wrong, un-cited output).
- * Falls back to a plain "here's what I found" listing when no key is set.
+ * Grounding has two legs so BROAD questions work as well as specific ones:
+ *   1. A workspace-state snapshot (open / overdue / recently-completed tasks
+ *      with owners) — so "how's this week going?" or "what's pending?" have
+ *      real material to summarize.
+ *   2. Keyword search — so "what's the status of the Stripe task?" pulls the
+ *      exact item.
+ * Both are permission-scoped. The model must answer only from these sources and
+ * report which it used, so answers are attributable and never invented.
  */
 
 export interface AskSource {
@@ -37,16 +40,18 @@ const ASK_SCHEMA: Record<string, unknown> = {
 };
 
 const SYSTEM_ASK =
-  "You are StackUp's assistant. Answer the user's question ONLY from the " +
-  "workspace items provided as numbered sources. Be concise and specific. " +
-  "Reference the items you rely on and list their refs in usedRefs. If the " +
-  "sources don't contain the answer, say you couldn't find it in the workspace " +
-  "— never invent tasks, dates, names or statuses.";
+  "You are StackUp's assistant. Answer the user's question using ONLY the " +
+  "workspace state and items provided. For status or weekly questions, say what " +
+  "was completed recently and what's still open, and name the owners. Be concise " +
+  "and specific; reference the items you rely on and list their refs in usedRefs. " +
+  "If the provided state doesn't cover the question, say what you can see and what " +
+  "you'd need — never invent tasks, dates, names or statuses.";
 
 @Injectable()
 export class AiAskService {
   constructor(
     private readonly ai: AiProvider,
+    private readonly context: AiContextService,
     private readonly search: SearchService,
   ) {}
 
@@ -65,86 +70,167 @@ export class AiAskService {
       };
     }
 
-    // Gather grounding: search returns only items the caller can see.
-    let results: SearchResults;
+    const snapshot = await this.context.snapshot(workspaceId, userId, role, 40);
+    let searchResults: SearchResults | null = null;
     try {
-      const r = await this.search.search(workspaceId, userId, role, q, 8);
-      results = r.results;
+      searchResults = (await this.search.search(workspaceId, userId, role, q, 6)).results;
     } catch {
-      results = {
-        tasks: [], lists: [], spaces: [], docs: [], goals: [],
-        whiteboards: [], channels: [],
-      };
+      searchResults = null;
     }
-    const sources = toSources(results);
+
+    const { sources, taskById } = buildSources(snapshot, searchResults);
 
     if (!this.ai.available()) {
-      return { answer: heuristicAnswer(q, sources), sources, source: "heuristic" };
+      return {
+        answer: heuristicAnswer(q, snapshot),
+        sources: sources.slice(0, 6),
+        source: "heuristic",
+      };
     }
 
-    const prompt = buildPrompt(q, sources);
+    const prompt = buildPrompt(q, snapshot, sources, taskById);
     const structured = (await this.ai.completeJson(
       SYSTEM_ASK,
       prompt,
       ASK_SCHEMA,
-      900,
+      1000,
     )) as { answer?: unknown; usedRefs?: unknown } | null;
 
-    if (structured && typeof structured.answer === "string") {
+    if (structured && typeof structured.answer === "string" && structured.answer.trim()) {
       const used = Array.isArray(structured.usedRefs)
         ? new Set(structured.usedRefs.filter((r): r is string => typeof r === "string"))
         : null;
-      const cited = used
-        ? sources.filter((s) => used.has(s.ref))
-        : sources.slice(0, 4);
+      const cited = used ? sources.filter((s) => used.has(s.ref)) : [];
       return {
-        answer: structured.answer.trim() || heuristicAnswer(q, sources),
-        sources: cited.length > 0 ? cited : sources.slice(0, 4),
+        answer: structured.answer.trim(),
+        sources: (cited.length > 0 ? cited : sources).slice(0, 6),
         source: "claude",
       };
     }
 
-    // Fallback: plain text answer over the same grounding.
-    const text = await this.ai.complete(SYSTEM_ASK, prompt, 900);
-    if (text) {
-      return { answer: text.trim(), sources: sources.slice(0, 4), source: "claude" };
+    const text = await this.ai.complete(SYSTEM_ASK, prompt, 1000);
+    if (text && text.trim()) {
+      return { answer: text.trim(), sources: sources.slice(0, 6), source: "claude" };
     }
-    return { answer: heuristicAnswer(q, sources), sources, source: "heuristic" };
+    return { answer: heuristicAnswer(q, snapshot), sources: sources.slice(0, 6), source: "heuristic" };
   }
 }
 
-/* ---- helpers ------------------------------------------------------- */
+/* ---- grounding helpers -------------------------------------------- */
 
-function toSources(r: SearchResults): AskSource[] {
-  const out: AskSource[] = [];
+function buildSources(
+  snapshot: WorkspaceSnapshot,
+  search: SearchResults | null,
+): { sources: AskSource[]; taskById: Map<string, { ref: string; line: string }> } {
+  const sources: AskSource[] = [];
+  const taskById = new Map<string, { ref: string; line: string }>();
   let n = 0;
-  const push = (type: AskSource["type"], title: string, url: string) => {
-    if (!title) return;
-    n += 1;
-    out.push({ ref: `S${n}`, type, title, url });
-  };
-  for (const t of r.tasks) push("task", t.title, `/list?id=${t.listId}&task=${t.id}`);
-  for (const l of r.lists) push("list", l.name, `/list?id=${l.id}`);
-  for (const s of r.spaces) push("space", s.name, `/space?id=${s.id}`);
-  for (const d of r.docs) push("doc", d.name, `/doc?id=${d.id}`);
-  for (const g of r.goals) push("goal", g.name, `/goal?id=${g.id}`);
-  for (const w of r.whiteboards) push("whiteboard", w.name, `/whiteboard?id=${w.id}`);
-  for (const c of r.channels) push("channel", c.name, `/chat?c=${c.id}`);
-  return out.slice(0, 16);
+  const nextRef = () => `S${(n += 1)}`;
+
+  // Snapshot tasks first — the state that answers most questions.
+  for (const t of snapshot.tasks) {
+    const ref = nextRef();
+    sources.push({
+      ref,
+      type: "task",
+      title: t.name,
+      url: `/list?id=${t.listId}&task=${t.id}`,
+    });
+    const owners = t.assignees.length ? t.assignees.map((a) => a.name).join(", ") : "unassigned";
+    const state = t.done
+      ? t.completedRecently
+        ? "Done (this week)"
+        : "Done"
+      : t.overdue
+        ? "Open · OVERDUE"
+        : t.status
+          ? `Open · ${t.status}`
+          : "Open";
+    const due = t.due ? ` · due ${t.due.slice(0, 10)}` : "";
+    taskById.set(t.id, {
+      ref,
+      line: `${ref} [task] "${t.name}" — ${state} — owner: ${owners}${due} — space: ${t.spaceName}`,
+    });
+  }
+
+  // Then relevant non-task hits from search (docs, lists, etc.).
+  if (search) {
+    const pushHit = (type: AskSource["type"], title: string, url: string) => {
+      if (!title) return;
+      sources.push({ ref: nextRef(), type, title, url });
+    };
+    for (const l of search.lists) pushHit("list", l.name, `/list?id=${l.id}`);
+    for (const d of search.docs) pushHit("doc", d.name, `/doc?id=${d.id}`);
+    for (const s of search.spaces) pushHit("space", s.name, `/space?id=${s.id}`);
+    for (const g of search.goals) pushHit("goal", g.name, `/goal?id=${g.id}`);
+    for (const w of search.whiteboards) pushHit("whiteboard", w.name, `/whiteboard?id=${w.id}`);
+    for (const c of search.channels) pushHit("channel", c.name, `/chat?c=${c.id}`);
+  }
+
+  return { sources: sources.slice(0, 40), taskById };
 }
 
-function buildPrompt(question: string, sources: AskSource[]): string {
-  if (sources.length === 0) {
-    return `Question: ${question}\n\nNo matching workspace items were found. Say you couldn't find anything relevant in the workspace.`;
+function buildPrompt(
+  question: string,
+  snapshot: WorkspaceSnapshot,
+  sources: AskSource[],
+  taskById: Map<string, { ref: string; line: string }>,
+): string {
+  const c = snapshot.counts;
+  const header =
+    `Workspace state: ${c.openTasks} open task(s), ${c.overdue} overdue, ` +
+    `${c.completedThisWeek} completed in the last 7 days, ${c.members} member(s) ` +
+    `across ${c.spaces} space(s).`;
+
+  const taskLines = [...taskById.values()].map((t) => t.line);
+  const otherLines = sources
+    .filter((s) => s.type !== "task")
+    .map((s) => `${s.ref} [${s.type}] "${s.title}"`);
+
+  const parts = [header];
+  if (snapshot.spaces.length) {
+    parts.push(
+      "\nSpaces & lists:\n" +
+        snapshot.spaces
+          .map(
+            (s) =>
+              `- ${s.name}${s.lists.length ? ": " + s.lists.map((l) => l.name).join(", ") : " (no lists)"}`,
+          )
+          .join("\n"),
+    );
   }
-  const lines = sources.map((s) => `${s.ref} [${s.type}] ${s.title}`);
-  return `Question: ${question}\n\nWorkspace sources:\n${lines.join("\n")}\n\nAnswer from these sources only, and list the refs you used.`;
+  if (snapshot.members.length) {
+    parts.push("\nMembers: " + snapshot.members.map((m) => m.name).join(", "));
+  }
+  if (taskLines.length) parts.push("\nTasks:\n" + taskLines.join("\n"));
+  if (otherLines.length) parts.push("\nRelevant items:\n" + otherLines.join("\n"));
+  if (taskLines.length === 0 && otherLines.length === 0 && snapshot.spaces.length === 0) {
+    parts.push("\n(No tasks or items are visible to summarize.)");
+  }
+  parts.push(`\nQuestion: ${question}\n\nAnswer from this state and list the refs you used.`);
+  return parts.join("\n");
 }
 
-function heuristicAnswer(question: string, sources: AskSource[]): string {
-  if (sources.length === 0) {
-    return `I couldn't find anything in your workspace matching "${question}".`;
+function heuristicAnswer(question: string, snapshot: WorkspaceSnapshot): string {
+  const c = snapshot.counts;
+  if (c.openTasks === 0 && c.completedThisWeek === 0 && snapshot.tasks.length === 0) {
+    return "There's no task activity to report yet. Once you add tasks, I can summarize progress here.";
   }
-  const top = sources.slice(0, 5).map((s) => `• ${s.title} (${s.type})`);
-  return `Here's what I found related to "${question}":\n${top.join("\n")}`;
+  const lines = [
+    `Here's where the workspace stands: ${c.openTasks} open task(s), ${c.overdue} overdue, and ${c.completedThisWeek} completed in the last 7 days.`,
+  ];
+  const overdue = snapshot.tasks.filter((t) => t.overdue).slice(0, 5);
+  if (overdue.length) {
+    lines.push(
+      "Overdue: " +
+        overdue
+          .map((t) => `${t.name}${t.assignees[0] ? ` (${t.assignees[0].name})` : ""}`)
+          .join(", "),
+    );
+  }
+  const doneWeek = snapshot.tasks.filter((t) => t.completedRecently).slice(0, 5);
+  if (doneWeek.length) {
+    lines.push("Completed this week: " + doneWeek.map((t) => t.name).join(", "));
+  }
+  return lines.join("\n");
 }
