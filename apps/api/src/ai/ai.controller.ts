@@ -11,7 +11,13 @@ import {
 } from "@nestjs/common";
 import { AuthedRequest, JwtAuthGuard, WorkspaceGuard } from "../auth/guards";
 import { AiService, WriteAction } from "./ai.service";
-import { AiBuilderService, type BuildPlan } from "./ai-builder.service";
+import {
+  AiBuilderService,
+  type BuildPlan,
+  type FormPlan,
+  type ListRef,
+  type SpaceRef,
+} from "./ai-builder.service";
 
 const WRITE_ACTIONS: WriteAction[] = [
   "improve",
@@ -39,13 +45,24 @@ export class AiController {
     return this.ai.status();
   }
 
-  /** Turn a natural-language brief into a preview plan (no writes). */
+  /** Turn a natural-language brief into a placement-aware preview plan. */
   @Post("build/plan")
-  async buildPlan(@Body() body: { prompt?: string }) {
+  async buildPlan(@Req() req: AuthedRequest, @Body() body: { prompt?: string }) {
     if (!body.prompt || !body.prompt.trim()) {
       throw new BadRequestException("prompt is required");
     }
-    return this.builder.plan(body.prompt);
+    return this.builder.plan(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      body.prompt,
+    );
+  }
+
+  /** Editable spaces + lists the caller can build into (for the picker). */
+  @Get("build/context")
+  async buildContext(@Req() req: AuthedRequest) {
+    return this.builder.context(req.workspaceId!, req.userId!, req.role!);
   }
 
   /** Execute a (previewed, possibly edited) plan against the real services. */
@@ -54,14 +71,49 @@ export class AiController {
     @Req() req: AuthedRequest,
     @Body() body: { plan?: BuildPlan },
   ) {
-    if (!body.plan || !Array.isArray(body.plan.spaces) || body.plan.spaces.length === 0) {
-      throw new BadRequestException("A plan with at least one space is required");
+    if (
+      !body.plan ||
+      !Array.isArray(body.plan.targets) ||
+      body.plan.targets.length === 0
+    ) {
+      throw new BadRequestException("A plan with at least one target is required");
     }
     return this.builder.build(
       req.workspaceId!,
       req.userId!,
       req.role!,
       body.plan,
+    );
+  }
+
+  /** Draft a form from a brief (no writes). */
+  @Post("form/plan")
+  async formPlan(@Body() body: { prompt?: string }) {
+    if (!body.prompt || !body.prompt.trim()) {
+      throw new BadRequestException("prompt is required");
+    }
+    return this.builder.planForm(body.prompt);
+  }
+
+  /** Create a (previewed) form into a chosen/created destination list. */
+  @Post("form")
+  async formBuild(
+    @Req() req: AuthedRequest,
+    @Body() body: { form?: FormPlan; space?: SpaceRef; list?: ListRef },
+  ) {
+    if (!body.form || !Array.isArray(body.form.fields) || body.form.fields.length === 0) {
+      throw new BadRequestException("A form with at least one field is required");
+    }
+    if (!body.space || !body.list) {
+      throw new BadRequestException("A destination space and list are required");
+    }
+    return this.builder.buildForm(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      body.form,
+      body.space,
+      body.list,
     );
   }
 

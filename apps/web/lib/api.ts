@@ -3400,18 +3400,34 @@ export const aiApi = {
       body: { text },
       auth: "access",
     }),
-  /** AI Builder: brief → preview plan (no writes). */
+  /** AI Builder: brief → placement-aware preview plan + workspace context. */
   buildPlan: (prompt: string) =>
-    api<{ plan: AiBuildPlan; source: AiSource }>("/ai/build/plan", {
-      method: "POST",
-      body: { prompt },
-      auth: "access",
-    }),
-  /** AI Builder: execute a (previewed) plan → created spaces/lists/tasks/docs. */
+    api<{ plan: AiBuildPlan; source: AiSource; context: AiBuilderContext }>(
+      "/ai/build/plan",
+      { method: "POST", body: { prompt }, auth: "access" },
+    ),
+  /** Editable spaces + lists the caller can build into (for the picker). */
+  buildContext: () =>
+    api<AiBuilderContext>("/ai/build/context", { auth: "access" }),
+  /** AI Builder: execute a (previewed, possibly re-targeted) plan. */
   build: (plan: AiBuildPlan) =>
     api<AiBuildResult>("/ai/build", {
       method: "POST",
       body: { plan },
+      auth: "access",
+    }),
+  /** AI Builder: draft a form from a brief (no writes). */
+  formPlan: (prompt: string) =>
+    api<{ form: AiFormPlan; source: AiSource }>("/ai/form/plan", {
+      method: "POST",
+      body: { prompt },
+      auth: "access",
+    }),
+  /** AI Builder: create a (previewed) form into a chosen/created list. */
+  buildForm: (form: AiFormPlan, space: AiSpaceRef, list: AiListRef) =>
+    api<AiFormBuildResult>("/ai/form", {
+      method: "POST",
+      body: { form, space, list },
       auth: "access",
     }),
 };
@@ -3424,32 +3440,63 @@ export interface AiPlanTask {
   priority?: "urgent" | "high" | "normal" | "low";
   dueInDays?: number;
 }
-export interface AiPlanList {
-  name: string;
-  tasks: AiPlanTask[];
-}
 export interface AiPlanDoc {
   name: string;
   icon?: string;
   content?: string;
 }
-export interface AiPlanSpace {
-  name: string;
-  icon?: string;
-  lists: AiPlanList[];
+export type AiSpaceRef =
+  | { existingId: string }
+  | { create: true; name: string; icon?: string };
+export type AiListRef = { existingId: string } | { create: true; name: string };
+export interface AiPlanTarget {
+  space: AiSpaceRef;
+  list: AiListRef;
+  tasks: AiPlanTask[];
   docs?: AiPlanDoc[];
+  needsChoice?: boolean;
+  note?: string;
 }
 export interface AiBuildPlan {
   summary: string;
-  spaces: AiPlanSpace[];
+  targets: AiPlanTarget[];
+}
+export interface AiBuilderContext {
+  spaces: { id: string; name: string; lists: { id: string; name: string }[] }[];
 }
 export interface AiBuildResult {
   summary: string;
-  spaces: { id: string; name: string; url: string }[];
-  lists: { id: string; name: string; url: string }[];
+  spaces: { id: string; name: string; url: string; created: boolean }[];
+  lists: { id: string; name: string; url: string; created: boolean }[];
   tasks: { id: string; name: string; listId: string }[];
   docs: { id: string; name: string; url: string }[];
-  counts: { spaces: number; lists: number; tasks: number; docs: number };
+  counts: {
+    spacesCreated: number;
+    listsCreated: number;
+    tasks: number;
+    docs: number;
+  };
+}
+
+/* AI form generation */
+export interface AiFormPlanField {
+  label: string;
+  type: FormFieldType;
+  required?: boolean;
+  options?: string[];
+  asTitle?: boolean;
+}
+export interface AiFormPlan {
+  name: string;
+  description?: string;
+  fields: AiFormPlanField[];
+}
+export interface AiFormBuildResult {
+  formId: string;
+  listId: string;
+  listUrl: string;
+  publicToken: string;
+  fieldCount: number;
 }
 
 /* ---- Module 15: Personal Access Tokens & public API --------------- */

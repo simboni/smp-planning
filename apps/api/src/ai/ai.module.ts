@@ -6,6 +6,7 @@ import { AiBuilderService } from "./ai-builder.service";
 import { HierarchyModule } from "../hierarchy/hierarchy.module";
 import { TasksModule } from "../tasks/tasks.module";
 import { DocsModule } from "../docs/docs.module";
+import { FormsModule } from "../forms/forms.module";
 
 /**
  * Module 15 — AI Brain. AiProvider is exported so other modules could reuse
@@ -14,7 +15,7 @@ import { DocsModule } from "../docs/docs.module";
  * still runs through RLS, role capabilities and plan limits.
  */
 @Module({
-  imports: [HierarchyModule, TasksModule, DocsModule],
+  imports: [HierarchyModule, TasksModule, DocsModule, FormsModule],
   controllers: [AiController],
   providers: [AiService, AiProvider, AiBuilderService],
   exports: [AiProvider, AiService],

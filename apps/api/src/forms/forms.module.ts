@@ -16,5 +16,6 @@ import { PublicFormsController } from "./public-forms.controller";
   imports: [AccessModule, AuditModule],
   controllers: [FormsController, PublicFormsController],
   providers: [FormsService],
+  exports: [FormsService],
 })
 export class FormsModule {}
