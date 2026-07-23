@@ -8290,3 +8290,35 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .aib-field-opts { color: var(--muted); }
 .aib-req { font-size: 0.64rem; font-weight: 700; text-transform: uppercase; color: #ea580c; background: rgba(234,88,12,0.1); border-radius: 4px; padding: 1px 5px; }
 .aib-title-tag { font-size: 0.64rem; font-weight: 700; text-transform: uppercase; color: var(--brand-700); background: var(--brand-soft); border-radius: 4px; padding: 1px 5px; }
+
+/* AI Builder — per-task assignees */
+.aib-assign { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; }
+.aib-av {
+  width: 20px; height: 20px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--brand); color: #fff; font-size: 0.6rem; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-left: -4px; box-shadow: 0 0 0 2px var(--card-2);
+}
+.aib-av:first-child { margin-left: 0; }
+.aib-av-sm { width: 18px; height: 18px; box-shadow: none; margin: 0; }
+.aib-assign-add-wrap { position: relative; display: inline-flex; }
+.aib-assign-add {
+  width: 20px; height: 20px; border-radius: 50%; cursor: pointer;
+  border: 1px dashed var(--line); background: var(--card); color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
+}
+.aib-assign-add:hover { border-color: var(--brand); color: var(--brand); }
+.aib-assign-add svg { width: 12px; height: 12px; }
+.aib-assign-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow-3); padding: 5px; min-width: 170px; max-height: 220px;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+}
+.aib-assign-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  border: 0; background: none; cursor: pointer; padding: 6px 8px; border-radius: 7px;
+  font-size: 0.85rem; color: var(--ink);
+}
+.aib-assign-item:hover { background: var(--card-2); }
+.aib-assign-empty { padding: 8px; font-size: 0.82rem; }

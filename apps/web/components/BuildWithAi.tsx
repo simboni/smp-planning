@@ -46,6 +46,8 @@ interface Dest {
   listMode: "existing" | "new";
   listId: string;
   newListName: string;
+  /** For a new list in an existing space: an optional folder to nest it in. */
+  folderId: string;
 }
 
 const BUILD_EXAMPLES = [
@@ -78,6 +80,8 @@ function destFromTarget(t: AiPlanTarget): Dest {
     listMode: listExisting ? "existing" : "new",
     listId: listExisting ? (t.list as { existingId: string }).existingId : "",
     newListName: !listExisting ? (t.list as { name: string }).name : "",
+    folderId:
+      !listExisting ? ((t.list as { folderId?: string }).folderId ?? "") : "",
   };
 }
 
@@ -99,7 +103,14 @@ function destToRefs(d: Dest): { space: AiSpaceRef; list: AiListRef } {
   const list: AiListRef =
     d.spaceMode === "existing" && d.listMode === "existing"
       ? { existingId: d.listId }
-      : { create: true, name: d.newListName.trim() || "Tasks" };
+      : {
+          create: true,
+          name: d.newListName.trim() || "Tasks",
+          // Folders only apply to a new list inside an EXISTING space.
+          ...(d.spaceMode === "existing" && d.folderId
+            ? { folderId: d.folderId }
+            : {}),
+        };
   return { space, list };
 }
 
@@ -120,7 +131,7 @@ export function BuildWithAi({
 
   // Build mode
   const [plan, setPlan] = useState<AiBuildPlan | null>(null);
-  const [context, setContext] = useState<AiBuilderContext>({ spaces: [] });
+  const [context, setContext] = useState<AiBuilderContext>({ spaces: [], members: [] });
   const [dests, setDests] = useState<Dest[]>([]);
   const [result, setResult] = useState<AiBuildResult | null>(null);
 
@@ -174,6 +185,7 @@ export function BuildWithAi({
           listMode: "new",
           listId: "",
           newListName: r.form.name,
+          folderId: "",
         });
         setStage("preview");
       }
@@ -226,6 +238,25 @@ export function BuildWithAi({
 
   const setDest = (i: number, patch: Partial<Dest>) =>
     setDests((ds) => ds.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+
+  const setTaskAssignees = (ti: number, taskIdx: number, ids: string[]) => {
+    if (!plan) return;
+    setPlan({
+      ...plan,
+      targets: plan.targets.map((t, i) =>
+        i !== ti
+          ? t
+          : {
+              ...t,
+              tasks: t.tasks.map((tk, k) =>
+                k !== taskIdx
+                  ? tk
+                  : { ...tk, assigneeIds: ids.length ? ids : undefined },
+              ),
+            },
+      ),
+    });
+  };
 
   const allResolved =
     mode === "build"
@@ -368,6 +399,7 @@ export function BuildWithAi({
                   dest={dests[i]}
                   context={context}
                   onDest={(patch) => setDest(i, patch)}
+                  onAssignees={(taskIdx, ids) => setTaskAssignees(i, taskIdx, ids)}
                   onDrop={() => dropTarget(i)}
                 />
               ))}
@@ -578,9 +610,18 @@ function DestPicker({
         value={spaceValue}
         onChange={(e) => {
           const v = e.target.value;
-          if (v === NEW) onDest({ spaceMode: "new", listMode: "new" });
-          else if (v === "") onDest({ spaceMode: "" });
-          else onDest({ spaceMode: "existing", spaceId: v, listMode: "existing", listId: "" });
+          // Always clear folderId on a space change — a folder from the old
+          // space must never carry over to a different (or new) space.
+          if (v === NEW) onDest({ spaceMode: "new", listMode: "new", folderId: "" });
+          else if (v === "") onDest({ spaceMode: "", folderId: "" });
+          else
+            onDest({
+              spaceMode: "existing",
+              spaceId: v,
+              listMode: "existing",
+              listId: "",
+              folderId: "",
+            });
         }}
       >
         <option value="">— Choose space —</option>
@@ -624,12 +665,29 @@ function DestPicker({
             <option value={NEW}>＋ New list…</option>
           </select>
           {dest.listMode === "new" && (
-            <input
-              className="aib-dest-input"
-              placeholder="New list name"
-              value={dest.newListName}
-              onChange={(e) => onDest({ newListName: e.target.value })}
-            />
+            <>
+              <input
+                className="aib-dest-input"
+                placeholder="New list name"
+                value={dest.newListName}
+                onChange={(e) => onDest({ newListName: e.target.value })}
+              />
+              {space && space.folders.length > 0 && (
+                <select
+                  className="aib-dest-select"
+                  value={dest.folderId}
+                  onChange={(e) => onDest({ folderId: e.target.value })}
+                  title="Folder (optional)"
+                >
+                  <option value="">No folder</option>
+                  {space.folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      📁 {f.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
           )}
         </>
       ) : dest.spaceMode === "new" ? (
@@ -651,16 +709,22 @@ function TargetCard({
   dest,
   context,
   onDest,
+  onAssignees,
   onDrop,
 }: {
   target: AiPlanTarget;
   dest: Dest;
   context: AiBuilderContext;
   onDest: (patch: Partial<Dest>) => void;
+  onAssignees: (taskIndex: number, ids: string[]) => void;
   onDrop: () => void;
 }) {
   const [open, setOpen] = useState(true);
   const unresolved = !destResolved(dest);
+  const memberName = useMemo(
+    () => new Map(context.members.map((m) => [m.id, m.name])),
+    [context.members],
+  );
   return (
     <div className={`aib-space${target.needsChoice && unresolved ? " needs" : ""}`}>
       <div className="aib-space-head">
@@ -692,6 +756,14 @@ function TargetCard({
               {typeof t.dueInDays === "number" && (
                 <span className="aib-due">{t.dueInDays === 0 ? "today" : `${t.dueInDays}d`}</span>
               )}
+              {context.members.length > 0 && (
+                <TaskAssignees
+                  members={context.members}
+                  memberName={memberName}
+                  ids={t.assigneeIds ?? []}
+                  onChange={(ids) => onAssignees(ti, ids)}
+                />
+              )}
             </div>
           ))}
           {(target.tasks?.length ?? 0) === 0 && <div className="aib-task muted">No tasks</div>}
@@ -708,5 +780,73 @@ function TargetCard({
         </div>
       )}
     </div>
+  );
+}
+
+/* ---- Per-task assignee picker ------------------------------------- */
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+function TaskAssignees({
+  members,
+  memberName,
+  ids,
+  onChange,
+}: {
+  members: { id: string; name: string }[];
+  memberName: Map<string, string>;
+  ids: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const available = members.filter((m) => !ids.includes(m.id));
+  return (
+    <span className="aib-assign">
+      {ids.map((id) => (
+        <button
+          key={id}
+          type="button"
+          className="aib-av"
+          title={`${memberName.get(id) ?? "Member"} — click to unassign`}
+          onClick={() => onChange(ids.filter((x) => x !== id))}
+        >
+          {initials(memberName.get(id) ?? "?")}
+        </button>
+      ))}
+      <span className="aib-assign-add-wrap">
+        <button
+          type="button"
+          className="aib-assign-add"
+          title="Assign teammate"
+          onClick={() => setOpen((v) => !v)}
+        >
+          {Icons.plus}
+        </button>
+        {open && (
+          <span className="aib-assign-menu" onMouseLeave={() => setOpen(false)}>
+            {available.length === 0 && (
+              <span className="aib-assign-empty muted">Everyone assigned</span>
+            )}
+            {available.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className="aib-assign-item"
+                onClick={() => {
+                  onChange([...ids, m.id]);
+                  setOpen(false);
+                }}
+              >
+                <span className="aib-av aib-av-sm">{initials(m.name)}</span>
+                {m.name}
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
+    </span>
   );
 }

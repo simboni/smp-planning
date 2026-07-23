@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Role } from "@stackup/shared";
 import { AiProvider } from "./ai.provider";
+import { DbService } from "../db/db.service";
 import { HierarchyService } from "../hierarchy/hierarchy.service";
 import { TasksService } from "../tasks/tasks.service";
 import { DocsService } from "../docs/docs.service";
@@ -40,6 +41,8 @@ export interface PlanTask {
   description?: string;
   priority?: "urgent" | "high" | "normal" | "low";
   dueInDays?: number;
+  /** Workspace member ids to assign (validated against the context). */
+  assigneeIds?: string[];
 }
 
 export interface PlanDoc {
@@ -54,7 +57,9 @@ export type SpaceRef =
   | { create: true; name: string; icon?: string };
 
 /** Where a target's list lives: an existing one, or a request to create it. */
-export type ListRef = { existingId: string } | { create: true; name: string };
+export type ListRef =
+  | { existingId: string }
+  | { create: true; name: string; folderId?: string };
 
 /** One destination + the work that goes there. */
 export interface PlanTarget {
@@ -78,8 +83,11 @@ export interface BuilderContext {
   spaces: {
     id: string;
     name: string;
+    folders: { id: string; name: string }[];
     lists: { id: string; name: string }[];
   }[];
+  /** Active workspace members the AI can assign tasks to. */
+  members: { id: string; name: string }[];
 }
 
 export interface BuildResult {
@@ -133,6 +141,7 @@ export interface FormBuildResult {
 export class AiBuilderService {
   constructor(
     private readonly ai: AiProvider,
+    private readonly db: DbService,
     private readonly hierarchy: HierarchyService,
     private readonly tasks: TasksService,
     private readonly docs: DocsService,
@@ -143,7 +152,7 @@ export class AiBuilderService {
     return { available: this.ai.available(), model: this.ai.model() };
   }
 
-  /** Editable spaces (+ their lists) the caller can build into. */
+  /** Editable spaces (+ folders/lists) and members the caller can build with. */
   async context(
     workspaceId: string,
     userId: string,
@@ -158,9 +167,42 @@ export class AiBuilderService {
           ...s.lists,
           ...s.folders.flatMap((f) => f.lists),
         ].map((l) => ({ id: l.id, name: l.name }));
-        return { id: s.id, name: s.name, lists: lists.slice(0, MAX_CONTEXT_LISTS) };
+        return {
+          id: s.id,
+          name: s.name,
+          folders: s.folders
+            .slice(0, MAX_CONTEXT_LISTS)
+            .map((f) => ({ id: f.id, name: f.name })),
+          lists: lists.slice(0, MAX_CONTEXT_LISTS),
+        };
       });
-    return { spaces };
+    const members = await this.loadMembers(workspaceId, userId);
+    return { spaces, members };
+  }
+
+  /** Active workspace members (id + display name) for AI assignment. */
+  private async loadMembers(
+    workspaceId: string,
+    userId: string,
+  ): Promise<{ id: string; name: string }[]> {
+    try {
+      return await this.db.withWorkspace(workspaceId, userId, async (client) => {
+        const res = await client.query(
+          `SELECT u.id, u.full_name, u.email
+             FROM memberships m JOIN users u ON u.id = m.user_id
+            WHERE m.workspace_id = $1 AND m.status = 'active'
+            ORDER BY m.created_at
+            LIMIT 100`,
+          [workspaceId],
+        );
+        return res.rows.map((r) => ({
+          id: r.id as string,
+          name: (r.full_name as string) || (r.email as string) || "Member",
+        }));
+      });
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -260,6 +302,7 @@ export class AiBuilderService {
               description: pt.description,
               priority: pt.priority ?? null,
               dueDate: dueDateFromDays(pt.dueInDays),
+              assigneeIds: pt.assigneeIds?.length ? pt.assigneeIds : undefined,
             },
           );
           result.tasks.push({ id: task.id, name: task.name, listId });
@@ -423,25 +466,36 @@ export class AiBuilderService {
     result: BuildResult,
   ): Promise<string | null> {
     if ("existingId" in ref) return ref.existingId;
-    const key = `${spaceId}|${ref.name.trim().toLowerCase()}`;
+    // Dedupe by (space, folder, name) — same-named lists in different folders
+    // are distinct and must not collapse into one.
+    const folderPart = ref.folderId ? ref.folderId : "root";
+    const key = `${spaceId}|${folderPart}|${ref.name.trim().toLowerCase()}`;
     const cached = cache.get(key);
     if (cached) return cached;
-    try {
-      const list = await this.hierarchy.createList(workspaceId, userId, role, spaceId, {
+    // Create in the requested folder; if that folder placement is rejected
+    // (e.g. a stale/foreign folderId), fall back to the space root rather than
+    // dropping the whole target and losing its tasks.
+    let list = await this.hierarchy
+      .createList(workspaceId, userId, role, spaceId, {
         name: ref.name,
-      });
-      cache.set(key, list.id);
-      result.lists.push({
-        id: list.id,
-        name: list.name,
-        url: `/list?id=${list.id}`,
-        created: true,
-      });
-      result.counts.listsCreated++;
-      return list.id;
-    } catch {
-      return null;
+        folderId: ref.folderId,
+      })
+      .catch(() => null);
+    if (!list && ref.folderId) {
+      list = await this.hierarchy
+        .createList(workspaceId, userId, role, spaceId, { name: ref.name })
+        .catch(() => null);
     }
+    if (!list) return null;
+    cache.set(key, list.id);
+    result.lists.push({
+      id: list.id,
+      name: list.name,
+      url: `/list?id=${list.id}`,
+      created: true,
+    });
+    result.counts.listsCreated++;
+    return list.id;
   }
 }
 
@@ -459,8 +513,14 @@ function tryParsePlan(raw: string, ctx: BuilderContext): BuildPlan | null {
     const rawTargets = Array.isArray(o.targets) ? o.targets : [];
     const spaceIds = new Set(ctx.spaces.map((s) => s.id));
     const listIds = new Set(ctx.spaces.flatMap((s) => s.lists.map((l) => l.id)));
+    // Folders are validated PER SPACE — a folder is only usable for a new list
+    // in the space that owns it (never cross-space, never in a new space).
+    const spaceFolders = new Map(
+      ctx.spaces.map((s) => [s.id, new Set(s.folders.map((f) => f.id))]),
+    );
+    const memberIds = new Set(ctx.members.map((m) => m.id));
     const targets = rawTargets
-      .map((t) => normalizeTarget(t, spaceIds, listIds))
+      .map((t) => normalizeTarget(t, spaceIds, listIds, spaceFolders, memberIds))
       .filter((t): t is PlanTarget => t !== null);
     return {
       summary: typeof o.summary === "string" ? o.summary : "AI-generated plan",
@@ -497,7 +557,12 @@ function normalizeListRef(v: unknown, listIds: Set<string>): ListRef | null {
   const existing = str(o.existingId);
   if (existing && listIds.has(existing)) return { existingId: existing };
   const name = str(o.name);
-  if (name) return { create: true, name };
+  if (name) {
+    // folderId is carried through raw here; normalizeTarget validates it
+    // against the RESOLVED space (a folder must belong to that space).
+    const folderId = str(o.folderId);
+    return folderId ? { create: true, name, folderId } : { create: true, name };
+  }
   return null;
 }
 
@@ -505,15 +570,26 @@ function normalizeTarget(
   v: unknown,
   spaceIds: Set<string>,
   listIds: Set<string>,
+  spaceFolders: Map<string, Set<string>>,
+  memberIds: Set<string>,
 ): PlanTarget | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   const space = normalizeSpaceRef(o.space, spaceIds);
   const list = normalizeListRef(o.list, listIds);
   if (!space || !list) return null;
+  // A folder is only valid for a NEW list in an EXISTING space, and only when
+  // the folder actually belongs to that space. Otherwise drop it — never let a
+  // cross-space (or new-space) folderId through.
+  if ("create" in list && list.folderId) {
+    const ok =
+      "existingId" in space &&
+      spaceFolders.get(space.existingId)?.has(list.folderId);
+    if (!ok) delete list.folderId;
+  }
   // An existing list must live in its real space — trust the list's identity.
   const tasks = Array.isArray(o.tasks)
-    ? o.tasks.map(normalizeTask).filter((t): t is PlanTask => t !== null)
+    ? o.tasks.map((t) => normalizeTask(t, memberIds)).filter((t): t is PlanTask => t !== null)
     : [];
   const docs = Array.isArray(o.docs)
     ? o.docs.map(normalizeDoc).filter((d): d is PlanDoc => d !== null)
@@ -528,7 +604,7 @@ function normalizeTarget(
   };
 }
 
-function normalizeTask(v: unknown): PlanTask | null {
+function normalizeTask(v: unknown, memberIds: Set<string>): PlanTask | null {
   if (typeof v === "string") return str(v) ? { name: v.trim() } : null;
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
@@ -542,7 +618,19 @@ function normalizeTask(v: unknown): PlanTask | null {
     typeof o.dueInDays === "number" && isFinite(o.dueInDays)
       ? Math.max(0, Math.min(365, Math.round(o.dueInDays)))
       : undefined;
-  return { name, description: str(o.description), priority, dueInDays };
+  const assigneeIds = Array.isArray(o.assigneeIds)
+    ? (o.assigneeIds
+        .map((x) => str(x))
+        .filter((x): x is string => !!x && memberIds.has(x))
+        .slice(0, 10))
+    : undefined;
+  return {
+    name,
+    description: str(o.description),
+    priority,
+    dueInDays,
+    assigneeIds: assigneeIds && assigneeIds.length ? assigneeIds : undefined,
+  };
 }
 
 function normalizeDoc(v: unknown): PlanDoc | null {
@@ -582,14 +670,17 @@ const SYSTEM_PLAN =
   "- Make a new space only for a genuinely new project/area.\n" +
   "If you are unsure where a group belongs, still give your best guess but set " +
   '"needsChoice": true so the app can ask the user.\n' +
+  "You may assign tasks to teammates and place a new list inside a folder when " +
+  "the brief implies it — use only ids from the context.\n" +
   "Reply with ONLY valid JSON, no prose, no fences:\n" +
   '{"summary":"one short sentence","targets":[{' +
   '"space":{"existingId":"<id>"} OR {"create":true,"name":"...","icon":"📁"},' +
-  '"list":{"existingId":"<id>"} OR {"create":true,"name":"..."},' +
-  '"tasks":[{"name":"...","description":"optional one line","priority":"urgent|high|normal|low (optional)","dueInDays":7}],' +
+  '"list":{"existingId":"<id>"} OR {"create":true,"name":"...","folderId":"<id optional>"},' +
+  '"tasks":[{"name":"...","description":"optional one line","priority":"urgent|high|normal|low (optional)","dueInDays":7,"assigneeIds":["<memberId>"]}],' +
   '"needsChoice":false,"note":"short reason"}]}\n' +
   "Rules: at most 6 targets, 12 tasks per target. Use real ids from the context " +
-  "for existing places. Make task names concrete and actionable.";
+  "for existing places, folders and members. Only assign someone when the brief " +
+  "names them or their role clearly fits. Make task names concrete and actionable.";
 
 function planPrompt(brief: string, ctx: BuilderContext): string {
   const lines: string[] = [];
@@ -602,7 +693,18 @@ function planPrompt(brief: string, ctx: BuilderContext): string {
         s.lists.length > 0
           ? s.lists.map((l) => `{id=${l.id} "${l.name}"}`).join(", ")
           : "(no lists yet)";
-      lines.push(`- space id=${s.id} "${s.name}" — lists: ${lists}`);
+      const folders =
+        s.folders.length > 0
+          ? ` — folders: ${s.folders.map((f) => `{id=${f.id} "${f.name}"}`).join(", ")}`
+          : "";
+      lines.push(`- space id=${s.id} "${s.name}" — lists: ${lists}${folders}`);
+    }
+  }
+  if (ctx.members.length > 0) {
+    lines.push("");
+    lines.push("Teammates you can assign (use the id):");
+    for (const m of ctx.members) {
+      lines.push(`- member id=${m.id} "${m.name}"`);
     }
   }
   return `Brief:\n${brief}\n\n${lines.join("\n")}\n\nReturn the JSON plan.`;

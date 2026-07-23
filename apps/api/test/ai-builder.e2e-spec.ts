@@ -146,6 +146,93 @@ describe("AI Builder", () => {
     expect(res.body.tasks[0].listId).toBe(list.id);
   });
 
+  it("assigns a task to a workspace member (context exposes members)", async () => {
+    const ctx = await http.get("/ai/build/context").set(auth(token)).expect(200);
+    expect(Array.isArray(ctx.body.members)).toBe(true);
+    const me = ctx.body.members[0];
+    expect(me).toBeDefined();
+    const space = ctx.body.spaces.find((s: { name: string }) => s.name === "Launch");
+    const list = space.lists.find((l: { name: string }) => l.name === "Marketing");
+
+    const plan = {
+      summary: "assign",
+      targets: [
+        {
+          space: { existingId: space.id },
+          list: { existingId: list.id },
+          tasks: [{ name: "Owned task", assigneeIds: [me.id] }],
+        },
+      ],
+    };
+    const res = await http.post("/ai/build").set(auth(token)).send({ plan }).expect(201);
+    expect(res.body.counts.tasks).toBe(1);
+    const detail = await http
+      .get(`/tasks/${res.body.tasks[0].id}`)
+      .set(auth(token))
+      .expect(200);
+    expect(detail.body.task.assignees.map((a: { id: string }) => a.id)).toContain(me.id);
+  });
+
+  it("creates a new list inside a folder", async () => {
+    const ctx = await http.get("/ai/build/context").set(auth(token)).expect(200);
+    const space = ctx.body.spaces.find((s: { name: string }) => s.name === "Launch");
+    const folder = (
+      await http
+        .post(`/spaces/${space.id}/folders`)
+        .set(auth(token))
+        .send({ name: "Campaigns" })
+        .expect(201)
+    ).body.folder;
+
+    const plan = {
+      summary: "folder list",
+      targets: [
+        {
+          space: { existingId: space.id },
+          list: { create: true, name: "Ads", folderId: folder.id },
+          tasks: [{ name: "Draft ad copy" }],
+        },
+      ],
+    };
+    const res = await http.post("/ai/build").set(auth(token)).send({ plan }).expect(201);
+    expect(res.body.counts.listsCreated).toBe(1);
+    const newListId = res.body.lists[0].id;
+
+    const tree = (await http.get("/hierarchy").set(auth(token)).expect(200)).body;
+    const sp = tree.spaces.find((s: { id: string }) => s.id === space.id);
+    const fol = sp.folders.find((f: { id: string }) => f.id === folder.id);
+    expect(fol.lists.map((l: { id: string }) => l.id)).toContain(newListId);
+  });
+
+  it("a foreign/stale folderId falls back to space root, never dropping the target", async () => {
+    // A folderId that does NOT belong to the target space must not silently
+    // drop the whole target — the list is created at the space root instead.
+    const ctx = await http.get("/ai/build/context").set(auth(token)).expect(200);
+    const space = ctx.body.spaces.find((s: { name: string }) => s.name === "Launch");
+
+    const plan = {
+      summary: "bad folder",
+      targets: [
+        {
+          space: { existingId: space.id },
+          list: {
+            create: true,
+            name: "Rooted",
+            folderId: "00000000-0000-0000-0000-000000000000",
+          },
+          tasks: [{ name: "Survives the bad folder" }],
+        },
+      ],
+    };
+    const res = await http.post("/ai/build").set(auth(token)).send({ plan }).expect(201);
+    expect(res.body.counts.listsCreated).toBe(1);
+    expect(res.body.counts.tasks).toBe(1);
+    // Created at the space root (not under any folder).
+    const tree = (await http.get("/hierarchy").set(auth(token)).expect(200)).body;
+    const sp = tree.spaces.find((s: { id: string }) => s.id === space.id);
+    expect(sp.lists.map((l: { name: string }) => l.name)).toContain("Rooted");
+  });
+
   it("rejects a plan with no targets", async () => {
     await http
       .post("/ai/build")

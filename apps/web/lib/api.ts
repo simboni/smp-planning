@@ -3439,6 +3439,7 @@ export interface AiPlanTask {
   description?: string;
   priority?: "urgent" | "high" | "normal" | "low";
   dueInDays?: number;
+  assigneeIds?: string[];
 }
 export interface AiPlanDoc {
   name: string;
@@ -3448,7 +3449,9 @@ export interface AiPlanDoc {
 export type AiSpaceRef =
   | { existingId: string }
   | { create: true; name: string; icon?: string };
-export type AiListRef = { existingId: string } | { create: true; name: string };
+export type AiListRef =
+  | { existingId: string }
+  | { create: true; name: string; folderId?: string };
 export interface AiPlanTarget {
   space: AiSpaceRef;
   list: AiListRef;
@@ -3462,7 +3465,13 @@ export interface AiBuildPlan {
   targets: AiPlanTarget[];
 }
 export interface AiBuilderContext {
-  spaces: { id: string; name: string; lists: { id: string; name: string }[] }[];
+  spaces: {
+    id: string;
+    name: string;
+    folders: { id: string; name: string }[];
+    lists: { id: string; name: string }[];
+  }[];
+  members: { id: string; name: string }[];
 }
 export interface AiBuildResult {
   summary: string;
