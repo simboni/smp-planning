@@ -626,11 +626,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               className="btn btn-ai btn-sm"
               onClick={() => setBuilderOpen(true)}
-              aria-label="Build with AI"
-              title="Build spaces, lists and tasks with AI"
+              aria-label="StackUp Copilot"
+              title="Ask questions or build spaces, lists and tasks with AI"
             >
               {Icons.sparkles}
-              <span>Build with AI</span>
+              <span>Copilot</span>
             </button>
 
             <Link href="/members" className="btn btn-primary btn-sm">
@@ -705,8 +705,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               className="icon-btn icon-btn-ai"
-              aria-label="Build with AI"
-              title="Build with AI"
+              aria-label="StackUp Copilot"
+              title="StackUp Copilot"
               onClick={() => setBuilderOpen(true)}
             >
               {Icons.sparkles}

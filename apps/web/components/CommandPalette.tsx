@@ -128,8 +128,8 @@ export function CommandPalette({
       {
         key: "build-with-ai",
         icon: "sparkles",
-        title: "Build with AI…",
-        subtitle: "Describe a project — AI creates the spaces, lists & tasks",
+        title: "Ask Copilot…",
+        subtitle: "Ask about your workspace, or build spaces, lists & tasks",
         tag: "AI",
         run: () => {
           onClose();

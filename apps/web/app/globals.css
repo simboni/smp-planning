@@ -8322,3 +8322,17 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 }
 .aib-assign-item:hover { background: var(--card-2); }
 .aib-assign-empty { padding: 8px; font-size: 0.82rem; }
+
+/* Copilot — Ask answer */
+.ask-answer{font-size:.98rem;line-height:1.6;color:var(--ink);white-space:pre-wrap;margin-bottom:14px;}
+.ask-sources{border-top:1px solid var(--line-soft);padding-top:12px;}
+.ask-sources-h{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;}
+.ask-source-chips{display:flex;flex-direction:column;gap:6px;}
+.ask-source{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid var(--line);
+  border-radius:9px;background:var(--card);padding:8px 11px;cursor:pointer;transition:all .12s;color:var(--ink);}
+.ask-source:hover{border-color:var(--brand);background:var(--brand-soft);}
+.ask-source-type{font-family:var(--mono,ui-monospace,Menlo,monospace);font-size:.64rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--brand-700);background:var(--brand-soft);
+  border-radius:5px;padding:.1rem .4rem;flex-shrink:0;}
+.ask-source-title{flex:1;min-width:0;font-size:.9rem;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ask-source svg{width:15px;height:15px;color:var(--muted);flex-shrink:0;}

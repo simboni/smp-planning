@@ -23,6 +23,7 @@ import {
   aiApi,
   ApiError,
   FORM_FIELD_TYPE_LABEL,
+  type AiAskAnswer,
   type AiBuilderContext,
   type AiBuildPlan,
   type AiBuildResult,
@@ -32,7 +33,7 @@ import {
   type AiSpaceRef,
 } from "@/lib/api";
 
-type Mode = "build" | "form";
+type Mode = "ask" | "build" | "form";
 type Stage = "prompt" | "loading" | "preview" | "building" | "done";
 
 const NEW = "__new__";
@@ -50,6 +51,11 @@ interface Dest {
   folderId: string;
 }
 
+const ASK_EXAMPLES = [
+  "What's blocking the Q3 launch?",
+  "Which tasks are overdue?",
+  "Summarize what's happening in the Trading space",
+];
 const BUILD_EXAMPLES = [
   "Add 5 tasks to my Marketing list for the Q3 launch",
   "Plan a product launch with marketing, design and dev workstreams",
@@ -73,7 +79,10 @@ function destFromTarget(t: AiPlanTarget): Dest {
   const spaceExisting = "existingId" in t.space;
   const listExisting = "existingId" in t.list;
   return {
-    spaceMode: t.needsChoice ? "" : spaceExisting ? "existing" : "new",
+    // Reflect the AI's proposed destination even when it flags needsChoice —
+    // the card is highlighted for confirmation, but the picker is pre-filled so
+    // the user confirms rather than re-picking from a blank.
+    spaceMode: spaceExisting ? "existing" : "new",
     spaceId: spaceExisting ? (t.space as { existingId: string }).existingId : "",
     newSpaceName: !spaceExisting ? (t.space as { name: string }).name : "",
     newSpaceIcon: !spaceExisting ? (t.space as { icon?: string }).icon : undefined,
@@ -123,11 +132,14 @@ export function BuildWithAi({
 }) {
   const router = useRouter();
   const { reload } = useHierarchy();
-  const [mode, setMode] = useState<Mode>("build");
+  const [mode, setMode] = useState<Mode>("ask");
   const [stage, setStage] = useState<Stage>("prompt");
   const [prompt, setPrompt] = useState("");
   const [source, setSource] = useState<"claude" | "heuristic">("claude");
   const [error, setError] = useState<string | null>(null);
+
+  // Ask mode
+  const [answer, setAnswer] = useState<AiAskAnswer | null>(null);
 
   // Build mode
   const [plan, setPlan] = useState<AiBuildPlan | null>(null);
@@ -142,9 +154,10 @@ export function BuildWithAi({
 
   useEffect(() => {
     if (open) {
-      setMode("build");
+      setMode("ask");
       setStage("prompt");
       setPrompt("");
+      setAnswer(null);
       setPlan(null);
       setDests([]);
       setResult(null);
@@ -157,7 +170,8 @@ export function BuildWithAi({
 
   if (!open) return null;
 
-  const examples = mode === "build" ? BUILD_EXAMPLES : FORM_EXAMPLES;
+  const examples =
+    mode === "ask" ? ASK_EXAMPLES : mode === "build" ? BUILD_EXAMPLES : FORM_EXAMPLES;
 
   const generate = async () => {
     const brief = prompt.trim();
@@ -165,7 +179,12 @@ export function BuildWithAi({
     setStage("loading");
     setError(null);
     try {
-      if (mode === "build") {
+      if (mode === "ask") {
+        const r = await aiApi.ask(brief);
+        setAnswer(r);
+        setSource(r.source);
+        setStage("preview");
+      } else if (mode === "build") {
         const r = await aiApi.buildPlan(brief);
         setPlan(r.plan);
         setContext(r.context);
@@ -261,7 +280,9 @@ export function BuildWithAi({
   const allResolved =
     mode === "build"
       ? dests.length > 0 && dests.every(destResolved)
-      : !!formDest && destResolved(formDest);
+      : mode === "form"
+        ? !!formDest && destResolved(formDest)
+        : true;
 
   const goto = (url: string) => {
     onClose();
@@ -287,7 +308,7 @@ export function BuildWithAi({
         <header className="aib-head">
           <span className="aib-head-title">
             <span className="aib-spark">{Icons.sparkles}</span>
-            Build with AI
+            StackUp Copilot
           </span>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
             {Icons.close}
@@ -298,6 +319,14 @@ export function BuildWithAi({
         {(stage === "prompt" || stage === "loading") && (
           <div className="aib-body">
             <div className="aib-modes">
+              <button
+                type="button"
+                className={`aib-mode${mode === "ask" ? " on" : ""}`}
+                onClick={() => setMode("ask")}
+                disabled={stage === "loading"}
+              >
+                {Icons.sparkles} Ask
+              </button>
               <button
                 type="button"
                 className={`aib-mode${mode === "build" ? " on" : ""}`}
@@ -316,16 +345,20 @@ export function BuildWithAi({
               </button>
             </div>
             <p className="aib-lead">
-              {mode === "build"
-                ? "Describe the work. AI drafts the tasks and figures out where they belong — you confirm the destination before anything is created."
-                : "Describe the form. AI drafts the questions; you pick the list it collects into."}
+              {mode === "ask"
+                ? "Ask anything about your workspace — Copilot answers from your real tasks, docs and people, and links to the source."
+                : mode === "build"
+                  ? "Describe the work. AI drafts the tasks and figures out where they belong — you confirm the destination before anything is created."
+                  : "Describe the form. AI drafts the questions; you pick the list it collects into."}
             </p>
             <textarea
               className="aib-input"
               placeholder={
-                mode === "build"
-                  ? "e.g. Add tasks to my Marketing list for the Q3 launch"
-                  : "e.g. Feedback form about project management apps"
+                mode === "ask"
+                  ? "e.g. What's blocking the Q3 launch?"
+                  : mode === "build"
+                    ? "e.g. Add tasks to my Marketing list for the Q3 launch"
+                    : "e.g. Feedback form about project management apps"
               }
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -362,11 +395,64 @@ export function BuildWithAi({
               >
                 {stage === "loading" ? (
                   <>
-                    <span className="aib-spin" aria-hidden="true" /> Drafting…
+                    <span className="aib-spin" aria-hidden="true" />{" "}
+                    {mode === "ask" ? "Thinking…" : "Drafting…"}
                   </>
                 ) : (
-                  <>{Icons.sparkles} Generate</>
+                  <>
+                    {Icons.sparkles} {mode === "ask" ? "Ask" : "Generate"}
+                  </>
                 )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 — answer (ASK) */}
+        {stage === "preview" && mode === "ask" && answer && (
+          <div className="aib-body">
+            {source === "heuristic" && (
+              <div className="aib-summary" style={{ marginBottom: 10 }}>
+                <span className="aib-badge" title="AI key not configured — showing matching items only.">
+                  Search only
+                </span>
+              </div>
+            )}
+            <div className="ask-answer">{answer.answer}</div>
+            {answer.sources.length > 0 && (
+              <div className="ask-sources">
+                <div className="ask-sources-h">Sources</div>
+                <div className="ask-source-chips">
+                  {answer.sources.map((s) => (
+                    <button
+                      key={s.ref}
+                      type="button"
+                      className="ask-source"
+                      onClick={() => goto(s.url)}
+                      title={`Open ${s.type}`}
+                    >
+                      <span className="ask-source-type">{s.type}</span>
+                      <span className="ask-source-title">{s.title}</span>
+                      {Icons.arrowRight}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="aib-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setStage("prompt");
+                  setPrompt("");
+                  setAnswer(null);
+                }}
+              >
+                Ask another
+              </button>
+              <button type="button" className="btn btn-primary" onClick={onClose}>
+                Done
               </button>
             </div>
           </div>

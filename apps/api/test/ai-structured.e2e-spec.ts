@@ -25,6 +25,9 @@ class FakeAi {
   }
   async completeJson(_system: string, _prompt: string, schema: Record<string, unknown>) {
     const props = (schema.properties ?? {}) as Record<string, unknown>;
+    if ("answer" in props) {
+      return { answer: "Nothing is blocking it right now.", usedRefs: [] };
+    }
     if ("targets" in props) {
       return {
         summary: "Structured plan",
@@ -130,6 +133,22 @@ describe("AI structured outputs", () => {
     expect(res.body.form.name).toBe("Signup survey");
     expect(res.body.form.fields).toHaveLength(2);
     expect(res.body.form.fields[1].type).toBe("select");
+  });
+
+  it("answers a question grounded in the workspace (Ask)", async () => {
+    const res = await http
+      .post("/ai/ask")
+      .set(auth(t))
+      .send({ question: "what is blocking the launch?" })
+      .expect(201);
+    expect(res.body.source).toBe("claude");
+    expect(typeof res.body.answer).toBe("string");
+    expect(res.body.answer.length).toBeGreaterThan(0);
+    expect(Array.isArray(res.body.sources)).toBe(true);
+  });
+
+  it("rejects an empty Ask question", async () => {
+    await http.post("/ai/ask").set(auth(t)).send({ question: "  " }).expect(400);
   });
 
   it("parses a command via structured output", async () => {

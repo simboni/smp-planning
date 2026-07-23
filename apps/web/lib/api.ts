@@ -3416,6 +3416,13 @@ export const aiApi = {
       body: { plan },
       auth: "access",
     }),
+  /** Copilot: answer a question grounded in the workspace (no writes). */
+  ask: (question: string) =>
+    api<AiAskAnswer>("/ai/ask", {
+      method: "POST",
+      body: { question },
+      auth: "access",
+    }),
   /** AI Builder: draft a form from a brief (no writes). */
   formPlan: (prompt: string) =>
     api<{ form: AiFormPlan; source: AiSource }>("/ai/form/plan", {
@@ -3433,6 +3440,18 @@ export const aiApi = {
 };
 
 /* ---- AI Builder types --------------------------------------------- */
+
+export interface AiAskSource {
+  ref: string;
+  type: "task" | "list" | "space" | "doc" | "goal" | "whiteboard" | "channel";
+  title: string;
+  url: string;
+}
+export interface AiAskAnswer {
+  answer: string;
+  sources: AiAskSource[];
+  source: AiSource;
+}
 
 export interface AiPlanTask {
   name: string;

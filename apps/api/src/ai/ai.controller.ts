@@ -18,6 +18,7 @@ import {
   type ListRef,
   type SpaceRef,
 } from "./ai-builder.service";
+import { AiAskService } from "./ai-ask.service";
 
 const WRITE_ACTIONS: WriteAction[] = [
   "improve",
@@ -38,11 +39,26 @@ export class AiController {
   constructor(
     private readonly ai: AiService,
     private readonly builder: AiBuilderService,
+    private readonly askService: AiAskService,
   ) {}
 
   @Get("status")
   status() {
     return this.ai.status();
+  }
+
+  /** Answer a natural-language question grounded in the workspace. */
+  @Post("ask")
+  async ask(@Req() req: AuthedRequest, @Body() body: { question?: string }) {
+    if (!body.question || !body.question.trim()) {
+      throw new BadRequestException("question is required");
+    }
+    return this.askService.ask(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      body.question,
+    );
   }
 
   /** Turn a natural-language brief into a placement-aware preview plan. */
