@@ -256,20 +256,43 @@ export function BuildWithAi({
         setDests(r.plan.targets.map(destFromTarget));
         setStage("preview");
       } else {
-        const r = await aiApi.formPlan(brief);
+        // Fetch the workspace context alongside the plan so the destination
+        // picker can offer existing spaces/lists — not just "create new".
+        const [r, ctx] = await Promise.all([
+          aiApi.formPlan(brief),
+          aiApi.buildContext(),
+        ]);
         setFormPlan(r.form);
+        setContext(ctx);
         setSource(r.source);
-        // Default: new list in a new "Feedback" space; user can retarget.
-        setFormDest({
-          spaceMode: "new",
-          spaceId: "",
-          newSpaceName: "Feedback",
-          newSpaceIcon: "🗂️",
-          listMode: "new",
-          listId: "",
-          newListName: r.form.name,
-          folderId: "",
-        });
+        // Default the destination to the user's first existing space (and its
+        // first list) when they have one, so selection is the default path;
+        // fall back to creating a new "Feedback" space only for empty
+        // workspaces. Either way the user can retarget in the picker.
+        const firstSpace = ctx.spaces[0];
+        setFormDest(
+          firstSpace
+            ? {
+                spaceMode: "existing",
+                spaceId: firstSpace.id,
+                newSpaceName: "",
+                newSpaceIcon: "🗂️",
+                listMode: firstSpace.lists[0] ? "existing" : "new",
+                listId: firstSpace.lists[0]?.id ?? "",
+                newListName: r.form.name,
+                folderId: "",
+              }
+            : {
+                spaceMode: "new",
+                spaceId: "",
+                newSpaceName: "Feedback",
+                newSpaceIcon: "🗂️",
+                listMode: "new",
+                listId: "",
+                newListName: r.form.name,
+                folderId: "",
+              },
+        );
         setStage("preview");
       }
     } catch (e) {
