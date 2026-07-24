@@ -885,7 +885,7 @@ function DocView() {
           {!canEdit && <span className="doc-chip doc-chip-ro">{Icons.eye} Read-only</span>}
 
           <FavoriteStar type="doc" id={doc.id} name={doc.name} />
-          <PublicShareButton type="doc" id={doc.id} />
+          <PublicShareButton type="doc" id={doc.id} name={doc.name} />
 
           <span className="doc-head-spacer" />
 

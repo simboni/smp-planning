@@ -476,7 +476,7 @@ export function TaskPanel({
               <span className="muted">Task</span>
             )}
           </div>
-          {detail && <PublicShareButton type="task" id={detail.id} />}
+          {detail && <PublicShareButton type="task" id={detail.id} name={detail.name} />}
           <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
             {Icons.close}
           </button>

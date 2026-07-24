@@ -505,7 +505,7 @@ function ListShell() {
         <span className="list-head-dot" style={{ background: listColor }} />
         <h1>{list.name}</h1>
         <FavoriteStar type="list" id={list.id} name={list.name} />
-        <PublicShareButton type="list" id={list.id} />
+        <PublicShareButton type="list" id={list.id} name={list.name} />
         <div className="list-head-actions">
           {canEdit && (
             <>

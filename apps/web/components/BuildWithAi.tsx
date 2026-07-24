@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { Icons } from "@/components/icons";
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { copyToClipboard, publicFormUrl } from "@/lib/format";
+import { SharePreviewCard } from "@/components/SharePreviewCard";
 import {
   aiApi,
   ApiError,
@@ -869,6 +870,16 @@ export function BuildWithAi({
 
             {mode === "form" && formResult && (
               <>
+                {formPlan && (
+                  <div className="aib-share-preview">
+                    <SharePreviewCard
+                      kind="form"
+                      name={formPlan.name}
+                      summary={`${formPlan.fields.length} question${formPlan.fields.length !== 1 ? "s" : ""}`}
+                      access="Anyone with the link · can submit a response"
+                    />
+                  </div>
+                )}
                 <div className="aib-share">
                   <div className="aib-share-h">Share this form to collect responses</div>
                   <div className="aib-share-row">

@@ -16,14 +16,21 @@ import {
   type ShareSummary,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
+import { SharePreviewCard, type ShareKind } from "@/components/SharePreviewCard";
 
 export function PublicShareButton({
   type,
   id,
+  name = "",
+  summary,
   className = "",
 }: {
   type: ShareEntityType;
   id: string;
+  /** Name of the thing being shared — shown in the preview card. */
+  name?: string;
+  /** Short "what's inside" line for the preview card. */
+  summary?: string;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -123,6 +130,11 @@ export function PublicShareButton({
                 Anyone with the link can view this — no account needed.
               </div>
             </div>
+          </div>
+
+          {/* Preview of exactly what's being shared, before any link is made. */}
+          <div className="pshare-preview">
+            <SharePreviewCard kind={type as ShareKind} name={name} summary={summary} />
           </div>
 
           {!loaded ? (

@@ -1207,7 +1207,7 @@ function DashboardView() {
           </button>
         )}
         <span className="dbv-head-spacer" />
-        <PublicShareButton type="dashboard" id={dashboard.id} />
+        <PublicShareButton type="dashboard" id={dashboard.id} name={dashboard.name} />
         <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
           {Icons.plus} Add card
         </button>
