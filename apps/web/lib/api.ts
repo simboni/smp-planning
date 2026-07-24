@@ -570,12 +570,69 @@ export interface ApiOptions {
   auth?: AuthMode;
   /** Extra request headers merged into the defaults. */
   headers?: Record<string, string>;
+  /** Internal: set once a call has already retried after a renewal. */
+  _retry?: boolean;
 }
 
 function tokenFor(auth: AuthMode): string | null {
   if (auth === "none") return null;
   if (auth === "identity") return getIdentityToken();
   return getAccessToken();
+}
+
+/* ------------------------------------------------------------------ *
+ * Soft session expiry. When an access/identity token expires we don't
+ * hard-bounce to login and lose the user's place — a registered handler
+ * (the "Still working?" prompt) decides whether to renew and continue, or
+ * end the session. Renewal uses the long-lived refresh token to mint a fresh
+ * identity token and re-issue the workspace access token, then the original
+ * request is retried transparently.
+ * ------------------------------------------------------------------ */
+let renewing = false;
+let expiryInFlight: Promise<boolean> | null = null;
+let expiryHandler: (() => Promise<boolean>) | null = null;
+
+/** Register the UI prompt shown when a session expires. Returns true if the
+ *  user chose to keep working AND renewal succeeded, false if the session ended. */
+export function setSessionExpiryHandler(fn: (() => Promise<boolean>) | null): void {
+  expiryHandler = fn;
+}
+
+/** Renew the session in place: refresh token → new identity token → re-mint the
+ *  workspace access token. Returns true on success. Never prompts. */
+export async function renewSession(): Promise<boolean> {
+  const rt = getRefreshToken();
+  if (!rt) return false;
+  renewing = true;
+  try {
+    const r = await authApi.refresh(rt);
+    setIdentityToken(r.identityToken);
+    setRefreshToken(r.refreshToken);
+    const ws = getWorkspace();
+    if (ws?.id) {
+      const t = await workspacesApi.selectToken(ws.id);
+      setAccessToken(t.accessToken);
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    renewing = false;
+  }
+}
+
+/** Coalesced expiry decision — one prompt even if many calls 401 at once. */
+function handleExpiredSession(): Promise<boolean> {
+  if (renewing) return Promise.resolve(false); // don't re-enter during our own refresh
+  if (expiryInFlight) return expiryInFlight;
+  const run = expiryHandler ?? (() => renewSession()); // no UI mounted → silent renew
+  expiryInFlight = Promise.resolve()
+    .then(run)
+    .catch(() => false)
+    .finally(() => {
+      expiryInFlight = null;
+    });
+  return expiryInFlight;
 }
 
 export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
@@ -600,8 +657,15 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
     );
   }
 
-  // Session expired on an authed call — clear and bounce to login.
+  // Session expired on an authed call. Offer to renew and keep the user on the
+  // same page instead of hard-bouncing to login (which loses their place).
   if (res.status === 401 && auth !== "none") {
+    if (!opts._retry) {
+      const renewed = await handleExpiredSession();
+      if (renewed) {
+        return api<T>(path, { ...opts, _retry: true });
+      }
+    }
     clearTokens();
     if (typeof window !== "undefined") window.location.href = "/login";
     throw new ApiError(401, "Your session has expired. Please sign in again.");

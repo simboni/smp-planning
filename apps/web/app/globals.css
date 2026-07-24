@@ -8364,3 +8364,17 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .do-result-ic svg{width:15px;height:15px;}
 .do-result-text{flex:1;}
 .do-result-detail{font-size:.78rem;color:var(--muted);}
+
+/* "Still working?" session-expiry prompt */
+.sx-scrim{position:fixed;inset:0;z-index:1100;background:rgba(16,17,26,.6);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;padding:20px;}
+.sx{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:16px;
+  box-shadow:var(--shadow-3,0 16px 44px rgba(24,26,42,.16));padding:26px 24px;text-align:center;
+  animation:aib-pop .16s ease-out;}
+.sx-ic{width:48px;height:48px;margin:0 auto 14px;border-radius:50%;background:var(--brand-soft);
+  color:var(--brand-700);display:inline-flex;align-items:center;justify-content:center;}
+.sx-ic svg{width:24px;height:24px;}
+.sx-title{margin:0 0 8px;font-size:1.25rem;font-weight:800;letter-spacing:-.02em;color:var(--ink);}
+.sx-body{margin:0 0 20px;color:var(--muted);font-size:.94rem;line-height:1.55;}
+.sx-actions{display:flex;gap:10px;justify-content:center;}
+.sx-actions .btn{min-width:120px;justify-content:center;}

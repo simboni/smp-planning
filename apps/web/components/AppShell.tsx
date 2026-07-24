@@ -12,6 +12,7 @@ import {
   getUser,
   getWorkspace,
   notificationsApi,
+  setSessionExpiryHandler,
   setUser,
   setWorkspace,
   tasksApi,
@@ -41,6 +42,7 @@ import {
 } from "@/lib/native";
 import { CommandPalette } from "@/components/CommandPalette";
 import { BuildWithAi } from "@/components/BuildWithAi";
+import { SessionExpiryModal } from "@/components/SessionExpiryModal";
 import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { HierarchyTree } from "@/components/HierarchyTree";
 import { FavoritesNav } from "@/components/FavoritesNav";
@@ -102,6 +104,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [sessionPrompt, setSessionPrompt] = useState<
+    null | { resolve: (renewed: boolean) => void }
+  >(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Module 6 — notifications (bell + Inbox badge) and presence.
@@ -305,6 +310,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const onBuild = (): void => setBuilderOpen(true);
     window.addEventListener("stackup:build-with-ai", onBuild);
     return () => window.removeEventListener("stackup:build-with-ai", onBuild);
+  }, []);
+
+  // Soft session expiry: show the "Still working?" prompt instead of a hard
+  // bounce to login. The handler resolves true (renewed → retry) or false.
+  useEffect(() => {
+    setSessionExpiryHandler(
+      () =>
+        new Promise<boolean>((resolve) => {
+          setSessionPrompt({
+            resolve: (renewed) => {
+              setSessionPrompt(null);
+              resolve(renewed);
+            },
+          });
+        }),
+    );
+    return () => setSessionExpiryHandler(null);
   }, []);
 
   // Close transient UI on navigation.
@@ -866,6 +888,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <BuildWithAi open={builderOpen} onClose={() => setBuilderOpen(false)} />
+      {sessionPrompt && <SessionExpiryModal resolve={sessionPrompt.resolve} />}
       {newTaskOpen && <QuickTaskModal onClose={() => setNewTaskOpen(false)} />}
       <Notepad />
     </div>

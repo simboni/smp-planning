@@ -88,8 +88,11 @@ export function loadConfig(): AppConfig {
     port: Number(process.env.PORT ?? 3000),
     appDbUrl: process.env.APP_DB_URL ?? DEV_DB_URL,
     jwtSecret: EFFECTIVE_JWT_SECRET,
-    accessTtl: Number(process.env.ACCESS_TOKEN_TTL ?? 900),
-    refreshTtl: Number(process.env.REFRESH_TOKEN_TTL ?? 2592000),
+    // Longer sessions for logged-in users: access/identity tokens last an hour
+    // (the client silently renews on expiry), and the refresh token — the real
+    // session lifetime — lasts 60 days.
+    accessTtl: Number(process.env.ACCESS_TOKEN_TTL ?? 3600),
+    refreshTtl: Number(process.env.REFRESH_TOKEN_TTL ?? 5184000),
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
     aiModel: process.env.STACKUP_AI_MODEL ?? "claude-opus-4-8",
     googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
