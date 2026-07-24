@@ -26,6 +26,8 @@ import {
   type DepartmentKind,
   type DepartmentMember,
   type Member,
+  type OnboardingAssigneeKind,
+  type OnboardingStep,
   type WorkspaceRole,
 } from "@/lib/api";
 import { useHierarchy } from "@/components/HierarchyProvider";
@@ -45,6 +47,46 @@ const SWATCHES = [
 ];
 
 const INVITE_ROLES: WorkspaceRole[] = ["member", "admin", "guest"];
+
+/** A starter onboarding checklist, tuned per department kind. */
+function starterChecklist(kind: DepartmentKind): OnboardingStep[] {
+  const base: OnboardingStep[] = [
+    { title: "Welcome & intro meeting", assigneeKind: "head", assigneeUserId: null, dueDays: 1 },
+    { title: "Accounts, tools and access set up", assigneeKind: "new_member", assigneeUserId: null, dueDays: 2 },
+    { title: "Meet the team", assigneeKind: "new_member", assigneeUserId: null, dueDays: 3 },
+    { title: "Agree first-month goals", assigneeKind: "head", assigneeUserId: null, dueDays: 7 },
+    { title: "30-day check-in", assigneeKind: "head", assigneeUserId: null, dueDays: 30 },
+  ];
+  const extras: Partial<Record<DepartmentKind, OnboardingStep[]>> = {
+    accounting: [
+      { title: "Payroll & statutory details collected", assigneeKind: "head", assigneeUserId: null, dueDays: 3 },
+      { title: "Accounting system access granted", assigneeKind: "head", assigneeUserId: null, dueDays: 2 },
+    ],
+    it: [
+      { title: "Laptop & equipment issued", assigneeKind: "head", assigneeUserId: null, dueDays: 1 },
+      { title: "System permissions granted", assigneeKind: "head", assigneeUserId: null, dueDays: 2 },
+    ],
+    sales: [
+      { title: "CRM access & pipeline walkthrough", assigneeKind: "head", assigneeUserId: null, dueDays: 2 },
+    ],
+    hr: [
+      { title: "Employment file completed", assigneeKind: "head", assigneeUserId: null, dueDays: 3 },
+    ],
+    operations: [
+      { title: "SOPs & processes walkthrough", assigneeKind: "head", assigneeUserId: null, dueDays: 3 },
+    ],
+    customer_service: [
+      { title: "Support tools & tone-of-voice training", assigneeKind: "head", assigneeUserId: null, dueDays: 3 },
+    ],
+  };
+  return [...(extras[kind] ?? []), ...base];
+}
+
+const ASSIGNEE_KIND_LABEL: Record<OnboardingAssigneeKind, string> = {
+  new_member: "New member",
+  head: "Department head",
+  specific: "Specific person",
+};
 
 /**
  * One-click presets for the standard departments of a company. Picking one
@@ -289,6 +331,11 @@ function ManageDepartmentModal({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Onboarding checklist editor
+  const [steps, setSteps] = useState<OnboardingStep[] | null>(null);
+  const [stepsDirty, setStepsDirty] = useState(false);
+  const [savingSteps, setSavingSteps] = useState(false);
+
   // Add-existing-member picker
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -311,7 +358,48 @@ function ManageDepartmentModal({
           err instanceof ApiError ? err.message : "Couldn't load the department.",
         ),
       );
+    departmentsApi
+      .getOnboarding(departmentId)
+      .then((r) => {
+        // Never clobber unsaved edits on a background reload.
+        setSteps((prev) => (prev !== null && stepsDirtyRef.current ? prev : r.steps));
+      })
+      .catch(() => setSteps([]));
   }, [departmentId]);
+
+  // Ref mirror so load() can check dirtiness without re-creating itself.
+  const stepsDirtyRef = useRef(false);
+  useEffect(() => {
+    stepsDirtyRef.current = stepsDirty;
+  }, [stepsDirty]);
+
+  const updStep = (i: number, patch: Partial<OnboardingStep>): void => {
+    setSteps((prev) =>
+      prev ? prev.map((s, j) => (j === i ? { ...s, ...patch } : s)) : prev,
+    );
+    setStepsDirty(true);
+  };
+
+  const saveSteps = async (): Promise<void> => {
+    if (steps === null || savingSteps) return;
+    const clean = steps
+      .map((s) => ({ ...s, title: s.title.trim() }))
+      .filter((s) => s.title.length > 0);
+    setSavingSteps(true);
+    setError("");
+    try {
+      const r = await departmentsApi.setOnboarding(departmentId, clean);
+      setSteps(r.steps);
+      setStepsDirty(false);
+      showToast("Onboarding checklist saved");
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Couldn't save the checklist.",
+      );
+    } finally {
+      setSavingSteps(false);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -380,18 +468,26 @@ function ManageDepartmentModal({
     );
   };
 
+  const onboardingToast = (created: number, who: string): void => {
+    showToast(
+      created > 0
+        ? `${who} added — ${created} onboarding ${created === 1 ? "task" : "tasks"} created`
+        : `${who} added to ${detail?.name ?? "the department"}`,
+    );
+  };
+
   const invite = async (): Promise<void> => {
     const email = inviteEmail.trim();
     if (!email) return;
     await run(async () => {
-      await departmentsApi.addMember(departmentId, {
+      const r = await departmentsApi.addMember(departmentId, {
         email,
         role: inviteRole,
         title: inviteTitle.trim() || undefined,
       });
       setInviteEmail("");
       setInviteTitle("");
-      showToast(`Onboarded ${email} into ${detail?.name ?? "the department"}`);
+      onboardingToast(r.onboarding.created, email);
     }, "Couldn't onboard that email.");
   };
 
@@ -659,13 +755,16 @@ function ManageDepartmentModal({
                             onClick={() => {
                               setPickerOpen(false);
                               setQuery("");
-                              void run(
-                                () =>
-                                  departmentsApi.addMember(departmentId, {
-                                    userId: m.id,
-                                  }),
-                                "Couldn't add them.",
-                              );
+                              void run(async () => {
+                                const r = await departmentsApi.addMember(
+                                  departmentId,
+                                  { userId: m.id },
+                                );
+                                onboardingToast(
+                                  r.onboarding.created,
+                                  m.fullName || m.email,
+                                );
+                              }, "Couldn't add them.");
                             }}
                           >
                             <Avatar
@@ -728,6 +827,157 @@ function ManageDepartmentModal({
                     They join the workspace with the picked privileges and land in
                     this department immediately.
                   </p>
+                </>
+              )}
+
+              {/* Onboarding checklist: config that becomes real tasks. */}
+              <div className="hr-section-label">Onboarding checklist</div>
+              <p className="muted hr-invite-hint">
+                Every step becomes an assigned, dated task in the department&apos;s
+                space the moment someone joins
+                {detail.spaceId ? "." : " — link a home space to activate it."}
+              </p>
+              {steps === null ? (
+                <div className="hr-roster-loading">
+                  <span className="skel" style={{ width: "80%", height: 12 }} />
+                  <span className="skel" style={{ width: "65%", height: 12 }} />
+                </div>
+              ) : !canManage ? (
+                steps.length === 0 ? (
+                  <p className="muted hr-empty-roster">No checklist defined yet.</p>
+                ) : (
+                  <div className="share-list">
+                    {steps.map((s, i) => (
+                      <div key={s.id ?? i} className="share-entry">
+                        <span className="share-entry-body">
+                          <span className="share-entry-name">{s.title}</span>
+                          <span className="share-entry-sub">
+                            {ASSIGNEE_KIND_LABEL[s.assigneeKind]} · due in {s.dueDays}{" "}
+                            {s.dueDays === 1 ? "day" : "days"}
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <>
+                  {steps.map((s, i) => (
+                    <div key={i} className="hr-step-row">
+                      <input
+                        className="input hr-step-title"
+                        placeholder="Step (e.g. Issue laptop)"
+                        value={s.title}
+                        onChange={(e) => updStep(i, { title: e.target.value })}
+                      />
+                      <select
+                        className="input hr-step-kind"
+                        value={s.assigneeKind}
+                        aria-label="Assignee"
+                        onChange={(e) =>
+                          updStep(i, {
+                            assigneeKind: e.target.value as OnboardingAssigneeKind,
+                            ...(e.target.value !== "specific"
+                              ? { assigneeUserId: null }
+                              : {}),
+                          })
+                        }
+                      >
+                        {(Object.keys(ASSIGNEE_KIND_LABEL) as OnboardingAssigneeKind[]).map(
+                          (k) => (
+                            <option key={k} value={k}>
+                              {ASSIGNEE_KIND_LABEL[k]}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                      {s.assigneeKind === "specific" && (
+                        <select
+                          className="input hr-step-kind"
+                          value={s.assigneeUserId ?? ""}
+                          aria-label="Person"
+                          onChange={(e) =>
+                            updStep(i, { assigneeUserId: e.target.value || null })
+                          }
+                        >
+                          <option value="">Pick person…</option>
+                          {members
+                            .filter((m) => m.status === "active")
+                            .map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.fullName || m.email}
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                      <input
+                        className="input hr-step-days"
+                        type="number"
+                        min={0}
+                        max={365}
+                        value={s.dueDays}
+                        aria-label="Due in days"
+                        onChange={(e) =>
+                          updStep(i, { dueDays: Number(e.target.value) })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="icon-btn share-remove"
+                        aria-label="Remove step"
+                        onClick={() => {
+                          setSteps((prev) =>
+                            prev ? prev.filter((_, j) => j !== i) : prev,
+                          );
+                          setStepsDirty(true);
+                        }}
+                      >
+                        {Icons.close}
+                      </button>
+                    </div>
+                  ))}
+                  <div className="hr-step-actions">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        setSteps((prev) => [
+                          ...(prev ?? []),
+                          {
+                            title: "",
+                            assigneeKind: "new_member",
+                            assigneeUserId: null,
+                            dueDays: 7,
+                          },
+                        ]);
+                        setStepsDirty(true);
+                      }}
+                    >
+                      {Icons.plus} Add step
+                    </button>
+                    {steps.length === 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-soft btn-sm"
+                        onClick={() => {
+                          setSteps(starterChecklist(detail.kind));
+                          setStepsDirty(true);
+                        }}
+                      >
+                        {Icons.sparkles} Load starter checklist
+                      </button>
+                    )}
+                    {stepsDirty && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={savingSteps}
+                        onClick={() => void saveSteps()}
+                      >
+                        {savingSteps ? <span className="spinner" /> : "Save checklist"}
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
             </>

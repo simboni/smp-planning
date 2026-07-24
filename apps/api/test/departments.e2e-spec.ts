@@ -332,6 +332,115 @@ describe("departments (HR module)", () => {
     expect(await spacesOf(owner.accessToken)).toContain(dept.spaceId);
   });
 
+  it("onboarding checklist becomes real tasks when someone joins", async () => {
+    const owner = await ownerWorkspace();
+    const head = await memberOf(owner.accessToken, owner.workspaceId, "member");
+
+    const dept = (
+      await http
+        .post("/departments")
+        .set(auth(owner.accessToken))
+        .send({
+          name: "Finance",
+          kind: "accounting",
+          leadUserId: head.userId,
+          createSpace: true,
+        })
+        .expect(201)
+    ).body.department;
+
+    // Member (non-admin) can read but not edit the checklist.
+    await http
+      .put(`/departments/${dept.id}/onboarding`)
+      .set(auth(head.accessToken))
+      .send({ steps: [] })
+      .expect(403);
+
+    // Define the checklist: one step for the new member, one for the head.
+    const put = await http
+      .put(`/departments/${dept.id}/onboarding`)
+      .set(auth(owner.accessToken))
+      .send({
+        steps: [
+          { title: "Set up payroll details", assigneeKind: "new_member", dueDays: 2 },
+          { title: "Intro meeting", assigneeKind: "head", dueDays: 1 },
+        ],
+      })
+      .expect(200);
+    expect(put.body.steps).toHaveLength(2);
+    const got = await http
+      .get(`/departments/${dept.id}/onboarding`)
+      .set(auth(head.accessToken))
+      .expect(200);
+    expect(got.body.steps.map((s: { title: string }) => s.title)).toEqual([
+      "Set up payroll details",
+      "Intro meeting",
+    ]);
+
+    // Bad steps are rejected.
+    await http
+      .put(`/departments/${dept.id}/onboarding`)
+      .set(auth(owner.accessToken))
+      .send({ steps: [{ title: "X", assigneeKind: "nope" }] })
+      .expect(400);
+
+    // Adding a member runs the checklist: 2 tasks in the "Onboarding" list.
+    const joiner = await memberOf(owner.accessToken, owner.workspaceId, "member");
+    const added = await http
+      .post(`/departments/${dept.id}/members`)
+      .set(auth(owner.accessToken))
+      .send({ userId: joiner.userId, title: "Accountant" })
+      .expect(201);
+    expect(added.body.onboarding).toEqual({ created: 2 });
+
+    const tree = (
+      await http.get("/hierarchy").set(auth(owner.accessToken)).expect(200)
+    ).body.spaces as {
+      id: string;
+      lists: { id: string; name: string }[];
+    }[];
+    const deptSpace = tree.find((s) => s.id === dept.spaceId);
+    expect(deptSpace).toBeTruthy();
+    const onboardingList = deptSpace!.lists.find((l) => l.name === "Onboarding");
+    expect(onboardingList).toBeTruthy();
+    const tasks = (
+      await http
+        .get(`/lists/${onboardingList!.id}/tasks`)
+        .set(auth(owner.accessToken))
+        .expect(200)
+    ).body.tasks as {
+      name: string;
+      assignees: { id: string }[];
+      dueDate: string | null;
+    }[];
+    expect(tasks).toHaveLength(2);
+    const payroll = tasks.find((t) => t.name.startsWith("Set up payroll"));
+    const intro = tasks.find((t) => t.name.startsWith("Intro meeting"));
+    expect(payroll!.assignees.map((a) => a.id)).toEqual([joiner.userId]);
+    expect(intro!.assignees.map((a) => a.id)).toEqual([head.userId]);
+    expect(payroll!.dueDate).toBeTruthy();
+
+    // A department without a space skips task creation gracefully.
+    const bare = (
+      await http
+        .post("/departments")
+        .set(auth(owner.accessToken))
+        .send({ name: "No Space Dept" })
+        .expect(201)
+    ).body.department;
+    await http
+      .put(`/departments/${bare.id}/onboarding`)
+      .set(auth(owner.accessToken))
+      .send({ steps: [{ title: "Only step" }] })
+      .expect(200);
+    const bareAdd = await http
+      .post(`/departments/${bare.id}/members`)
+      .set(auth(owner.accessToken))
+      .send({ userId: joiner.userId })
+      .expect(201);
+    expect(bareAdd.body.onboarding).toEqual({ created: 0, skipped: "no_space" });
+  });
+
   it("designations edit through the members endpoint, incl. owner + self", async () => {
     const owner = await ownerWorkspace();
     const updated = await http

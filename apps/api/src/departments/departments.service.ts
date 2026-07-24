@@ -13,6 +13,8 @@ import {
 import { DbService } from "../db/db.service";
 import { AuditService } from "../audit/audit.service";
 import { EventsService } from "../events/events.service";
+import { HierarchyService } from "../hierarchy/hierarchy.service";
+import { TasksService } from "../tasks/tasks.service";
 import {
   WorkspacesService,
   normalizeTitle,
@@ -54,6 +56,25 @@ export interface DepartmentMemberOut {
 
 export interface DepartmentDetail extends DepartmentSummary {
   members: DepartmentMemberOut[];
+}
+
+export type OnboardingAssigneeKind = "new_member" | "head" | "specific";
+
+export interface OnboardingStep {
+  id: string;
+  title: string;
+  assigneeKind: OnboardingAssigneeKind;
+  assigneeUserId: string | null;
+  dueDays: number;
+  position: number;
+}
+
+/** What happened when onboarding ran for a newly added member. */
+export interface OnboardingResult {
+  /** Tasks created in the department's Onboarding list. */
+  created: number;
+  /** Why nothing was created, when applicable. */
+  skipped?: "no_steps" | "no_space";
 }
 
 function validDescription(v: unknown): string {
@@ -105,6 +126,8 @@ export class DepartmentsService {
     private readonly audit: AuditService,
     private readonly events: EventsService,
     private readonly workspaces: WorkspacesService,
+    private readonly hierarchy: HierarchyService,
+    private readonly tasks: TasksService,
   ) {}
 
   private publishChanged(workspaceId: string, departmentId: string): void {
@@ -471,6 +494,223 @@ export class DepartmentsService {
     this.publishChanged(workspaceId, id);
   }
 
+  // --- Onboarding checklists ---------------------------------------------
+
+  async getOnboarding(
+    workspaceId: string,
+    userId: string,
+    departmentId: string,
+  ): Promise<OnboardingStep[]> {
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await this.load(client, departmentId);
+      const res = await client.query(
+        `SELECT id, title, assignee_kind, assignee_user_id, due_days, position
+         FROM department_onboarding_steps
+         WHERE department_id = $1
+         ORDER BY position, created_at`,
+        [departmentId],
+      );
+      return res.rows.map((r) => ({
+        id: r.id as string,
+        title: r.title as string,
+        assigneeKind: r.assignee_kind as OnboardingAssigneeKind,
+        assigneeUserId: (r.assignee_user_id as string | null) ?? null,
+        dueDays: r.due_days as number,
+        position: r.position as number,
+      }));
+    });
+  }
+
+  /** Replace the department's onboarding checklist wholesale (admin). */
+  async setOnboarding(
+    workspaceId: string,
+    userId: string,
+    departmentId: string,
+    stepsIn: unknown,
+  ): Promise<OnboardingStep[]> {
+    if (!Array.isArray(stepsIn) || stepsIn.length > 50) {
+      throw new BadRequestException("steps must be an array of at most 50");
+    }
+    const steps = stepsIn.map((raw, i) => {
+      const s = (raw ?? {}) as Record<string, unknown>;
+      const title = requireName(s.title, "step title");
+      const kind = s.assigneeKind ?? "new_member";
+      if (kind !== "new_member" && kind !== "head" && kind !== "specific") {
+        throw new BadRequestException(
+          "assigneeKind must be 'new_member', 'head' or 'specific'",
+        );
+      }
+      const assigneeUserId =
+        kind === "specific"
+          ? requireUuid(s.assigneeUserId, "assigneeUserId")
+          : null;
+      const dueDays =
+        s.dueDays === undefined || s.dueDays === null ? 7 : Number(s.dueDays);
+      if (!Number.isInteger(dueDays) || dueDays < 0 || dueDays > 365) {
+        throw new BadRequestException("dueDays must be an integer 0–365");
+      }
+      return {
+        title,
+        assigneeKind: kind as OnboardingAssigneeKind,
+        assigneeUserId,
+        dueDays,
+        position: i,
+      };
+    });
+    const out = await this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await this.load(client, departmentId);
+      for (const s of steps) {
+        if (s.assigneeUserId) {
+          await this.assertMember(client, s.assigneeUserId, "assigneeUserId");
+        }
+      }
+      await client.query(
+        `DELETE FROM department_onboarding_steps WHERE department_id = $1`,
+        [departmentId],
+      );
+      const created: OnboardingStep[] = [];
+      for (const s of steps) {
+        const res = await client.query(
+          `INSERT INTO department_onboarding_steps
+             (workspace_id, department_id, title, assignee_kind, assignee_user_id, due_days, position)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [
+            workspaceId,
+            departmentId,
+            s.title,
+            s.assigneeKind,
+            s.assigneeUserId,
+            s.dueDays,
+            s.position,
+          ],
+        );
+        created.push({ id: res.rows[0].id as string, ...s });
+      }
+      await this.audit.record(client, {
+        workspaceId,
+        actorUserId: userId,
+        action: "department.onboarding_updated",
+        entity: "department",
+        entityId: departmentId,
+        data: { steps: steps.length },
+      });
+      return created;
+    });
+    this.publishChanged(workspaceId, departmentId);
+    return out;
+  }
+
+  /**
+   * Turn the department's onboarding checklist into real tasks for a newly
+   * added member: an "Onboarding" list in the department's home Space (found
+   * or created), one task per step, assigned per the step's rule and dated
+   * join-date + dueDays. Runs AFTER the roster insert commits — a task
+   * failure never undoes the membership; whatever was created is reported.
+   */
+  private async runOnboarding(
+    workspaceId: string,
+    actorUserId: string,
+    role: Role,
+    departmentId: string,
+    targetUserId: string,
+  ): Promise<OnboardingResult> {
+    const setup = await this.db.withWorkspace(
+      workspaceId,
+      actorUserId,
+      async (client) => {
+        const dept = await this.load(client, departmentId);
+        const steps = await client.query(
+          `SELECT title, assignee_kind, assignee_user_id, due_days
+           FROM department_onboarding_steps
+           WHERE department_id = $1
+           ORDER BY position, created_at`,
+          [departmentId],
+        );
+        const person = await client.query(
+          `SELECT full_name, email FROM users WHERE id = $1`,
+          [targetUserId],
+        );
+        let listId: string | null = null;
+        if (dept.space_id) {
+          const list = await client.query(
+            `SELECT id FROM lists
+             WHERE space_id = $1 AND folder_id IS NULL AND name = 'Onboarding'
+               AND archived = false
+             ORDER BY created_at LIMIT 1`,
+            [dept.space_id],
+          );
+          listId = (list.rows[0]?.id as string | undefined) ?? null;
+        }
+        return {
+          spaceId: dept.space_id,
+          leadUserId: dept.lead_user_id,
+          listId,
+          personName:
+            (person.rows[0]?.full_name as string | undefined) ||
+            (person.rows[0]?.email as string | undefined) ||
+            "New member",
+          steps: steps.rows as {
+            title: string;
+            assignee_kind: OnboardingAssigneeKind;
+            assignee_user_id: string | null;
+            due_days: number;
+          }[],
+        };
+      },
+    );
+
+    if (setup.steps.length === 0) return { created: 0, skipped: "no_steps" };
+    if (!setup.spaceId) return { created: 0, skipped: "no_space" };
+
+    let listId = setup.listId;
+    if (!listId) {
+      const list = await this.hierarchy.createList(
+        workspaceId,
+        actorUserId,
+        role,
+        setup.spaceId,
+        { name: "Onboarding" },
+      );
+      listId = list.id;
+    }
+
+    let created = 0;
+    for (const step of setup.steps) {
+      const assignee =
+        step.assignee_kind === "new_member"
+          ? targetUserId
+          : step.assignee_kind === "head"
+            ? (setup.leadUserId ?? targetUserId)
+            : step.assignee_user_id;
+      const due = new Date();
+      due.setDate(due.getDate() + step.due_days);
+      try {
+        await this.tasks.createTask(workspaceId, actorUserId, role, listId, {
+          name: `${step.title} — ${setup.personName}`,
+          assigneeIds: assignee ? [assignee] : [],
+          dueDate: due.toISOString().slice(0, 10),
+          description: `Onboarding step for ${setup.personName}.`,
+        });
+        created += 1;
+      } catch {
+        // A single bad step (e.g. assignee no longer a member) must not
+        // abort the rest of the checklist.
+      }
+    }
+    await this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
+      await this.audit.record(client, {
+        workspaceId,
+        actorUserId,
+        action: "department.onboarding_started",
+        entity: "department",
+        entityId: departmentId,
+        data: { targetUserId, created },
+      });
+    });
+    return { created };
+  }
+
   /**
    * Add someone to a department. Two paths:
    *  - `userId`: an existing workspace member joins the department.
@@ -483,6 +723,7 @@ export class DepartmentsService {
   async addMember(
     workspaceId: string,
     actorUserId: string,
+    actorRole: Role,
     departmentId: string,
     body: {
       userId?: string;
@@ -491,7 +732,7 @@ export class DepartmentsService {
       title?: string | null;
       deptRole?: string;
     },
-  ): Promise<DepartmentMemberOut> {
+  ): Promise<{ member: DepartmentMemberOut; onboarding: OnboardingResult }> {
     const deptRole = validDeptRole(body?.deptRole);
     const title = body?.title === undefined ? undefined : normalizeTitle(body.title);
 
@@ -593,8 +834,15 @@ export class DepartmentsService {
         };
       },
     );
+    const onboarding = await this.runOnboarding(
+      workspaceId,
+      actorUserId,
+      actorRole,
+      departmentId,
+      targetUserId,
+    );
     this.publishChanged(workspaceId, departmentId);
-    return out;
+    return { member: out, onboarding };
   }
 
   async updateMember(

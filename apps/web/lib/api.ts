@@ -109,6 +109,22 @@ export interface DepartmentRosterEntry {
   deptRole: DeptRole;
 }
 
+export type OnboardingAssigneeKind = "new_member" | "head" | "specific";
+
+export interface OnboardingStep {
+  id?: string;
+  title: string;
+  assigneeKind: OnboardingAssigneeKind;
+  assigneeUserId: string | null;
+  dueDays: number;
+  position?: number;
+}
+
+export interface OnboardingResult {
+  created: number;
+  skipped?: "no_steps" | "no_space";
+}
+
 export interface DepartmentMember {
   userId: string;
   fullName: string;
@@ -1344,9 +1360,18 @@ export const departmentsApi = {
       deptRole?: DeptRole;
     },
   ) =>
-    api<{ member: DepartmentMember }>(`/departments/${id}/members`, {
-      method: "POST",
-      body,
+    api<{ member: DepartmentMember; onboarding: OnboardingResult }>(
+      `/departments/${id}/members`,
+      { method: "POST", body, auth: "access" },
+    ),
+  getOnboarding: (id: string) =>
+    api<{ steps: OnboardingStep[] }>(`/departments/${id}/onboarding`, {
+      auth: "access",
+    }),
+  setOnboarding: (id: string, steps: OnboardingStep[]) =>
+    api<{ steps: OnboardingStep[] }>(`/departments/${id}/onboarding`, {
+      method: "PUT",
+      body: { steps },
       auth: "access",
     }),
   updateMember: (

@@ -8723,3 +8723,24 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   letter-spacing: 0.1em;
   color: var(--muted);
 }
+
+/* ---- Onboarding checklist editor (department modal) ---- */
+.hr-step-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.hr-step-title { flex: 1; min-width: 120px; }
+.hr-step-kind { width: 150px; flex: none; }
+.hr-step-days { width: 72px; flex: none; }
+.hr-step-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 560px) {
+  .hr-step-row { flex-wrap: wrap; }
+  .hr-step-kind { width: calc(50% - 26px); }
+}

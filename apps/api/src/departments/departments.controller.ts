@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -115,6 +116,37 @@ export class DepartmentsController {
     await this.departments.remove(req.workspaceId!, req.userId!, id);
   }
 
+  @Get(":id/onboarding")
+  async getOnboarding(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return {
+      steps: await this.departments.getOnboarding(
+        req.workspaceId!,
+        req.userId!,
+        id,
+      ),
+    };
+  }
+
+  @Put(":id/onboarding")
+  @Roles("admin")
+  async setOnboarding(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: { steps?: unknown },
+  ) {
+    return {
+      steps: await this.departments.setOnboarding(
+        req.workspaceId!,
+        req.userId!,
+        id,
+        body?.steps ?? [],
+      ),
+    };
+  }
+
   @Post(":id/members")
   @Roles("admin")
   async addMember(
@@ -129,14 +161,13 @@ export class DepartmentsController {
       deptRole?: string;
     },
   ) {
-    return {
-      member: await this.departments.addMember(
-        req.workspaceId!,
-        req.userId!,
-        id,
-        body ?? {},
-      ),
-    };
+    return this.departments.addMember(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+      id,
+      body ?? {},
+    );
   }
 
   @Patch(":id/members/:userId")
