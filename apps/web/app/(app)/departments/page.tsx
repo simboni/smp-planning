@@ -25,6 +25,7 @@ import {
   type DepartmentDetail,
   type DepartmentKind,
   type DepartmentMember,
+  type DepartmentRosterEntry,
   type Member,
   type OnboardingAssigneeKind,
   type OnboardingStep,
@@ -33,6 +34,7 @@ import {
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { Avatar } from "@/components/Avatar";
+import { OrgChart } from "@/components/OrgChart";
 import { showToast } from "@/lib/toast";
 
 const SWATCHES = [
@@ -1010,9 +1012,11 @@ function ManageDepartmentModal({
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[] | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [roster, setRoster] = useState<DepartmentRosterEntry[]>([]);
   const [role, setRole] = useState<WorkspaceRole | null>(
     () => getWorkspace()?.role ?? null,
   );
+  const [view, setView] = useState<"cards" | "chart">("cards");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [managingId, setManagingId] = useState<string | null>(null);
@@ -1031,6 +1035,10 @@ export default function DepartmentsPage() {
           err instanceof ApiError ? err.message : "Couldn't load departments.",
         ),
       );
+    departmentsApi
+      .roster()
+      .then((r) => setRoster(r.entries))
+      .catch(() => undefined);
     workspacesApi
       .members()
       .then((r) => setMembers(r.members))
@@ -1081,7 +1089,36 @@ export default function DepartmentsPage() {
         </div>
       )}
 
-      {departments === null ? (
+      <div className="chips oc-toggle" role="tablist" aria-label="View">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "cards"}
+          className={`chip${view === "cards" ? " active" : ""}`}
+          onClick={() => setView("cards")}
+        >
+          {Icons.dashboards} Cards
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "chart"}
+          className={`chip${view === "chart" ? " active" : ""}`}
+          onClick={() => setView("chart")}
+        >
+          {Icons.org} Org chart
+        </button>
+      </div>
+
+      {view === "chart" && departments !== null ? (
+        <OrgChart
+          workspaceName={getWorkspace()?.name ?? "Workspace"}
+          departments={departments}
+          members={members}
+          roster={roster}
+          onOpenDepartment={(id) => setManagingId(id)}
+        />
+      ) : departments === null ? (
         <div className="team-grid">
           {[0, 1, 2].map((i) => (
             <div key={i} className="card">
