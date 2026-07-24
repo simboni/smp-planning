@@ -40,6 +40,24 @@ type Mode = "ask" | "do" | "build" | "form";
 type Stage = "prompt" | "loading" | "preview" | "building" | "done";
 
 const NEW = "__new__";
+const DRAFT_KEY = "stackup.copilot.draft";
+
+/** Persist / restore the in-progress prompt so a stray refresh never loses it. */
+function loadDraft(): string {
+  try {
+    return localStorage.getItem(DRAFT_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+function saveDraft(text: string): void {
+  try {
+    if (text.trim()) localStorage.setItem(DRAFT_KEY, text);
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* private mode — ignore */
+  }
+}
 
 /** Editable destination for one target (or the form). */
 interface Dest {
@@ -179,7 +197,8 @@ export function BuildWithAi({
     if (open) {
       setMode("ask");
       setStage("prompt");
-      setPrompt("");
+      // Restore any instruction the user was mid-typing (survives a refresh).
+      setPrompt(loadDraft());
       setAnswer(null);
       setOpPlan(null);
       setOpOn([]);
@@ -193,6 +212,11 @@ export function BuildWithAi({
       setError(null);
     }
   }, [open]);
+
+  // Keep the draft persisted while the prompt is open so a refresh can't lose it.
+  useEffect(() => {
+    if (open && stage === "prompt") saveDraft(prompt);
+  }, [prompt, open, stage]);
 
   if (!open) return null;
 
@@ -210,6 +234,8 @@ export function BuildWithAi({
     if (!brief) return;
     setStage("loading");
     setError(null);
+    // The instruction has been submitted — it's safe to drop the saved draft.
+    saveDraft("");
     try {
       if (mode === "ask") {
         const r = await aiApi.ask(brief);

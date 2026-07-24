@@ -4,10 +4,29 @@ import { useEffect, useRef, useState } from "react";
 import { haptic } from "@/lib/native";
 import { Icons } from "@/components/icons";
 
-/** Pull distance (px, after damping) that arms a refresh on release. */
-const THRESHOLD = 72;
+/** Pull distance (px, after damping) that arms a refresh on release. A larger
+ *  threshold makes an accidental refresh far less likely. */
+const THRESHOLD = 96;
 /** Cap on how far the indicator travels. */
-const MAX_PULL = 118;
+const MAX_PULL = 130;
+
+/**
+ * Never refresh mid-work: skip the gesture while the user is typing (an input,
+ * textarea or rich editor is focused) or any dialog / overlay is open, so a
+ * stray scroll-up can't reload the page and wipe what they were doing.
+ */
+function refreshBlocked(): boolean {
+  const ae = document.activeElement as HTMLElement | null;
+  if (ae) {
+    const tag = ae.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || ae.isContentEditable) {
+      return true;
+    }
+  }
+  return !!document.querySelector(
+    '[role="dialog"], .aib-scrim, .palette-scrim, .fr-scrim, .sx-scrim, .sheet-scrim, .drawer-open',
+  );
+}
 
 /**
  * Native-app pull-to-refresh (M25). Active only inside the Capacitor shell
@@ -29,12 +48,14 @@ export function PullToRefresh() {
       (document.scrollingElement?.scrollTop ?? window.scrollY) <= 0;
 
     const onStart = (e: TouchEvent): void => {
-      startY.current = atTop() ? e.touches[0].clientY : null;
+      startY.current = atTop() && !refreshBlocked() ? e.touches[0].clientY : null;
     };
     const onMove = (e: TouchEvent): void => {
       if (startY.current === null || pullRef.current === 0) {
-        // Re-arm if the user reaches the top mid-gesture.
-        if (startY.current === null && atTop()) startY.current = e.touches[0].clientY;
+        // Re-arm if the user reaches the top mid-gesture (unless blocked).
+        if (startY.current === null && atTop() && !refreshBlocked()) {
+          startY.current = e.touches[0].clientY;
+        }
         if (startY.current === null) return;
       }
       const dy = e.touches[0].clientY - startY.current;

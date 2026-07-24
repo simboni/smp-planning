@@ -7877,6 +7877,11 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .aib {
   width: 100%;
   max-width: 620px;
+  /* Bounded flex column: header + scrolling body + pinned footer, so the
+     action button is always reachable even when the prompt is long. */
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -7884,6 +7889,7 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   overflow: hidden;
   animation: aib-pop 0.16s ease-out;
 }
+.aib-head { flex: 0 0 auto; }
 @keyframes aib-pop {
   from { transform: translateY(8px) scale(0.99); opacity: 0; }
   to { transform: none; opacity: 1; }
@@ -7914,7 +7920,18 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   color: #fff;
 }
 .aib-spark svg { width: 16px; height: 16px; }
-.aib-body { padding: 18px; }
+.aib-body {
+  padding: 18px 18px 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+/* Let the modal body be the single scroll region (no nested scrollbars). */
+.aib-preview,
+.do-ops,
+.aib-form-fields { max-height: none; }
 .aib-lead {
   margin: 0 0 12px;
   color: var(--muted);
@@ -7952,11 +7969,19 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   text-align: left;
 }
 .aib-chip:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+/* Pinned to the bottom of the modal — always reachable, even with a long
+   prompt or many actions to scroll through above it. */
 .aib-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 18px;
+  margin: 16px -18px 0;
+  padding: 14px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--card);
+  border-top: 1px solid var(--line-soft);
 }
 .aib-error {
   margin-top: 12px;
@@ -8150,7 +8175,8 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 
 @media (max-width: 620px) {
   .aib-scrim { padding: 0; }
-  .aib { max-width: 100%; min-height: 100%; border-radius: 0; border: none; }
+  /* Full-screen on phones: header pinned, body scrolls, footer stays put. */
+  .aib { max-width: 100%; height: 100%; max-height: 100%; border-radius: 0; border: none; }
   .aib-preview { max-height: none; }
   .btn-ai span { display: none; }
 }
@@ -8378,3 +8404,10 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .sx-body{margin:0 0 20px;color:var(--muted);font-size:.94rem;line-height:1.55;}
 .sx-actions{display:flex;gap:10px;justify-content:center;}
 .sx-actions .btn{min-width:120px;justify-content:center;}
+
+/* Native shell: suppress the WebView's own pull-to-refresh so only StackUp's
+   guarded gesture can trigger a reload (never a stray scroll while typing). */
+:root[data-app="native"],
+:root[data-app="native"] body {
+  overscroll-behavior-y: contain;
+}
