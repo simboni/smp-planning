@@ -163,6 +163,40 @@ describe("Copilot Do (operator)", () => {
     void space;
   });
 
+  it("moving a completed task to another space clears its completed state", async () => {
+    const { tok, space, task } = await setup();
+    // Complete the task in its original space.
+    const doneStatus = (
+      await http.get(`/spaces/${space}/statuses`).set(auth(tok)).expect(200)
+    ).body.statuses.find((s: { type: string }) => s.type === "done");
+    await http
+      .patch(`/tasks/${task}`)
+      .set(auth(tok))
+      .send({ statusId: doneStatus.id })
+      .expect(200);
+    expect((await getTask(tok, task)).completedAt).not.toBeNull();
+
+    const space2 = (
+      await http.post("/spaces").set(auth(tok)).send({ name: "Elsewhere" }).expect(201)
+    ).body.space.id as string;
+    const list2 = (
+      await http.post(`/spaces/${space2}/lists`).set(auth(tok)).send({ name: "Inbox" }).expect(201)
+    ).body.list.id as string;
+
+    await http
+      .post("/ai/do")
+      .set(auth(tok))
+      .send({
+        operations: [{ type: "move_task", summary: "Move it", taskId: task, targetListId: list2 }],
+      })
+      .expect(201);
+
+    const moved = await getTask(tok, task);
+    expect(moved.spaceId).toBe(space2);
+    expect(moved.status?.type).not.toBe("done"); // reset to the new space's default
+    expect(moved.completedAt).toBeNull(); // no longer "completed but open"
+  });
+
   it("move_list relocates a list into a folder in another space", async () => {
     const { tok, list, task } = await setup();
     const space2 = (

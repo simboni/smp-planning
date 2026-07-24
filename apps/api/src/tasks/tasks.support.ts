@@ -256,17 +256,23 @@ export async function remapTasksToSpace(
     }
   }
   const def = await client.query(
-    `SELECT id FROM statuses WHERE space_id = $1 ORDER BY position, created_at LIMIT 1`,
+    `SELECT id, type FROM statuses WHERE space_id = $1 ORDER BY position, created_at LIMIT 1`,
     [spaceId],
   );
   const defId = (def.rows[0]?.id as string | undefined) ?? null;
+  const defType = (def.rows[0]?.type as string | undefined) ?? null;
+  // Remap a foreign status to the destination's default. Keep completed_at
+  // consistent with the NEW status's type — a done task landing on a not-done
+  // default must not stay "completed", and vice-versa — so nothing ends up
+  // completed-but-open (or open-but-completed) after the move.
   await client.query(
-    `UPDATE tasks SET status_id = $1
+    `UPDATE tasks SET status_id = $1,
+            completed_at = CASE WHEN $4::text = 'done' THEN COALESCE(completed_at, now()) ELSE NULL END
        WHERE id = ANY($2) AND status_id IS NOT NULL
          AND NOT EXISTS (
            SELECT 1 FROM statuses s WHERE s.id = tasks.status_id AND s.space_id = $3
          )`,
-    [defId, taskIds, spaceId],
+    [defId, taskIds, spaceId, defType],
   );
   await client.query(
     `UPDATE tasks SET task_type_id = NULL
