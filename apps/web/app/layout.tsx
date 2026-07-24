@@ -3,8 +3,25 @@ import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
+  // Absolute base for social-card URLs. og:image MUST be absolute for
+  // WhatsApp/Facebook/Slack; the canonical host serves the image no matter
+  // which origin the page itself was loaded from.
+  metadataBase: new URL("https://www.stackup.co.ke"),
   title: "StackUp",
   description: "One app to plan, track, and get work done.",
+  openGraph: {
+    type: "website",
+    siteName: "StackUp",
+    title: "StackUp",
+    description: "One app to plan, track, and get work done.",
+    images: [{ url: "/og-share.png", width: 1200, height: 630, alt: "StackUp" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "StackUp",
+    description: "One app to plan, track, and get work done.",
+    images: ["/og-share.png"],
+  },
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "StackUp" },
   icons: {

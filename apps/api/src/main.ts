@@ -8,6 +8,7 @@ import { AppModule } from "./app.module";
 import { loadConfig } from "./config";
 import { autoMigrate } from "./db/migrator";
 import { SharesService } from "./shares/shares.service";
+import { FormsService } from "./forms/forms.service";
 
 /** Escape a string for safe inclusion in an HTML attribute. */
 function htmlAttr(s: string): string {
@@ -28,54 +29,58 @@ const SHARE_TYPE_LABEL: Record<string, string> = {
 };
 
 /**
- * Serve the /s share page with Open Graph / Twitter meta injected, so a shared
- * link unfurls into a rich card in Slack / WhatsApp / iMessage / etc. Falls
- * back to the plain page on any error or unknown token.
+ * Link-preview crawlers do NOT send `Accept: text/html` — WhatsApp, Facebook,
+ * Slack and friends send a wildcard Accept or none at all — so Accept-based
+ * navigation detection alone routes every crawler to the JSON API 404 and no
+ * link ever unfurls. Any of these user agents is treated as a page request.
  */
-async function injectShareMeta(
+const PREVIEW_BOT_RE =
+  /whatsapp|facebookexternalhit|facebot|meta-externalagent|twitterbot|slackbot|linkedinbot|telegrambot|discordbot|skypeuripreview|pinterest|redditbot|googlebot|bingbot|applebot|embedly|quora link preview|vkshare|viber/i;
+
+type PreviewMeta = { title: string; desc: string };
+
+/**
+ * Serve a public page (`/s` share, `/f` form) with Open Graph / Twitter meta
+ * injected so the link unfurls into a rich card in WhatsApp / Slack / iMessage
+ * / etc. The exported HTML already carries generic site-wide OG tags; those
+ * are stripped and replaced because crawlers honor the FIRST occurrence.
+ * Falls back to sending the plain file on any error.
+ */
+function servePageWithMeta(
   root: string,
-  shares: SharesService | null,
-  token: string,
+  page: string,
+  meta: PreviewMeta,
   origin: string,
+  pageUrl: string,
   res: Response,
   next: NextFunction,
-): Promise<void> {
-  const file = ["/s.html", "/s/index.html"]
+): void {
+  const file = [`/${page}.html`, `/${page}/index.html`]
     .map((c) => resolve(root, `.${c}`))
     .find((f) => f.startsWith(root) && existsSync(f));
   if (!file) return next();
   try {
-    let meta: Awaited<ReturnType<SharesService["resolveMeta"]>> = null;
-    try {
-      meta = shares ? await shares.resolveMeta(token) : null;
-    } catch {
-      meta = null;
-    }
-    let html = readFileSync(file, "utf8");
-    if (meta) {
-      const label = SHARE_TYPE_LABEL[meta.entityType] ?? "Shared";
-      const title = `${meta.title} · StackUp`;
-      const desc = `${label} shared from ${meta.workspaceName} on StackUp — open to view it, no account needed.`;
-      const image = `${origin}/og-share.png`;
-      const pageUrl = `${origin}/s?t=${encodeURIComponent(token)}`;
-      const tags = [
-        `<meta property="og:title" content="${htmlAttr(title)}">`,
-        `<meta property="og:description" content="${htmlAttr(desc)}">`,
-        `<meta property="og:type" content="website">`,
-        `<meta property="og:site_name" content="StackUp">`,
-        `<meta property="og:url" content="${htmlAttr(pageUrl)}">`,
-        `<meta property="og:image" content="${htmlAttr(image)}">`,
-        `<meta property="og:image:width" content="1200">`,
-        `<meta property="og:image:height" content="630">`,
-        `<meta property="og:image:alt" content="Shared on StackUp">`,
-        `<meta name="twitter:card" content="summary_large_image">`,
-        `<meta name="twitter:title" content="${htmlAttr(title)}">`,
-        `<meta name="twitter:description" content="${htmlAttr(desc)}">`,
-        `<meta name="twitter:image" content="${htmlAttr(image)}">`,
-        `<title>${htmlAttr(title)}</title>`,
-      ].join("");
-      html = html.replace("</head>", `${tags}</head>`);
-    }
+    const image = `${origin}/og-share.png`;
+    const tags = [
+      `<meta property="og:title" content="${htmlAttr(meta.title)}">`,
+      `<meta property="og:description" content="${htmlAttr(meta.desc)}">`,
+      `<meta property="og:type" content="website">`,
+      `<meta property="og:site_name" content="StackUp">`,
+      `<meta property="og:url" content="${htmlAttr(pageUrl)}">`,
+      `<meta property="og:image" content="${htmlAttr(image)}">`,
+      `<meta property="og:image:width" content="1200">`,
+      `<meta property="og:image:height" content="630">`,
+      `<meta property="og:image:alt" content="Shared on StackUp">`,
+      `<meta name="twitter:card" content="summary_large_image">`,
+      `<meta name="twitter:title" content="${htmlAttr(meta.title)}">`,
+      `<meta name="twitter:description" content="${htmlAttr(meta.desc)}">`,
+      `<meta name="twitter:image" content="${htmlAttr(image)}">`,
+      `<title>${htmlAttr(meta.title)}</title>`,
+    ].join("");
+    const html = readFileSync(file, "utf8")
+      .replace(/<title>[\s\S]*?<\/title>/, "")
+      .replace(/<meta\s+(?:property="og:|name="twitter:)[^>]*\/?>/g, "")
+      .replace("</head>", `${tags}</head>`);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   } catch {
@@ -155,34 +160,77 @@ async function bootstrap(): Promise<void> {
   //   1. express.static serves real asset files only (/_next/*, .css, .js,
   //      images, manifest) — these never collide with API routes.
   //   2. A navigation handler serves an exported <path>.html ONLY for browser
-  //      navigations, detected by `Accept: text/html`. API calls use fetch,
-  //      whose default Accept is */* (no text/html), so they fall through to
-  //      the Nest router below and get JSON. SSE (text/event-stream) too.
+  //      navigations, detected by `Accept: text/html` OR a link-preview
+  //      crawler user agent (WhatsApp etc. send a wildcard Accept). API calls
+  //      use fetch, whose default Accept is */* (no text/html), so they fall
+  //      through to the Nest router below and get JSON. SSE too.
   const webDir = process.env.WEB_DIST ?? join(__dirname, "..", "web");
   if (existsSync(webDir)) {
     const root = resolve(webDir);
     const sharesService = app.get(SharesService, { strict: false });
+    const formsService = app.get(FormsService, { strict: false });
     // redirect:false so /settings isn't 301'd to /settings/ before we can map it.
     app.use(express.static(root, { index: false, redirect: false }));
     app.use((req: Request, res: Response, next: NextFunction) => {
       if (req.method !== "GET") return next();
-      if (!(req.headers.accept ?? "").includes("text/html")) return next();
+      const accept = req.headers.accept ?? "";
+      const ua = req.headers["user-agent"] ?? "";
+      if (!accept.includes("text/html") && !PREVIEW_BOT_RE.test(ua)) return next();
       // An asset path (has an extension) that wasn't found above is a real 404.
       if (extname(req.path)) return next();
       const p = req.path.replace(/\/+$/, "") || "/index";
 
-      // Social-preview cards: for a public share page (/s?t=<token>), inject
-      // Open Graph / Twitter meta so links unfurl with a title in chat apps.
-      // Crawlers don't run JS, so the client-rendered page can't do this.
-      const token =
-        p === "/s" && typeof req.query.t === "string" ? req.query.t : "";
-      if (token) {
+      // Social-preview cards: public share (/s?t=<token>) and public form
+      // (/f?token=<token>) links must unfurl into a rich card in chat apps.
+      // Crawlers don't run JS, so the client-rendered pages can't do this —
+      // inject the meta server-side. A token that doesn't resolve still gets
+      // the generic StackUp card: a public link must never unfurl as nothing.
+      if (p === "/s" || p === "/f") {
         const host = req.get("host") ?? "";
         const proto =
           (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0] ||
           (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
         const origin = `${proto}://${host}`;
-        void injectShareMeta(root, sharesService, token, origin, res, next);
+        const shareToken =
+          p === "/s" && typeof req.query.t === "string" ? req.query.t : "";
+        const formToken =
+          p === "/f" && typeof req.query.token === "string" ? req.query.token : "";
+        void (async () => {
+          let meta: PreviewMeta =
+            p === "/s"
+              ? {
+                  title: "Shared with you · StackUp",
+                  desc: "Open the link to view it — no account needed.",
+                }
+              : {
+                  title: "Form · StackUp",
+                  desc: "Fill out this form — no account needed.",
+                };
+          let pageUrl = `${origin}${p}`;
+          try {
+            if (shareToken && sharesService) {
+              pageUrl = `${origin}/s?t=${encodeURIComponent(shareToken)}`;
+              const m = await sharesService.resolveMeta(shareToken);
+              if (m) {
+                const label = SHARE_TYPE_LABEL[m.entityType] ?? "Shared";
+                meta = {
+                  title: `${m.title} · StackUp`,
+                  desc: `${label} shared from ${m.workspaceName} on StackUp — open to view it, no account needed.`,
+                };
+              }
+            } else if (formToken && formsService) {
+              pageUrl = `${origin}/f?token=${encodeURIComponent(formToken)}`;
+              const f = await formsService.getPublicForm(formToken);
+              meta = {
+                title: `${f.name} · StackUp`,
+                desc: f.description || "Fill out this form — no account needed.",
+              };
+            }
+          } catch {
+            // Unknown/revoked/inactive token — keep the generic card.
+          }
+          servePageWithMeta(root, p.slice(1), meta, origin, pageUrl, res, next);
+        })();
         return;
       }
 
