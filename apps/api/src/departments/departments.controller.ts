@@ -48,6 +48,7 @@ export class DepartmentsController {
       name?: string;
       description?: string;
       color?: string;
+      kind?: string;
       leadUserId?: string | null;
       createSpace?: boolean;
     },
@@ -58,6 +59,14 @@ export class DepartmentsController {
         req.userId!,
         body ?? {},
       ),
+    };
+  }
+
+  // NOTE: must precede ":id" so "roster" isn't parsed as a UUID param.
+  @Get("roster")
+  async roster(@Req() req: AuthedRequest) {
+    return {
+      entries: await this.departments.roster(req.workspaceId!, req.userId!),
     };
   }
 
@@ -81,6 +90,7 @@ export class DepartmentsController {
       name?: string;
       description?: string;
       color?: string;
+      kind?: string;
       leadUserId?: string | null;
       spaceId?: string | null;
     },

@@ -4,6 +4,43 @@
 export const ROLES = ["owner", "admin", "member", "guest"] as const;
 export type Role = (typeof ROLES)[number];
 
+/**
+ * Department kinds (HR module): the standard org units of a company. The
+ * kind gives a department semantics — presets at creation, and a stable
+ * handle for later automation (route leave requests to HR, invoices to
+ * Accounting). 'general' is the untyped default.
+ */
+export const DEPARTMENT_KINDS = [
+  "general",
+  "accounting",
+  "operations",
+  "hr",
+  "sales",
+  "marketing",
+  "it",
+  "procurement",
+  "legal",
+  "customer_service",
+  "production",
+  "rnd",
+] as const;
+export type DepartmentKind = (typeof DEPARTMENT_KINDS)[number];
+
+export const DEPARTMENT_KIND_LABEL: Record<DepartmentKind, string> = {
+  general: "General",
+  accounting: "Accounting & Finance",
+  operations: "Operations",
+  hr: "Human Resources",
+  sales: "Sales",
+  marketing: "Marketing",
+  it: "IT & Engineering",
+  procurement: "Procurement & Supplies",
+  legal: "Legal & Compliance",
+  customer_service: "Customer Service",
+  production: "Production",
+  rnd: "Research & Development",
+};
+
 /** Claims carried by the workspace-scoped access token. */
 export interface WorkspaceTokenClaims {
   /** user id */

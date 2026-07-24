@@ -59,15 +59,54 @@ export interface Member {
  * ------------------------------------------------------------------ */
 export type DeptRole = "head" | "member";
 
+/** Department kinds — mirror @stackup/shared DEPARTMENT_KINDS exactly. */
+export const DEPARTMENT_KINDS = [
+  "general",
+  "accounting",
+  "operations",
+  "hr",
+  "sales",
+  "marketing",
+  "it",
+  "procurement",
+  "legal",
+  "customer_service",
+  "production",
+  "rnd",
+] as const;
+export type DepartmentKind = (typeof DEPARTMENT_KINDS)[number];
+
+export const DEPARTMENT_KIND_LABEL: Record<DepartmentKind, string> = {
+  general: "General",
+  accounting: "Accounting & Finance",
+  operations: "Operations",
+  hr: "Human Resources",
+  sales: "Sales",
+  marketing: "Marketing",
+  it: "IT & Engineering",
+  procurement: "Procurement & Supplies",
+  legal: "Legal & Compliance",
+  customer_service: "Customer Service",
+  production: "Production",
+  rnd: "Research & Development",
+};
+
 export interface Department {
   id: string;
   name: string;
   description: string;
   color: string;
+  kind: DepartmentKind;
   lead: { id: string; fullName: string; avatarUrl: string | null } | null;
   spaceId: string | null;
   spaceName: string | null;
   memberCount: number;
+}
+
+export interface DepartmentRosterEntry {
+  departmentId: string;
+  userId: string;
+  deptRole: DeptRole;
 }
 
 export interface DepartmentMember {
@@ -1255,6 +1294,10 @@ export const teamsApi = {
  * ------------------------------------------------------------------ */
 export const departmentsApi = {
   list: () => api<{ departments: Department[] }>("/departments", { auth: "access" }),
+  roster: () =>
+    api<{ entries: DepartmentRosterEntry[] }>("/departments/roster", {
+      auth: "access",
+    }),
   get: (id: string) =>
     api<{ department: DepartmentDetail }>(`/departments/${id}`, {
       auth: "access",
@@ -1263,6 +1306,7 @@ export const departmentsApi = {
     name: string;
     description?: string;
     color?: string;
+    kind?: DepartmentKind;
     leadUserId?: string | null;
     createSpace?: boolean;
   }) =>
@@ -1277,6 +1321,7 @@ export const departmentsApi = {
       name?: string;
       description?: string;
       color?: string;
+      kind?: DepartmentKind;
       leadUserId?: string | null;
       spaceId?: string | null;
     },

@@ -5,7 +5,11 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
-import type { Role } from "@stackup/shared";
+import {
+  DEPARTMENT_KINDS,
+  type DepartmentKind,
+  type Role,
+} from "@stackup/shared";
 import { DbService } from "../db/db.service";
 import { AuditService } from "../audit/audit.service";
 import { EventsService } from "../events/events.service";
@@ -30,6 +34,7 @@ export interface DepartmentSummary {
   name: string;
   description: string;
   color: string;
+  kind: DepartmentKind;
   lead: DepartmentLead | null;
   spaceId: string | null;
   spaceName: string | null;
@@ -69,6 +74,19 @@ function validDeptRole(v: unknown): DeptRole {
     throw new BadRequestException("deptRole must be 'head' or 'member'");
   }
   return v;
+}
+
+function validKind(v: unknown): DepartmentKind {
+  if (v === undefined || v === null) return "general";
+  if (
+    typeof v !== "string" ||
+    !(DEPARTMENT_KINDS as readonly string[]).includes(v)
+  ) {
+    throw new BadRequestException(
+      `kind must be one of: ${DEPARTMENT_KINDS.join(", ")}`,
+    );
+  }
+  return v as DepartmentKind;
 }
 
 /**
@@ -134,7 +152,7 @@ export class DepartmentsService {
 
   private summaryQuery(where: string): string {
     return `
-      SELECT d.id, d.name, d.description, d.color, d.space_id,
+      SELECT d.id, d.name, d.description, d.color, d.kind, d.space_id,
              s.name AS space_name,
              l.id AS lead_id, l.full_name AS lead_name, l.avatar_url AS lead_avatar,
              (SELECT COUNT(*)::int FROM department_members dm
@@ -152,6 +170,7 @@ export class DepartmentsService {
       name: r.name as string,
       description: r.description as string,
       color: r.color as string,
+      kind: (r.kind as DepartmentKind) ?? "general",
       lead: r.lead_id
         ? {
             id: r.lead_id as string,
@@ -169,6 +188,27 @@ export class DepartmentsService {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       const res = await client.query(this.summaryQuery(""));
       return res.rows.map((r) => this.toSummary(r));
+    });
+  }
+
+  /**
+   * The whole workspace's department roster in one query — who belongs to
+   * which department — so the HR directory can join people to departments
+   * client-side without N detail calls.
+   */
+  async roster(
+    workspaceId: string,
+    userId: string,
+  ): Promise<{ departmentId: string; userId: string; deptRole: DeptRole }[]> {
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const res = await client.query(
+        `SELECT department_id, user_id, dept_role FROM department_members`,
+      );
+      return res.rows.map((r) => ({
+        departmentId: r.department_id as string,
+        userId: r.user_id as string,
+        deptRole: r.dept_role as DeptRole,
+      }));
     });
   }
 
@@ -213,12 +253,14 @@ export class DepartmentsService {
       name?: string;
       description?: string;
       color?: string;
+      kind?: string;
       leadUserId?: string | null;
       createSpace?: boolean;
     },
   ): Promise<DepartmentSummary> {
     const name = requireName(body?.name);
     const description = validDescription(body?.description);
+    const kind = validKind(body?.kind);
     const color =
       body?.color === undefined || body.color === null
         ? DEFAULT_COLOR
@@ -237,10 +279,10 @@ export class DepartmentsService {
       try {
         res = await client.query(
           `INSERT INTO departments
-             (workspace_id, name, description, color, lead_user_id, sort_order, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (workspace_id, name, description, color, kind, lead_user_id, sort_order, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id`,
-          [workspaceId, name, description, color, leadUserId, pos.rows[0].n as number, userId],
+          [workspaceId, name, description, color, kind, leadUserId, pos.rows[0].n as number, userId],
         );
       } catch (e) {
         if ((e as { code?: string }).code === "23505") {
@@ -311,6 +353,7 @@ export class DepartmentsService {
       name?: string;
       description?: string;
       color?: string;
+      kind?: string;
       leadUserId?: string | null;
       spaceId?: string | null;
     },
@@ -323,6 +366,10 @@ export class DepartmentsService {
       if (body.name !== undefined) {
         params.push(requireName(body.name));
         sets.push(`name = $${params.length}`);
+      }
+      if (body.kind !== undefined) {
+        params.push(validKind(body.kind));
+        sets.push(`kind = $${params.length}`);
       }
       if (body.description !== undefined) {
         params.push(validDescription(body.description));

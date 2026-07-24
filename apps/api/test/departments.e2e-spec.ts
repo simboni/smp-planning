@@ -102,15 +102,45 @@ describe("departments (HR module)", () => {
       .send({
         name: "Finance",
         description: "Money things",
+        kind: "accounting",
         leadUserId: member.userId,
         createSpace: true,
       })
       .expect(201);
     const dept = created.body.department;
     expect(dept.name).toBe("Finance");
+    expect(dept.kind).toBe("accounting");
     expect(dept.lead.id).toBe(member.userId);
     expect(dept.spaceId).toBeTruthy();
     expect(dept.spaceName).toBe("Finance");
+
+    // Kinds are validated; an unknown kind is a 400, and the default is
+    // 'general'.
+    await http
+      .post("/departments")
+      .set(auth(owner.accessToken))
+      .send({ name: "Bad", kind: "warp-drive" })
+      .expect(400);
+    const plain = (
+      await http
+        .post("/departments")
+        .set(auth(owner.accessToken))
+        .send({ name: "Untyped" })
+        .expect(201)
+    ).body.department;
+    expect(plain.kind).toBe("general");
+    await http
+      .patch(`/departments/${plain.id}`)
+      .set(auth(owner.accessToken))
+      .send({ kind: "operations" })
+      .expect(200);
+    const retyped = (
+      await http
+        .get(`/departments/${plain.id}`)
+        .set(auth(owner.accessToken))
+        .expect(200)
+    ).body.department;
+    expect(retyped.kind).toBe("operations");
 
     // Duplicate names conflict.
     await http
@@ -124,7 +154,10 @@ describe("departments (HR module)", () => {
       .get("/departments")
       .set(auth(member.accessToken))
       .expect(200);
-    expect(listed.body.departments).toHaveLength(1);
+    expect(listed.body.departments).toHaveLength(2); // Finance + Untyped
+    expect(
+      listed.body.departments.map((d: { kind: string }) => d.kind).sort(),
+    ).toEqual(["accounting", "operations"]);
   });
 
   it("roster: add existing members with designations, head role, remove", async () => {

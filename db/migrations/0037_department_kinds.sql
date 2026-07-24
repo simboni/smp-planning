@@ -1,0 +1,11 @@
+-- 0037: Department kinds (HR module — departments get characteristics).
+--
+-- A department is now typed: Accounting & Finance, Operations, Human
+-- Resources, Sales, Marketing, IT & Engineering, Procurement, Legal &
+-- Compliance, Customer Service, Production, R&D — or 'general'. The kind
+-- drives presets in the create flow (name, color, description) and gives the
+-- app a semantic handle for later automation (e.g. route a leave request to
+-- the HR department, an invoice task to Accounting). Stored as plain text —
+-- the allowed list lives in @stackup/shared so adding a kind is a code
+-- change, not a schema change.
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'general';

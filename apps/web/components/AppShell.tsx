@@ -69,32 +69,65 @@ function isNavActive(item: NavItem, pathname: string): boolean {
     (item.href === "/forms" && pathname === "/form-builder") ||
     (item.href === "/goals" && pathname === "/goal") ||
     (item.href === "/portfolios" && pathname === "/portfolio") ||
-    (item.href === "/dashboards" && pathname === "/dashboard-view")
+    (item.href === "/dashboards" && pathname === "/dashboard-view") ||
+    (item.href === "/people" &&
+      (pathname === "/members" || pathname === "/teams"))
   );
 }
 
 // Tabs pinned to the native bottom bar; the rest lives in the Menu sheet.
 const NATIVE_TAB_HREFS = ["/dashboard", "/my-work", "/inbox"];
 
-const PRIMARY_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/my-work", label: "My Work", icon: "checkCircle" },
-  { href: "/inbox", label: "Inbox", icon: "inbox" },
-  { href: "/templates", label: "Templates", icon: "copy" },
-  { href: "/dashboards", label: "Dashboards", icon: "dashboards" },
-  { href: "/chat", label: "Chat", icon: "chat" },
-  { href: "/timesheet", label: "Timesheet", icon: "clock" },
-  { href: "/workload", label: "Workload", icon: "workload" },
-  { href: "/docs", label: "Docs", icon: "docs" },
-  { href: "/whiteboards", label: "Whiteboards", icon: "whiteboard" },
-  { href: "/forms", label: "Forms", icon: "clipboard" },
-  { href: "/goals", label: "Goals", icon: "goals" },
-  { href: "/portfolios", label: "Portfolios", icon: "briefcase" },
-  { href: "/hr", label: "HR", icon: "org" },
-  { href: "/members", label: "Members", icon: "members" },
-  { href: "/teams", label: "Teams", icon: "team" },
-  { href: "/settings", label: "Settings", icon: "settings" },
+/**
+ * The sidebar, organized into functional bundles with headings. The native
+ * bottom tab bar indexes the FLAT list positionally (PRIMARY_NAV[0..2] must
+ * stay Home / My Work / Inbox), so the "Workspace" section must remain first
+ * with those three leading.
+ */
+const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Workspace",
+    items: [
+      { href: "/dashboard", label: "Home", icon: "home" },
+      { href: "/my-work", label: "My Work", icon: "checkCircle" },
+      { href: "/inbox", label: "Inbox", icon: "inbox" },
+      { href: "/chat", label: "Chat", icon: "chat" },
+    ],
+  },
+  {
+    title: "Organization",
+    items: [
+      { href: "/departments", label: "Departments", icon: "org" },
+      { href: "/hr", label: "HR", icon: "members" },
+      { href: "/people", label: "People", icon: "team" },
+    ],
+  },
+  {
+    title: "Plan & Track",
+    items: [
+      { href: "/dashboards", label: "Dashboards", icon: "dashboards" },
+      { href: "/goals", label: "Goals", icon: "goals" },
+      { href: "/portfolios", label: "Portfolios", icon: "briefcase" },
+      { href: "/workload", label: "Workload", icon: "workload" },
+      { href: "/timesheet", label: "Timesheet", icon: "clock" },
+    ],
+  },
+  {
+    title: "Create & Share",
+    items: [
+      { href: "/docs", label: "Docs", icon: "docs" },
+      { href: "/whiteboards", label: "Whiteboards", icon: "whiteboard" },
+      { href: "/forms", label: "Forms", icon: "clipboard" },
+      { href: "/templates", label: "Templates", icon: "copy" },
+    ],
+  },
+  {
+    title: "Admin",
+    items: [{ href: "/settings", label: "Settings", icon: "settings" }],
+  },
 ];
+
+const PRIMARY_NAV: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -505,27 +538,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav>
-          <div className="nav-section">
-            {PRIMARY_NAV.map((item) => {
-              const active = isNavActive(item, pathname);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`navlink${active ? " active" : ""}`}
-                >
-                  {Icons[item.icon]}
-                  {item.label}
-                  {item.href === "/inbox" && unreadCount > 0 && (
-                    <span className="nav-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
-                  )}
-                  {item.href === "/chat" && chatUnread > 0 && (
-                    <span className="nav-badge">{chatUnread > 99 ? "99+" : chatUnread}</span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.title} className="nav-section">
+              <div className="nav-title">{section.title}</div>
+              {section.items.map((item) => {
+                const active = isNavActive(item, pathname);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`navlink${active ? " active" : ""}`}
+                  >
+                    {Icons[item.icon]}
+                    {item.label}
+                    {item.href === "/inbox" && unreadCount > 0 && (
+                      <span className="nav-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                    )}
+                    {item.href === "/chat" && chatUnread > 0 && (
+                      <span className="nav-badge">{chatUnread > 99 ? "99+" : chatUnread}</span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
 
           <Suspense fallback={null}>
             <FavoritesNav />
@@ -663,7 +699,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span>Copilot</span>
             </button>
 
-            <Link href="/members" className="btn btn-primary btn-sm">
+            <Link href="/people" className="btn btn-primary btn-sm">
               {Icons.invite}
               <span>Invite</span>
             </Link>
@@ -833,24 +869,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             <div className="app-sheet-list">
-              {PRIMARY_NAV.filter((i) => !NATIVE_TAB_HREFS.includes(i.href)).map(
-                (item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`app-sheet-link${isNavActive(item, pathname) ? " active" : ""}`}
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    {Icons[item.icon]}
-                    {item.label}
-                    {item.href === "/chat" && chatUnread > 0 && (
-                      <span className="nav-badge">
-                        {chatUnread > 99 ? "99+" : chatUnread}
-                      </span>
-                    )}
-                  </Link>
-                ),
-              )}
+              {NAV_SECTIONS.map((section) => {
+                // Pinned tabs live in the bottom bar; Settings has its own
+                // dedicated entry below alongside theme/sign-out.
+                const items = section.items.filter(
+                  (i) =>
+                    !NATIVE_TAB_HREFS.includes(i.href) && i.href !== "/settings",
+                );
+                if (items.length === 0) return null;
+                return (
+                  <div key={section.title} className="app-sheet-section">
+                    <div className="app-sheet-heading">{section.title}</div>
+                    {items.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`app-sheet-link${isNavActive(item, pathname) ? " active" : ""}`}
+                        onClick={() => setSheetOpen(false)}
+                      >
+                        {Icons[item.icon]}
+                        {item.label}
+                        {item.href === "/chat" && chatUnread > 0 && (
+                          <span className="nav-badge">
+                            {chatUnread > 99 ? "99+" : chatUnread}
+                          </span>
+                        )}
+                      </Link>
+                    ))}
+                  </div>
+                );
+              })}
               <button
                 type="button"
                 className="app-sheet-link"
