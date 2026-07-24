@@ -81,7 +81,7 @@ export function NewFormModal({
   };
 
   return (
-    <div className="sx-scrim" onClick={onClose}>
+    <div className="sx-scrim nf-scrim" onClick={onClose}>
       <div
         className="nf"
         role="dialog"
