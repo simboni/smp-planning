@@ -3573,6 +3573,7 @@ export interface AiPlanTask {
   priority?: "urgent" | "high" | "normal" | "low";
   dueInDays?: number;
   assigneeIds?: string[];
+  recurrence?: { freq: "daily" | "weekly" | "monthly"; interval: number; mode: "on_complete" };
 }
 export interface AiPlanDoc {
   name: string;

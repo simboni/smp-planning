@@ -8174,6 +8174,12 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .aib-pri-normal { color: var(--brand-700); background: var(--brand-soft); }
 .aib-pri-low { color: var(--muted); background: var(--card); }
 .aib-due { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+.aib-recur {
+  display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+  font-size: 0.68rem; font-weight: 600; color: var(--brand-700);
+  background: var(--brand-soft); border-radius: 5px; padding: 1px 6px;
+}
+.aib-recur svg { width: 11px; height: 11px; }
 .aib-empty { color: var(--muted); text-align: center; padding: 24px; }
 
 /* Done */
@@ -8411,6 +8417,8 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   box-shadow: var(--shadow-3); padding: 5px; min-width: 170px; max-height: 220px;
   overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
 }
+/* Portaled to <body> at fixed coords → never clipped by the modal's scroll. */
+.aib-assign-menu-portal { position: fixed; right: auto; z-index: 2200; }
 .aib-assign-item {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   border: 0; background: none; cursor: pointer; padding: 6px 8px; border-radius: 7px;

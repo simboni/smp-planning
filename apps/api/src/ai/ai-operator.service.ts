@@ -420,7 +420,12 @@ function buildPrompt(
   snapshot: WorkspaceSnapshot,
   channels: { id: string; name: string }[],
 ): string {
-  const parts: string[] = [`Command: ${command}`, ""];
+  const now = new Date();
+  const parts: string[] = [
+    `Today's date is ${now.toISOString().slice(0, 10)} (${now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })}, UTC). Use it for any relative dates.`,
+    `Command: ${command}`,
+    "",
+  ];
 
   parts.push("Tasks (use taskId):");
   for (const t of snapshot.tasks) {

@@ -15,7 +15,8 @@
  * editable (retarget destinations, drop items).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Icons } from "@/components/icons";
 import { useHierarchy } from "@/components/HierarchyProvider";
@@ -1145,6 +1146,14 @@ function TargetCard({
               {typeof t.dueInDays === "number" && (
                 <span className="aib-due">{t.dueInDays === 0 ? "today" : `${t.dueInDays}d`}</span>
               )}
+              {t.recurrence && (
+                <span className="aib-recur" title="Repeats when completed">
+                  {Icons.repeat}
+                  {t.recurrence.interval > 1
+                    ? `every ${t.recurrence.interval} ${t.recurrence.freq === "daily" ? "days" : t.recurrence.freq === "weekly" ? "weeks" : "months"}`
+                    : t.recurrence.freq}
+                </span>
+              )}
               {context.members.length > 0 && (
                 <TaskAssignees
                   members={context.members}
@@ -1191,7 +1200,53 @@ function TaskAssignees({
   onChange: (ids: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // The menu is rendered in a portal at fixed coords so it can never be
+  // clipped by the modal's scrolling body (which is the reason the picker
+  // "disappeared down" on lower tasks). It also flips above the button when
+  // there isn't room below.
+  const [coords, setCoords] = useState<{ top: number; left: number; up: boolean } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const available = members.filter((m) => !ids.includes(m.id));
+
+  const toggle = (): void => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) {
+      const below = window.innerHeight - r.bottom;
+      const up = below < 250 && r.top > below;
+      setCoords({ top: up ? r.top - 4 : r.bottom + 4, left: r.right, up });
+    }
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (): void => setOpen(false);
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t)) return;
+      if (document.querySelector(".aib-assign-menu-portal")?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    // Any scroll shifts the anchor, so just close rather than re-track.
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
     <span className="aib-assign">
       {ids.map((id) => (
@@ -1207,34 +1262,46 @@ function TaskAssignees({
       ))}
       <span className="aib-assign-add-wrap">
         <button
+          ref={btnRef}
           type="button"
           className="aib-assign-add"
           title="Assign teammate"
-          onClick={() => setOpen((v) => !v)}
+          onClick={toggle}
         >
           {Icons.plus}
         </button>
-        {open && (
-          <span className="aib-assign-menu" onMouseLeave={() => setOpen(false)}>
-            {available.length === 0 && (
-              <span className="aib-assign-empty muted">Everyone assigned</span>
-            )}
-            {available.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                className="aib-assign-item"
-                onClick={() => {
-                  onChange([...ids, m.id]);
-                  setOpen(false);
-                }}
-              >
-                <span className="aib-av aib-av-sm">{initials(m.name)}</span>
-                {m.name}
-              </button>
-            ))}
-          </span>
-        )}
+        {open &&
+          coords &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              className="aib-assign-menu aib-assign-menu-portal"
+              style={{
+                top: coords.top,
+                left: coords.left,
+                transform: coords.up ? "translate(-100%, -100%)" : "translateX(-100%)",
+              }}
+            >
+              {available.length === 0 && (
+                <span className="aib-assign-empty muted">Everyone assigned</span>
+              )}
+              {available.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="aib-assign-item"
+                  onClick={() => {
+                    onChange([...ids, m.id]);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="aib-av aib-av-sm">{initials(m.name)}</span>
+                  {m.name}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )}
       </span>
     </span>
   );

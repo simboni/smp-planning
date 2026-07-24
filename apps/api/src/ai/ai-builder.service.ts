@@ -36,6 +36,12 @@ const MAX_CONTEXT_LISTS = 20;
 
 const PRIORITIES = new Set(["urgent", "high", "normal", "low"]);
 
+export interface PlanRecurrence {
+  freq: "daily" | "weekly" | "monthly";
+  interval: number;
+  mode: "on_complete";
+}
+
 export interface PlanTask {
   name: string;
   description?: string;
@@ -43,6 +49,8 @@ export interface PlanTask {
   dueInDays?: number;
   /** Workspace member ids to assign (validated against the context). */
   assigneeIds?: string[];
+  /** Repeat rule — the task re-spawns when completed. */
+  recurrence?: PlanRecurrence;
 }
 
 export interface PlanDoc {
@@ -307,6 +315,18 @@ export class AiBuilderService {
               assigneeIds: pt.assigneeIds?.length ? pt.assigneeIds : undefined,
             },
           );
+          // createTask has no recurrence field — apply the repeat rule as a
+          // follow-up update so recurring tasks the Copilot proposed actually
+          // recur.
+          if (pt.recurrence) {
+            try {
+              await this.tasks.updateTask(workspaceId, userId, role, task.id, {
+                recurrence: { ...pt.recurrence } as Record<string, unknown>,
+              });
+            } catch {
+              /* non-fatal — the task is still created */
+            }
+          }
           result.tasks.push({ id: task.id, name: task.name, listId });
           result.counts.tasks++;
           totalTasks++;
@@ -646,7 +666,22 @@ function normalizeTask(v: unknown, memberIds: Set<string>): PlanTask | null {
     priority,
     dueInDays,
     assigneeIds: assigneeIds && assigneeIds.length ? assigneeIds : undefined,
+    recurrence: normalizeRecurrence(o.recurrence),
   };
+}
+
+const RECUR_FREQS = new Set(["daily", "weekly", "monthly"]);
+
+/** Coerce an AI-proposed repeat rule into a safe PlanRecurrence, or drop it. */
+function normalizeRecurrence(v: unknown): PlanRecurrence | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const o = v as Record<string, unknown>;
+  const freq = typeof o.freq === "string" ? o.freq.toLowerCase() : "";
+  if (!RECUR_FREQS.has(freq)) return undefined;
+  const rawInterval =
+    typeof o.interval === "number" && isFinite(o.interval) ? Math.round(o.interval) : 1;
+  const interval = Math.max(1, Math.min(99, rawInterval));
+  return { freq: freq as PlanRecurrence["freq"], interval, mode: "on_complete" };
 }
 
 function normalizeDoc(v: unknown): PlanDoc | null {
@@ -720,6 +755,16 @@ const PLAN_SCHEMA: Record<string, unknown> = {
                 priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
                 dueInDays: { type: "number" },
                 assigneeIds: { type: "array", items: { type: "string" } },
+                recurrence: {
+                  type: "object",
+                  description:
+                    "Set ONLY when the user asks the task to repeat/recur on a schedule.",
+                  properties: {
+                    freq: { type: "string", enum: ["daily", "weekly", "monthly"] },
+                    interval: { type: "number" },
+                  },
+                  required: ["freq"],
+                },
               },
               required: ["name"],
             },
@@ -757,18 +802,25 @@ const SYSTEM_PLAN =
   '"needsChoice": true so the app can ask the user.\n' +
   "You may assign tasks to teammates and place a new list inside a folder when " +
   "the brief implies it — use only ids from the context.\n" +
+  "When the brief says a task should REPEAT or RECUR (e.g. 'daily', 'every week', " +
+  "'each morning'), set that task's \"recurrence\" to {freq:daily|weekly|monthly, " +
+  "interval:N}. The task re-spawns when completed. Do NOT invent recurrence the " +
+  "brief did not ask for.\n" +
   "Reply with ONLY valid JSON, no prose, no fences:\n" +
   '{"summary":"one short sentence","targets":[{' +
   '"space":{"existingId":"<id>"} OR {"create":true,"name":"...","icon":"📁"},' +
   '"list":{"existingId":"<id>"} OR {"create":true,"name":"...","folderId":"<id optional>"},' +
-  '"tasks":[{"name":"...","description":"optional one line","priority":"urgent|high|normal|low (optional)","dueInDays":7,"assigneeIds":["<memberId>"]}],' +
+  '"tasks":[{"name":"...","description":"optional one line","priority":"urgent|high|normal|low (optional)","dueInDays":7,"assigneeIds":["<memberId>"],"recurrence":{"freq":"daily","interval":1}}],' +
   '"needsChoice":false,"note":"short reason"}]}\n' +
   "Rules: at most 6 targets, 12 tasks per target. Use real ids from the context " +
   "for existing places, folders and members. Only assign someone when the brief " +
   "names them or their role clearly fits. Make task names concrete and actionable.";
 
 function planPrompt(brief: string, ctx: BuilderContext): string {
-  const lines: string[] = [];
+  const now = new Date();
+  const lines: string[] = [
+    `Today's date is ${now.toISOString().slice(0, 10)} (${now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })}, UTC). Interpret 'dueInDays' relative to today.`,
+  ];
   if (ctx.spaces.length === 0) {
     lines.push("(The workspace has no spaces you can edit yet.)");
   } else {

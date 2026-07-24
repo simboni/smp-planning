@@ -1558,6 +1558,15 @@ function RecurrenceControl({
   canEdit: boolean;
   onSave: (r: Recurrence | null) => void;
 }) {
+  // Optimistic local mirror: reflect the user's choice instantly instead of
+  // waiting for the save+reload round-trip (during which the controlled value
+  // would otherwise snap back to "None"). Re-syncs whenever the server value
+  // changes underneath us.
+  const [local, setLocal] = useState<Recurrence | null>(value);
+  useEffect(() => {
+    setLocal(value);
+  }, [value]);
+
   if (!canEdit) {
     if (!value) return <span className="tp-empty">None</span>;
     const [one, many] = FREQ_UNIT[value.freq];
@@ -1567,16 +1576,20 @@ function RecurrenceControl({
       </span>
     );
   }
-  const interval = value?.interval ?? 1;
+  const interval = local?.interval ?? 1;
+  const commit = (r: Recurrence | null): void => {
+    setLocal(r);
+    onSave(r);
+  };
   return (
     <span className="tp-repeat">
       <select
         className="input tp-repeat-sel"
-        value={value?.freq ?? ""}
+        value={local?.freq ?? ""}
         aria-label="Repeat frequency"
         onChange={(e) => {
           const f = e.target.value as RecurrenceFreq | "";
-          onSave(f ? { freq: f, interval, mode: "on_complete" } : null);
+          commit(f ? { freq: f, interval, mode: "on_complete" } : null);
         }}
       >
         <option value="">None</option>
@@ -1584,7 +1597,7 @@ function RecurrenceControl({
         <option value="weekly">Weekly</option>
         <option value="monthly">Monthly</option>
       </select>
-      {value && (
+      {local && (
         <>
           <span className="tp-repeat-lbl">every</span>
           <input
@@ -1597,14 +1610,14 @@ function RecurrenceControl({
             aria-label="Repeat interval"
             onBlur={(e) => {
               const n = Math.max(1, Math.min(99, parseInt(e.target.value, 10) || 1));
-              if (n !== interval) onSave({ freq: value.freq, interval: n, mode: "on_complete" });
+              if (n !== interval) commit({ freq: local.freq, interval: n, mode: "on_complete" });
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
           />
           <span className="tp-repeat-lbl">
-            {interval > 1 ? FREQ_UNIT[value.freq][1] : FREQ_UNIT[value.freq][0]}
+            {interval > 1 ? FREQ_UNIT[local.freq][1] : FREQ_UNIT[local.freq][0]}
           </span>
           <span className="tp-repeat-hint">on complete</span>
         </>

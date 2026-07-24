@@ -41,11 +41,22 @@ const ASK_SCHEMA: Record<string, unknown> = {
 
 const SYSTEM_ASK =
   "You are StackUp's assistant. Answer the user's question using ONLY the " +
-  "workspace state and items provided. For status or weekly questions, say what " +
+  "workspace state and items provided. The prompt states TODAY'S DATE — use it " +
+  "for every relative-time judgement ('today', 'this week', 'overdue', 'due soon', " +
+  "'next month'); a week runs Monday–Sunday. Never claim you don't know the date. " +
+  "For status or weekly questions, say what " +
   "was completed recently and what's still open, and name the owners. Be concise " +
   "and specific; reference the items you rely on and list their refs in usedRefs. " +
   "If the provided state doesn't cover the question, say what you can see and what " +
   "you'd need — never invent tasks, dates, names or statuses.";
+
+/** Server-side "now" as a grounding line the model can reason about. */
+function todayLine(): string {
+  const now = new Date();
+  const iso = now.toISOString().slice(0, 10);
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+  return `Today's date is ${iso} (${weekday}, UTC). Use it for all relative-time reasoning.`;
+}
 
 @Injectable()
 export class AiAskService {
@@ -187,7 +198,7 @@ function buildPrompt(
     .filter((s) => s.type !== "task")
     .map((s) => `${s.ref} [${s.type}] "${s.title}"`);
 
-  const parts = [header];
+  const parts = [todayLine(), header];
   if (snapshot.spaces.length) {
     parts.push(
       "\nSpaces & lists:\n" +
