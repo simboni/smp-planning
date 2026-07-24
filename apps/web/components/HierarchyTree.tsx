@@ -16,7 +16,7 @@
  */
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
@@ -29,6 +29,7 @@ import {
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { ShareDialog } from "@/components/ShareDialog";
+import { NewFormModal } from "@/components/NewFormModal";
 import { colorFor } from "@/lib/format";
 import { showToast } from "@/lib/toast";
 
@@ -130,6 +131,7 @@ function InlineInput({
 export function HierarchyTree() {
   const { tree, loading, error, reload, setTree } = useHierarchy();
   const pathname = usePathname();
+  const router = useRouter();
   const search = useSearchParams();
   const activeListId = pathname === "/list" ? search.get("id") : null;
   const activeSpaceId = pathname === "/space" ? search.get("id") : null;
@@ -141,6 +143,14 @@ export function HierarchyTree() {
   const [colorFor_, setColorPicker] = useState<string | null>(null); // "space:id" | "list:id"
   const [busy, setBusy] = useState(false);
   const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
+  // "New form" flow — scope (space/folder/list) the form will be created in.
+  const [formScope, setFormScope] = useState<{
+    label: string;
+    spaceId: string;
+    folderId: string | null;
+    lists: Pick<List, "id" | "name">[];
+    defaultListId?: string;
+  } | null>(null);
   const drag = useRef<DragState | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
@@ -484,6 +494,21 @@ export function HierarchyTree() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    setMenu(null);
+                    setFormScope({
+                      label: `in ${list.name}`,
+                      spaceId,
+                      folderId,
+                      lists: [{ id: list.id, name: list.name }],
+                      defaultListId: list.id,
+                    });
+                  }}
+                >
+                  {Icons.docs} New form
+                </button>
+                <button
+                  type="button"
                   onClick={() => { const ids = move(bucket, list.id, -1); if (ids) reorderLists(spaceId, folderId, ids); setMenu(null); }}
                 >
                   {Icons.arrowUp} Move up
@@ -562,6 +587,20 @@ export function HierarchyTree() {
                   onClick={() => { ensureOpen(folder.id); setMenu(null); setCreating({ type: "list", spaceId: space.id, folderId: folder.id }); }}
                 >
                   {Icons.plus} Add list
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(null);
+                    setFormScope({
+                      label: `in ${folder.name}`,
+                      spaceId: space.id,
+                      folderId: folder.id,
+                      lists: folder.lists.map((l) => ({ id: l.id, name: l.name })),
+                    });
+                  }}
+                >
+                  {Icons.docs} New form
                 </button>
                 <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
                   {Icons.edit} Rename
@@ -704,6 +743,23 @@ export function HierarchyTree() {
                       onClick={() => { ensureOpen(space.id); setMenu(null); setCreating({ type: "list", spaceId: space.id, folderId: null }); }}
                     >
                       {Icons.list} Add list
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenu(null);
+                        setFormScope({
+                          label: `in ${space.name}`,
+                          spaceId: space.id,
+                          folderId: null,
+                          lists: [
+                            ...space.lists,
+                            ...space.folders.flatMap((f) => f.lists),
+                          ].map((l) => ({ id: l.id, name: l.name })),
+                        });
+                      }}
+                    >
+                      {Icons.docs} New form
                     </button>
                     <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
                       {Icons.edit} Rename
@@ -852,6 +908,22 @@ export function HierarchyTree() {
         spaceName={sharing.name}
         onClose={() => setSharing(null)}
         onChanged={() => void reload()}
+      />
+    )}
+
+    {formScope && (
+      <NewFormModal
+        scopeLabel={formScope.label}
+        spaceId={formScope.spaceId}
+        folderId={formScope.folderId}
+        lists={formScope.lists}
+        defaultListId={formScope.defaultListId}
+        onClose={() => setFormScope(null)}
+        onReload={() => void reload()}
+        onCreated={(id) => {
+          setFormScope(null);
+          router.push(`/form-builder?id=${id}`);
+        }}
       />
     )}
     </>
