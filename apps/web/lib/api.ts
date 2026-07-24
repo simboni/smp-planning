@@ -1328,6 +1328,12 @@ export const tasksApi = {
       body,
       auth: "access",
     }),
+  /** Complete / reopen a task without knowing its space's status ids. */
+  toggleDone: (id: string) =>
+    api<{ task: TaskDetail; spawnedTaskId?: string }>(`/tasks/${id}/toggle-done`, {
+      method: "POST",
+      auth: "access",
+    }),
   remove: (id: string) =>
     api<void>(`/tasks/${id}`, { method: "DELETE", auth: "access" }),
   createSubtask: (id: string, body: { name: string }) =>

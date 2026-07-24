@@ -217,6 +217,15 @@ export class TasksController {
     return { task: await this.tasks.updateTask(...this.ctx(req), id, body ?? {}) };
   }
 
+  @Post("tasks/:id/toggle-done")
+  @HttpCode(200)
+  async toggleDone(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return { task: await this.tasks.toggleDone(...this.ctx(req), id) };
+  }
+
   @Delete("tasks/:id")
   @HttpCode(204)
   async deleteTask(

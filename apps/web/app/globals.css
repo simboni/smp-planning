@@ -6242,6 +6242,17 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 .mw-task:first-child { border-top: none; }
 .mw-task:hover { background: var(--card-2); }
 .mw-task-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+/* Inline complete/reopen toggle — the primary action on My Work rows. */
+.mw-task-check {
+  width: 20px; height: 20px; flex-shrink: 0; padding: 0; cursor: pointer;
+  border: 2px solid var(--line); border-radius: 50%; background: transparent;
+  color: #fff; display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.mw-task-check:hover:not(.done) { border-color: var(--brand); background: var(--brand-soft); }
+.mw-task-check.done { background: #22c55e; border-color: #22c55e; }
+.mw-task-check svg { width: 12px; height: 12px; }
+.mw-task-check:disabled { opacity: 0.5; cursor: default; }
 .mw-task-name { flex: 1; min-width: 0; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mw-task.done .mw-task-name { text-decoration: line-through; color: var(--muted); }
 .mw-task-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

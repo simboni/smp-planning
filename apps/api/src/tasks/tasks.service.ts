@@ -1148,6 +1148,49 @@ export class TasksService {
     return result;
   }
 
+  /**
+   * Toggle a task between done and open from anywhere (e.g. the My Work view)
+   * without the caller needing to know the space's status ids. Completing
+   * picks the space's first `done` status; reopening picks its first
+   * not-started status (falling back to any non-done). Runs the change through
+   * updateTask so completed_at, activity, automations and recurrence all fire.
+   */
+  async toggleDone(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+    taskId: string,
+  ): Promise<TaskDetail & { spawnedTaskId?: string }> {
+    const targetStatusId = await this.db.withWorkspace(
+      workspaceId,
+      userId,
+      async (client) => {
+        const row = await this.taskRow(client, taskId);
+        const spaceId = row.space_id as string;
+        const isDone = (row.s_type as string | null) === "done";
+        const want = isDone ? "not_started" : "done";
+        let res = await client.query(
+          `SELECT id FROM statuses WHERE space_id = $1 AND type = $2 ORDER BY position, created_at LIMIT 1`,
+          [spaceId, want],
+        );
+        if (!res.rows[0] && isDone) {
+          // No explicit not-started status — reopen to any non-done status.
+          res = await client.query(
+            `SELECT id FROM statuses WHERE space_id = $1 AND type <> 'done' ORDER BY position, created_at LIMIT 1`,
+            [spaceId],
+          );
+        }
+        return (res.rows[0]?.id as string | undefined) ?? null;
+      },
+    );
+    if (!targetStatusId) {
+      throw new BadRequestException("This space has no status to toggle to");
+    }
+    return this.updateTask(workspaceId, userId, role, taskId, {
+      statusId: targetStatusId,
+    });
+  }
+
   // --- Recurrence -----------------------------------------------------------
 
   /**

@@ -13,8 +13,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ApiError,
   getUser,
   homeApi,
+  tasksApi,
   type HomeData,
   type TaskCard,
 } from "@/lib/api";
@@ -22,23 +24,55 @@ import { Icons } from "@/components/icons";
 import { AvatarStack, DueChip, PriorityFlag } from "@/components/TaskBits";
 import { colorFor, firstName, formatDateTime, timeAgo } from "@/lib/format";
 
-function CompactRow({ task }: { task: TaskCard }) {
+function CompactRow({ task, onChanged }: { task: TaskCard; onChanged: () => void }) {
   const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const done = task.status?.type === "done";
   const dot = task.status?.color || colorFor(task.statusId);
+
+  // Complete / reopen straight from My Work — the module's primary action.
+  const toggle = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      await tasksApi.toggleDone(task.id);
+      onChanged();
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <button
-      type="button"
-      className={`mw-task${task.status?.type === "done" ? " done" : ""}`}
+    <div
+      className={`mw-task${done ? " done" : ""}`}
+      role="button"
+      tabIndex={0}
       onClick={() => router.push(`/list?id=${task.listId}&task=${task.id}`)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") router.push(`/list?id=${task.listId}&task=${task.id}`);
+      }}
     >
-      <span className="mw-task-dot" style={{ background: dot }} title={task.status?.name} />
+      <button
+        type="button"
+        className={`mw-task-check${done ? " done" : ""}`}
+        style={done ? undefined : { borderColor: dot }}
+        title={done ? "Mark as not done" : "Mark as done"}
+        aria-label={done ? "Mark as not done" : "Mark as done"}
+        onClick={toggle}
+        disabled={busy}
+      >
+        {done ? Icons.check : null}
+      </button>
       <span className="mw-task-name">{task.name}</span>
       <span className="mw-task-meta">
         <PriorityFlag priority={task.priority} />
         <DueChip due={task.dueDate} />
         <AvatarStack users={task.assignees} size={22} />
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -47,11 +81,13 @@ function Section({
   icon,
   tone,
   tasks,
+  onChanged,
 }: {
   title: string;
   icon: keyof typeof Icons;
   tone?: "danger" | "warn";
   tasks: TaskCard[];
+  onChanged: () => void;
 }) {
   if (tasks.length === 0) return null;
   return (
@@ -63,7 +99,7 @@ function Section({
       </div>
       <div className="mw-tasks">
         {tasks.map((t) => (
-          <CompactRow key={t.id} task={t} />
+          <CompactRow key={t.id} task={t} onChanged={onChanged} />
         ))}
       </div>
     </div>
@@ -76,11 +112,15 @@ export default function MyWorkPage() {
   const [error, setError] = useState("");
   const name = firstName(getUser()?.fullName ?? "");
 
-  useEffect(() => {
+  const reload = (): void => {
     homeApi
       .get()
       .then(setData)
       .catch(() => setError("Couldn't load your work right now."));
+  };
+
+  useEffect(() => {
+    reload();
   }, []);
 
   if (error) {
@@ -143,10 +183,10 @@ export default function MyWorkPage() {
             </div>
           ) : (
             <>
-              <Section title="Overdue" icon="ban" tone="danger" tasks={data.overdue} />
-              <Section title="Due today" icon="calendar" tone="warn" tasks={data.dueToday} />
-              <Section title="Next 7 days" icon="clock" tasks={data.upcoming} />
-              <Section title="Unscheduled" icon="inbox" tasks={data.unscheduled} />
+              <Section title="Overdue" icon="ban" tone="danger" tasks={data.overdue} onChanged={reload} />
+              <Section title="Due today" icon="calendar" tone="warn" tasks={data.dueToday} onChanged={reload} />
+              <Section title="Next 7 days" icon="clock" tasks={data.upcoming} onChanged={reload} />
+              <Section title="Unscheduled" icon="inbox" tasks={data.unscheduled} onChanged={reload} />
             </>
           )}
         </div>

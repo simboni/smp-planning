@@ -439,3 +439,33 @@ describe("tasks permissions & isolation", () => {
       .expect(404);
   });
 });
+
+describe("toggle-done (My Work quick action)", () => {
+  it("completes then reopens a task without the caller passing a status id", async () => {
+    const owner = await ownerWorkspace("Toggle WS");
+    const { list } = await makeSpaceAndList(owner.accessToken);
+    const task = (
+      await http
+        .post(`/lists/${list.id}/tasks`)
+        .set(auth(owner.accessToken))
+        .send({ name: "Do the thing" })
+        .expect(201)
+    ).body.task;
+    expect(task.status.type).not.toBe("done");
+    expect(task.completedAt ?? null).toBeNull();
+
+    // Complete it.
+    const done = (
+      await http.post(`/tasks/${task.id}/toggle-done`).set(auth(owner.accessToken)).expect(200)
+    ).body.task;
+    expect(done.status.type).toBe("done");
+    expect(done.completedAt).not.toBeNull();
+
+    // Reopen it.
+    const reopened = (
+      await http.post(`/tasks/${task.id}/toggle-done`).set(auth(owner.accessToken)).expect(200)
+    ).body.task;
+    expect(reopened.status.type).not.toBe("done");
+    expect(reopened.completedAt ?? null).toBeNull();
+  });
+});
