@@ -27,6 +27,7 @@ import {
   type SpaceTree,
 } from "@/lib/api";
 import { useHierarchy } from "@/components/HierarchyProvider";
+import { CopilotOption } from "@/components/BuildWithAi";
 import { Icons } from "@/components/icons";
 import { ShareDialog } from "@/components/ShareDialog";
 import { NewFormModal } from "@/components/NewFormModal";
@@ -634,12 +635,20 @@ export function HierarchyTree() {
             {creating?.type === "list" &&
               creating.spaceId === space.id &&
               creating.folderId === folder.id && (
-                <InlineInput
-                  indent={indent + 34}
-                  placeholder="List name"
-                  onCommit={(v) => void commitCreate(v)}
-                  onCancel={() => setCreating(null)}
-                />
+                <>
+                  <InlineInput
+                    indent={indent + 34}
+                    placeholder="List name"
+                    onCommit={(v) => void commitCreate(v)}
+                    onCancel={() => setCreating(null)}
+                  />
+                  <CopilotOption
+                    compact
+                    mode="build"
+                    indent={indent + 34}
+                    onBefore={() => setCreating(null)}
+                  />
+                </>
               )}
             {folder.lists.length === 0 &&
               !(creating?.type === "list" && creating.folderId === folder.id) && (
@@ -807,12 +816,20 @@ export function HierarchyTree() {
             {space.folders.map((f) => renderFolder(f, space, 24, canEdit))}
 
             {creating?.type === "folder" && creating.spaceId === space.id && (
-              <InlineInput
-                indent={24}
-                placeholder="Folder name"
-                onCommit={(v) => void commitCreate(v)}
-                onCancel={() => setCreating(null)}
-              />
+              <>
+                <InlineInput
+                  indent={24}
+                  placeholder="Folder name"
+                  onCommit={(v) => void commitCreate(v)}
+                  onCancel={() => setCreating(null)}
+                />
+                <CopilotOption
+                  compact
+                  mode="build"
+                  indent={24}
+                  onBefore={() => setCreating(null)}
+                />
+              </>
             )}
 
             {space.lists.map((l) => renderList(l, space.id, null, space.lists, 24, canEdit))}
@@ -820,12 +837,20 @@ export function HierarchyTree() {
             {creating?.type === "list" &&
               creating.spaceId === space.id &&
               creating.folderId === null && (
-                <InlineInput
-                  indent={24}
-                  placeholder="List name"
-                  onCommit={(v) => void commitCreate(v)}
-                  onCancel={() => setCreating(null)}
-                />
+                <>
+                  <InlineInput
+                    indent={24}
+                    placeholder="List name"
+                    onCommit={(v) => void commitCreate(v)}
+                    onCancel={() => setCreating(null)}
+                  />
+                  <CopilotOption
+                    compact
+                    mode="build"
+                    indent={24}
+                    onBefore={() => setCreating(null)}
+                  />
+                </>
               )}
 
             {space.folders.length === 0 &&
@@ -880,12 +905,20 @@ export function HierarchyTree() {
             {tree.map((s) => renderSpace(s))}
 
             {creating?.type === "space" && (
-              <InlineInput
-                indent={10}
-                placeholder="Space name"
-                onCommit={(v) => void commitCreate(v)}
-                onCancel={() => setCreating(null)}
-              />
+              <>
+                <InlineInput
+                  indent={10}
+                  placeholder="Space name"
+                  onCommit={(v) => void commitCreate(v)}
+                  onCancel={() => setCreating(null)}
+                />
+                <CopilotOption
+                  compact
+                  mode="build"
+                  indent={10}
+                  onBefore={() => setCreating(null)}
+                />
+              </>
             )}
 
             {tree.length === 0 && creating?.type !== "space" && (

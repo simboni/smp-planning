@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, hierarchyApi, tasksApi } from "@/lib/api";
 import { useHierarchy } from "@/components/HierarchyProvider";
+import { CopilotOption } from "@/components/BuildWithAi";
 import { Icons } from "@/components/icons";
 import { showToast } from "@/lib/toast";
 
@@ -240,6 +241,13 @@ export function QuickTaskModal({ onClose }: { onClose: () => void }) {
               "Create task"
             )}
           </button>
+
+          <CopilotOption
+            mode="build"
+            label="Build with Copilot"
+            hint="Describe the work and let AI draft the tasks for you"
+            onBefore={onClose}
+          />
         </form>
       </div>
     </div>

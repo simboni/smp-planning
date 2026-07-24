@@ -41,7 +41,7 @@ import {
   syncStatusBar,
 } from "@/lib/native";
 import { CommandPalette } from "@/components/CommandPalette";
-import { BuildWithAi } from "@/components/BuildWithAi";
+import { BuildWithAi, type CopilotMode } from "@/components/BuildWithAi";
 import { SessionExpiryModal } from "@/components/SessionExpiryModal";
 import { QuickTaskModal } from "@/components/QuickTaskModal";
 import { HierarchyTree } from "@/components/HierarchyTree";
@@ -104,6 +104,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderMode, setBuilderMode] = useState<CopilotMode>("ask");
   const [sessionPrompt, setSessionPrompt] = useState<
     null | { resolve: (renewed: boolean) => void }
   >(null);
@@ -305,9 +306,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Open the AI Builder from anywhere (e.g. the ⌘K palette) via a window event.
+  // Open the AI Builder from anywhere (the ⌘K palette, the "build with
+  // Copilot" option inside create flows) via a window event. The event may
+  // carry a mode so create flows land directly on Build / Form.
   useEffect(() => {
-    const onBuild = (): void => setBuilderOpen(true);
+    const onBuild = (e: Event): void => {
+      const mode = (e as CustomEvent<{ mode?: CopilotMode }>).detail?.mode;
+      setBuilderMode(mode ?? "ask");
+      setBuilderOpen(true);
+    };
     window.addEventListener("stackup:build-with-ai", onBuild);
     return () => window.removeEventListener("stackup:build-with-ai", onBuild);
   }, []);
@@ -887,7 +894,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <BuildWithAi open={builderOpen} onClose={() => setBuilderOpen(false)} />
+      <BuildWithAi
+        open={builderOpen}
+        initialMode={builderMode}
+        onClose={() => setBuilderOpen(false)}
+      />
       {sessionPrompt && <SessionExpiryModal resolve={sessionPrompt.resolve} />}
       {newTaskOpen && <QuickTaskModal onClose={() => setNewTaskOpen(false)} />}
       <Notepad />

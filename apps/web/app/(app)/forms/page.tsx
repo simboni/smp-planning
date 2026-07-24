@@ -21,6 +21,7 @@ import {
   type List,
 } from "@/lib/api";
 import { useHierarchy } from "@/components/HierarchyProvider";
+import { CopilotOption } from "@/components/BuildWithAi";
 import { Icons } from "@/components/icons";
 import { FormResponses } from "@/components/FormResponses";
 import { copyToClipboard, publicFormUrl, timeAgo } from "@/lib/format";
@@ -145,6 +146,13 @@ function NewFormModal({
               </select>
             )}
           </div>
+
+          <CopilotOption
+            mode="form"
+            label="Draft with Copilot"
+            hint="Describe the form and AI proposes the fields for you"
+            onBefore={onClose}
+          />
 
           <div className="modal-foot">
             <button type="button" className="btn btn-ghost" onClick={onClose}>

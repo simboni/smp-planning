@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { ApiError, formsApi, hierarchyApi, type List } from "@/lib/api";
+import { CopilotOption } from "@/components/BuildWithAi";
 import { Icons } from "@/components/icons";
 
 const NEW_LIST = "__new_list__";
@@ -146,6 +147,13 @@ export function NewFormModal({
         )}
 
         {error && <div className="nf-error">{error}</div>}
+
+        <CopilotOption
+          mode="form"
+          label="Draft with Copilot"
+          hint="Describe the form and AI proposes the fields for you"
+          onBefore={onClose}
+        />
 
         <div className="nf-actions">
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>

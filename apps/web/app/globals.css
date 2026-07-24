@@ -8525,3 +8525,61 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 :root[data-app="native"] body {
   overscroll-behavior-y: contain;
 }
+
+/* --- "Build with Copilot" option inside create flows ---------------------
+   Every traditional create entry point (new space / folder / list / task /
+   form) offers the alternative of describing the thing and letting Copilot
+   draft it. Full variant: an "or"-divided row inside modals. Compact
+   variant: a single indented line under the sidebar tree's inline input. */
+.copilot-opt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.copilot-opt-row .copilot-opt { flex: 1; }
+.copilot-opt-or {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.copilot-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--brand);
+  border-radius: var(--r-md);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.copilot-opt:hover { filter: brightness(1.05); }
+.copilot-opt-ic { display: inline-flex; }
+.copilot-opt-ic svg { width: 16px; height: 16px; }
+.copilot-opt-body { display: flex; flex-direction: column; gap: 1px; }
+.copilot-opt-label { line-height: 1.2; }
+.copilot-opt-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.copilot-opt-compact {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 12px;
+  gap: 6px;
+}
+.copilot-opt-compact:hover { filter: none; text-decoration: underline; }
+.copilot-opt-compact .copilot-opt-ic svg { width: 13px; height: 13px; }

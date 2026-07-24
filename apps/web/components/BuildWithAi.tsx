@@ -42,6 +42,81 @@ import {
 type Mode = "ask" | "do" | "build" | "form";
 type Stage = "prompt" | "loading" | "preview" | "building" | "done";
 
+export type CopilotMode = Mode;
+
+/**
+ * Open the Copilot modal from anywhere in the app, optionally landing on a
+ * specific mode ("build" for spaces/lists/tasks, "form" for forms). AppShell
+ * owns the modal and listens for this event.
+ */
+export function openCopilot(mode?: CopilotMode): void {
+  window.dispatchEvent(
+    new CustomEvent("stackup:build-with-ai", { detail: { mode } }),
+  );
+}
+
+/**
+ * The "or build with Copilot" affordance shown inside traditional create
+ * flows (new space / folder / list / task / form), so every creation entry
+ * point offers the choice: continue by hand, or describe it and let Copilot
+ * draft it. `onBefore` lets the caller close its own modal / cancel its
+ * inline input first. Uses onMouseDown-preventDefault so clicking it never
+ * blurs (and thereby commits) an adjacent inline-create input.
+ */
+export function CopilotOption({
+  mode,
+  label,
+  hint,
+  compact,
+  indent,
+  onBefore,
+}: {
+  mode: CopilotMode;
+  label?: string;
+  hint?: string;
+  /** Small single-line variant for the sidebar tree. */
+  compact?: boolean;
+  /** Left padding (px) so the compact variant aligns with tree rows. */
+  indent?: number;
+  onBefore?: () => void;
+}) {
+  const open = (): void => {
+    onBefore?.();
+    openCopilot(mode);
+  };
+  if (compact) {
+    return (
+      <button
+        type="button"
+        className="copilot-opt copilot-opt-compact"
+        style={indent !== undefined ? { paddingLeft: indent } : undefined}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={open}
+      >
+        <span className="copilot-opt-ic">{Icons.sparkles}</span>
+        {label ?? "Build with Copilot"}
+      </button>
+    );
+  }
+  return (
+    <div className="copilot-opt-row">
+      <span className="copilot-opt-or">or</span>
+      <button
+        type="button"
+        className="copilot-opt"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={open}
+      >
+        <span className="copilot-opt-ic">{Icons.sparkles}</span>
+        <span className="copilot-opt-body">
+          <span className="copilot-opt-label">{label ?? "Build with Copilot"}</span>
+          {hint && <span className="copilot-opt-hint">{hint}</span>}
+        </span>
+      </button>
+    </div>
+  );
+}
+
 const NEW = "__new__";
 const DRAFT_KEY = "stackup.copilot.draft";
 
@@ -168,9 +243,12 @@ function destToRefs(d: Dest): { space: AiSpaceRef; list: AiListRef } {
 export function BuildWithAi({
   open,
   onClose,
+  initialMode,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Mode to land on when opened (defaults to "ask"). */
+  initialMode?: CopilotMode;
 }) {
   const router = useRouter();
   const { reload } = useHierarchy();
@@ -206,7 +284,7 @@ export function BuildWithAi({
 
   useEffect(() => {
     if (open) {
-      setMode("ask");
+      setMode(initialMode ?? "ask");
       setStage("prompt");
       // Restore any instruction the user was mid-typing (survives a refresh).
       setPrompt(loadDraft());
@@ -222,7 +300,7 @@ export function BuildWithAi({
       setFormResult(null);
       setError(null);
     }
-  }, [open]);
+  }, [open, initialMode]);
 
   // Keep the draft persisted while the prompt is open so a refresh can't lose it.
   useEffect(() => {
