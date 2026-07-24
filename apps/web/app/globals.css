@@ -8180,6 +8180,24 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .aib-link-name { flex: 1; text-align: left; }
 .aib-link svg:last-child { width: 15px; height: 15px; color: var(--muted); }
 
+/* Form done — shareable public link */
+.aib-share {
+  border: 1px solid var(--brand-soft-2);
+  background: var(--brand-soft);
+  border-radius: 12px;
+  padding: 13px 14px;
+  margin-bottom: 12px;
+}
+.aib-share-h { font-weight: 700; font-size: 0.9rem; color: var(--ink); margin-bottom: 9px; }
+.aib-share-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.aib-share-url {
+  flex: 1 1 200px; min-width: 0;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+  color: var(--ink); font: inherit; font-size: 0.82rem; padding: 7px 10px;
+}
+.aib-share-url:focus { outline: none; border-color: var(--brand); box-shadow: var(--ring); }
+.aib-share-hint { font-size: 0.78rem; margin: 8px 0 0; }
+
 @media (max-width: 620px) {
   .aib-scrim { padding: 0; }
   /* Full-screen on phones: header pinned, body scrolls, footer stays put.

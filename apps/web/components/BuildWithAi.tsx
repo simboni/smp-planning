@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icons } from "@/components/icons";
 import { useHierarchy } from "@/components/HierarchyProvider";
+import { copyToClipboard, publicFormUrl } from "@/lib/format";
 import {
   aiApi,
   ApiError,
@@ -191,7 +192,12 @@ export function BuildWithAi({
   // Form mode
   const [formPlan, setFormPlan] = useState<AiFormPlan | null>(null);
   const [formDest, setFormDest] = useState<Dest | null>(null);
-  const [formResult, setFormResult] = useState<{ formId: string; listUrl: string } | null>(null);
+  const [formResult, setFormResult] = useState<{
+    formId: string;
+    listUrl: string;
+    publicToken: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -344,7 +350,7 @@ export function BuildWithAi({
     try {
       const { space, list } = destToRefs(formDest);
       const r = await aiApi.buildForm(formPlan, space, list);
-      setFormResult({ formId: r.formId, listUrl: r.listUrl });
+      setFormResult({ formId: r.formId, listUrl: r.listUrl, publicToken: r.publicToken });
       setStage("done");
       void reload();
     } catch (e) {
@@ -860,6 +866,54 @@ export function BuildWithAi({
                 )}
               </div>
             </div>
+
+            {mode === "form" && formResult && (
+              <>
+                <div className="aib-share">
+                  <div className="aib-share-h">Share this form to collect responses</div>
+                  <div className="aib-share-row">
+                    <input
+                      className="aib-share-url"
+                      readOnly
+                      value={publicFormUrl(formResult.publicToken)}
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={async () => {
+                        const ok = await copyToClipboard(publicFormUrl(formResult.publicToken));
+                        if (ok) {
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 1600);
+                        }
+                      }}
+                    >
+                      {copied ? "Copied ✓" : "Copy link"}
+                    </button>
+                  </div>
+                  <p className="aib-share-hint muted">
+                    Anyone with this link can fill out the form — no account needed.
+                  </p>
+                </div>
+                <div className="aib-links">
+                  <button
+                    type="button"
+                    className="aib-link"
+                    onClick={() => window.open(publicFormUrl(formResult.publicToken), "_blank")}
+                  >
+                    <span className="aib-link-ic">{Icons.eye}</span>
+                    <span className="aib-link-name">Preview the form</span>
+                    {Icons.arrowRight}
+                  </button>
+                  <button type="button" className="aib-link" onClick={() => goto("/forms")}>
+                    <span className="aib-link-ic">{Icons.docs}</span>
+                    <span className="aib-link-name">Manage forms &amp; view responses</span>
+                    {Icons.arrowRight}
+                  </button>
+                </div>
+              </>
+            )}
 
             {result && result.spaces.filter((s) => s.created).length > 0 && (
               <div className="aib-links">
