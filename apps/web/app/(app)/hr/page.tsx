@@ -39,15 +39,13 @@ export default function HrPage() {
   const canManage = role === "owner" || role === "admin";
 
   const load = useCallback((): void => {
-    Promise.all([
-      workspacesApi.members(),
-      departmentsApi.list(),
-      departmentsApi.roster(),
-    ])
-      .then(([m, d, r]) => {
+    // Members loads for every role; the department layer is member+ (guests
+    // get 403 on /departments) so it degrades to a plain directory rather
+    // than failing the whole page.
+    workspacesApi
+      .members()
+      .then((m) => {
         setMembers(m.members);
-        setDepartments(d.departments);
-        setRoster(r.entries);
         setError("");
       })
       .catch((err) =>
@@ -55,6 +53,15 @@ export default function HrPage() {
           err instanceof ApiError ? err.message : "Couldn't load the directory.",
         ),
       );
+    Promise.all([departmentsApi.list(), departmentsApi.roster()])
+      .then(([d, r]) => {
+        setDepartments(d.departments);
+        setRoster(r.entries);
+      })
+      .catch(() => {
+        setDepartments([]);
+        setRoster([]);
+      });
   }, []);
 
   useEffect(() => {

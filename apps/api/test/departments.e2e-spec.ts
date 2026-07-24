@@ -222,6 +222,15 @@ describe("departments (HR module)", () => {
     expect(after.members[0].deptRole).toBe("member");
     expect(after.members[0].title).toBe("Staff Engineer");
 
+    // The workspace-wide roster endpoint (must not be shadowed by :id).
+    const roster = await http
+      .get("/departments/roster")
+      .set(auth(member.accessToken))
+      .expect(200);
+    expect(roster.body.entries).toEqual([
+      { departmentId: dept.id, userId: member.userId, deptRole: "member" },
+    ]);
+
     await http
       .delete(`/departments/${dept.id}/members/${member.userId}`)
       .set(auth(owner.accessToken))
