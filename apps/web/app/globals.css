@@ -8175,8 +8175,17 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 
 @media (max-width: 620px) {
   .aib-scrim { padding: 0; }
-  /* Full-screen on phones: header pinned, body scrolls, footer stays put. */
-  .aib { max-width: 100%; height: 100%; max-height: 100%; border-radius: 0; border: none; }
+  /* Full-screen on phones: header pinned, body scrolls, footer stays put.
+     100dvh (dynamic viewport) so the pinned footer rides ABOVE the on-screen
+     keyboard while you type, instead of hiding behind it. */
+  .aib {
+    max-width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
   .aib-preview { max-height: none; }
   .btn-ai span { display: none; }
 }
