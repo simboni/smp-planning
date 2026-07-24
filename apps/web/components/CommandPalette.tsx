@@ -45,6 +45,7 @@ const DESTINATIONS: { label: string; href: string; icon: IconKey; keywords?: str
   { label: "People", href: "/people", icon: "members", keywords: "members teams invite roles" },
   { label: "Departments", href: "/departments", icon: "org", keywords: "org units accounting operations hr sales structure" },
   { label: "HR", href: "/hr", icon: "team", keywords: "people directory designations departments staff" },
+  { label: "Leave", href: "/leave", icon: "calendar", keywords: "time off holiday vacation sick annual approvals balance" },
   { label: "Settings", href: "/settings", icon: "settings", keywords: "workspace preferences" },
   { label: "Everything", href: "/everything", icon: "spaces", keywords: "spaces folders lists overview" },
   { label: "Docs", href: "/docs", icon: "docs", keywords: "wiki pages notes write document" },

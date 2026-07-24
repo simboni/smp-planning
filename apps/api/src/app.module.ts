@@ -23,6 +23,7 @@ import { GovernanceModule } from "./governance/governance.module";
 import { HealthController } from "./health.controller";
 import { DepartmentsModule } from "./departments/departments.module";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
+import { LeaveModule } from "./leave/leave.module";
 import { HomeModule } from "./home/home.module";
 import { InboxModule } from "./inbox/inbox.module";
 import { LimitsModule } from "./limits/limits.module";
@@ -66,6 +67,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     GovernanceModule,
     HierarchyModule,
     DepartmentsModule,
+    LeaveModule,
     TeamsModule,
     SharingModule,
     TasksModule,

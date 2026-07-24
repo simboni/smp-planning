@@ -99,6 +99,7 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/departments", label: "Departments", icon: "org" },
       { href: "/hr", label: "HR", icon: "members" },
+      { href: "/leave", label: "Leave", icon: "calendar" },
       { href: "/people", label: "People", icon: "team" },
     ],
   },

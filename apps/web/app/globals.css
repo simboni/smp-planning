@@ -8903,3 +8903,58 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   gap: 8px;
 }
 .oc-unassigned-row .oc-person { width: 212px; }
+
+/* ---- Leave management ---- */
+.lv-balances {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.lv-balance { display: flex; flex-direction: column; gap: 3px; }
+.lv-balance-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.lv-balance-num { font-size: 26px; font-weight: 750; line-height: 1.1; }
+.lv-balance-total { font-size: 14px; font-weight: 500; }
+.lv-balance-sub { font-size: 11.5px; }
+
+.lv-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  margin: 22px 0 10px;
+}
+.lv-none { margin: 4px 0 12px; font-size: 13px; }
+.lv-list { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; }
+.lv-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+}
+.lv-row:last-child { border-bottom: none; }
+.lv-row-dot { width: 11px; height: 11px; }
+.lv-row-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.lv-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.lv-row-sub { font-size: 12px; }
+.lv-row-actions { display: inline-flex; gap: 6px; flex: none; }
+.lv-days { font-size: 13px; margin: -4px 0 10px; font-weight: 600; }
+.lv-add-type { align-self: flex-start; margin-top: 6px; }
+
+.badge.lv-st-pending { color: var(--brand); }
+.badge.lv-st-approved { color: #36b37e; }
+.badge.lv-st-rejected { color: var(--danger); }
+.badge.lv-st-cancelled { color: var(--muted); }

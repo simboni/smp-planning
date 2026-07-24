@@ -125,6 +125,48 @@ export interface OnboardingResult {
   skipped?: "no_steps" | "no_space";
 }
 
+/* ------------------------------------------------------------------ *
+ * Leave management (HR module).
+ * ------------------------------------------------------------------ */
+export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export interface LeaveType {
+  id: string;
+  name: string;
+  daysPerYear: number;
+  color: string;
+  position: number;
+}
+
+export interface LeaveRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatarUrl: string | null;
+  leaveTypeId: string;
+  leaveTypeName: string;
+  leaveTypeColor: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  reason: string;
+  status: LeaveStatus;
+  decidedBy: string | null;
+  decidedByName: string | null;
+  decisionNote: string;
+  createdAt: string;
+  canDecide: boolean;
+}
+
+export interface LeaveBalance {
+  leaveTypeId: string;
+  leaveTypeName: string;
+  leaveTypeColor: string;
+  entitlementDays: number;
+  usedDays: number;
+  pendingDays: number;
+}
+
 export interface DepartmentMember {
   userId: string;
   fullName: string;
@@ -1389,6 +1431,62 @@ export const departmentsApi = {
       method: "DELETE",
       auth: "access",
     }),
+};
+
+/* ------------------------------------------------------------------ *
+ * Leave management (HR module).
+ * ------------------------------------------------------------------ */
+export const leaveApi = {
+  types: () => api<{ types: LeaveType[] }>("/leave/types", { auth: "access" }),
+  createType: (body: { name: string; daysPerYear?: number; color?: string }) =>
+    api<{ type: LeaveType }>("/leave/types", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateType: (
+    id: string,
+    body: { name?: string; daysPerYear?: number; color?: string },
+  ) =>
+    api<{ ok: true }>(`/leave/types/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  removeType: (id: string) =>
+    api<void>(`/leave/types/${id}`, { method: "DELETE", auth: "access" }),
+  requests: (scope: "mine" | "approvals") =>
+    api<{ requests: LeaveRequest[] }>(`/leave/requests?scope=${scope}`, {
+      auth: "access",
+    }),
+  request: (body: {
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+  }) =>
+    api<{ request: LeaveRequest }>("/leave/requests", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  decide: (id: string, approve: boolean, note?: string) =>
+    api<{ ok: true }>(`/leave/requests/${id}/decide`, {
+      method: "POST",
+      body: { approve, note },
+      auth: "access",
+    }),
+  cancel: (id: string) =>
+    api<{ ok: true }>(`/leave/requests/${id}/cancel`, {
+      method: "POST",
+      auth: "access",
+    }),
+  balances: (year?: number) =>
+    api<{ balances: LeaveBalance[] }>(
+      `/leave/balances${year ? `?year=${year}` : ""}`,
+      { auth: "access" },
+    ),
+  away: () => api<{ requests: LeaveRequest[] }>("/leave/away", { auth: "access" }),
 };
 
 /* ------------------------------------------------------------------ *
