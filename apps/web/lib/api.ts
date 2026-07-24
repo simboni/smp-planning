@@ -15,6 +15,8 @@
  * server without a DOM.
  */
 
+import { siteOrigin } from "./format";
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -2365,11 +2367,9 @@ export const publicShareApi = {
     ),
 };
 
-/** Build the shareable public URL for a token (current origin + /s?t=). */
+/** Build the shareable public URL for a token (canonical origin + /s?t=). */
 export function shareUrl(token: string): string {
-  const origin =
-    typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/s?t=${token}`;
+  return `${siteOrigin()}/s?t=${token}`;
 }
 
 /* ---- automations -------------------------------------------------- */

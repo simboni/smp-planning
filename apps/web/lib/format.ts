@@ -252,10 +252,30 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-/** The shareable public URL for a form token (origin-relative on SSR). */
+/**
+ * The canonical public origin StackUp is reachable at. Shareable links MUST
+ * use this, never `window.location.origin` — otherwise a link generated while
+ * the app is open on a preview/dev host (e.g. *.onrender.com), inside the
+ * native shell, or on localhost would hand recipients a URL that host may not
+ * serve. Order: an explicit build-time override, else the current origin when
+ * it's a real public domain, else the production default.
+ */
+const CANONICAL_WEB_ORIGIN = "https://www.stackup.co.ke";
+export function siteOrigin(): string {
+  const env = process.env.NEXT_PUBLIC_WEB_URL;
+  if (env) return env.replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    const o = window.location.origin;
+    if (o && !/onrender\.com|localhost|127\.0\.0\.1|0\.0\.0\.0|capacitor:|file:|:\/\/localhost/i.test(o)) {
+      return o;
+    }
+  }
+  return CANONICAL_WEB_ORIGIN;
+}
+
+/** The shareable public URL for a form token. Always canonical origin. */
 export function publicFormUrl(publicToken: string): string {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/f?token=${encodeURIComponent(publicToken)}`;
+  return `${siteOrigin()}/f?token=${encodeURIComponent(publicToken)}`;
 }
 
 /* ------------------------------------------------------------------ *
