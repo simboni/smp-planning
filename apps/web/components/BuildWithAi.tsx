@@ -912,13 +912,23 @@ export function BuildWithAi({
                   </p>
                 </div>
                 <div className="aib-links">
+                  <a
+                    className="aib-link"
+                    href={publicFormUrl(formResult.publicToken)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span className="aib-link-ic">{Icons.eye}</span>
+                    <span className="aib-link-name">Preview the live form</span>
+                    {Icons.arrowRight}
+                  </a>
                   <button
                     type="button"
                     className="aib-link"
-                    onClick={() => window.open(publicFormUrl(formResult.publicToken), "_blank")}
+                    onClick={() => goto(`/form-builder?id=${formResult.formId}`)}
                   >
-                    <span className="aib-link-ic">{Icons.eye}</span>
-                    <span className="aib-link-name">Preview the form</span>
+                    <span className="aib-link-ic">{Icons.edit}</span>
+                    <span className="aib-link-name">Open form in the builder</span>
                     {Icons.arrowRight}
                   </button>
                   <button type="button" className="aib-link" onClick={() => goto("/forms")}>

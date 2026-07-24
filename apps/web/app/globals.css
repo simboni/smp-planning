@@ -8212,6 +8212,7 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   transition: all 0.12s;
 }
 .aib-link:hover { border-color: var(--brand); background: var(--brand-soft); }
+.aib-link, .aib-link:hover, .aib-link:visited { text-decoration: none; }
 .aib-link-ic svg { width: 17px; height: 17px; color: var(--brand); }
 .aib-link-name { flex: 1; text-align: left; }
 .aib-link svg:last-child { width: 15px; height: 15px; color: var(--muted); }
