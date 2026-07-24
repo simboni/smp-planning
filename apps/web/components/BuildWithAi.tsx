@@ -904,102 +904,103 @@ function DestPicker({
 
   return (
     <div className="aib-dest">
-      <span className="aib-dest-ic">{Icons.spaces}</span>
-      <select
-        className="aib-dest-select"
-        value={spaceValue}
-        onChange={(e) => {
-          const v = e.target.value;
-          // Always clear folderId on a space change — a folder from the old
-          // space must never carry over to a different (or new) space.
-          if (v === NEW) onDest({ spaceMode: "new", listMode: "new", folderId: "" });
-          else if (v === "") onDest({ spaceMode: "", folderId: "" });
-          else
-            onDest({
-              spaceMode: "existing",
-              spaceId: v,
-              listMode: "existing",
-              listId: "",
-              folderId: "",
-            });
-        }}
-      >
-        <option value="">— Choose space —</option>
-        {context.spaces.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-        <option value={NEW}>＋ New space…</option>
-      </select>
+      {/* Space row */}
+      <div className="aib-dest-row">
+        <span className="aib-dest-tag">Space</span>
+        <select
+          className="aib-dest-select"
+          value={spaceValue}
+          onChange={(e) => {
+            const v = e.target.value;
+            // Always clear folderId on a space change — a folder from the old
+            // space must never carry over to a different (or new) space.
+            if (v === NEW) onDest({ spaceMode: "new", listMode: "new", folderId: "" });
+            else if (v === "") onDest({ spaceMode: "", folderId: "" });
+            else
+              onDest({
+                spaceMode: "existing",
+                spaceId: v,
+                listMode: "existing",
+                listId: "",
+                folderId: "",
+              });
+          }}
+        >
+          <option value="">— Choose space —</option>
+          {context.spaces.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+          <option value={NEW}>＋ New space…</option>
+        </select>
+        {dest.spaceMode === "new" && (
+          <input
+            className="aib-dest-input"
+            placeholder="New space name"
+            value={dest.newSpaceName}
+            onChange={(e) => onDest({ newSpaceName: e.target.value })}
+          />
+        )}
+      </div>
 
-      {dest.spaceMode === "new" && (
-        <input
-          className="aib-dest-input"
-          placeholder="New space name"
-          value={dest.newSpaceName}
-          onChange={(e) => onDest({ newSpaceName: e.target.value })}
-        />
-      )}
-
-      <span className="aib-dest-arrow">{Icons.chevronRight}</span>
-      <span className="aib-dest-ic">{Icons.list}</span>
-
-      {dest.spaceMode === "existing" ? (
-        <>
-          <select
-            className="aib-dest-select"
-            value={dest.listMode === "new" ? NEW : dest.listId}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === NEW) onDest({ listMode: "new" });
-              else onDest({ listMode: "existing", listId: v });
-            }}
-          >
-            <option value="">— Choose list —</option>
-            {(space?.lists ?? []).map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-            <option value={NEW}>＋ New list…</option>
-          </select>
-          {dest.listMode === "new" && (
-            <>
+      {/* List row */}
+      <div className="aib-dest-row">
+        <span className="aib-dest-tag">List</span>
+        {dest.spaceMode === "existing" ? (
+          <>
+            <select
+              className="aib-dest-select"
+              value={dest.listMode === "new" ? NEW : dest.listId}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === NEW) onDest({ listMode: "new" });
+                else onDest({ listMode: "existing", listId: v });
+              }}
+            >
+              <option value="">— Choose list —</option>
+              {(space?.lists ?? []).map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+              <option value={NEW}>＋ New list…</option>
+            </select>
+            {dest.listMode === "new" && (
               <input
                 className="aib-dest-input"
                 placeholder="New list name"
                 value={dest.newListName}
                 onChange={(e) => onDest({ newListName: e.target.value })}
               />
-              {space && space.folders.length > 0 && (
-                <select
-                  className="aib-dest-select"
-                  value={dest.folderId}
-                  onChange={(e) => onDest({ folderId: e.target.value })}
-                  title="Folder (optional)"
-                >
-                  <option value="">No folder</option>
-                  {space.folders.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      📁 {f.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </>
-          )}
-        </>
-      ) : dest.spaceMode === "new" ? (
-        <input
-          className="aib-dest-input"
-          placeholder="New list name"
-          value={dest.newListName}
-          onChange={(e) => onDest({ newListName: e.target.value })}
-        />
-      ) : (
-        <span className="aib-dest-hint muted">pick a space first</span>
-      )}
+            )}
+            {dest.listMode === "new" && space && space.folders.length > 0 && (
+              <select
+                className="aib-dest-select"
+                value={dest.folderId}
+                onChange={(e) => onDest({ folderId: e.target.value })}
+                title="Folder (optional)"
+              >
+                <option value="">No folder</option>
+                {space.folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    📁 {f.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </>
+        ) : dest.spaceMode === "new" ? (
+          <input
+            className="aib-dest-input"
+            placeholder="New list name"
+            value={dest.newListName}
+            onChange={(e) => onDest({ newListName: e.target.value })}
+          />
+        ) : (
+          <span className="aib-dest-hint muted">Pick a space first</span>
+        )}
+      </div>
     </div>
   );
 }
