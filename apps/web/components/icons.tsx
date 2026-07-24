@@ -206,6 +206,14 @@ export const Icons = {
       <circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none" />
     </svg>
   ),
+  org: (
+    <svg viewBox="0 0 24 24" {...s}>
+      <rect x="9" y="3" width="6" height="5" rx="1" />
+      <rect x="3" y="16" width="6" height="5" rx="1" />
+      <rect x="15" y="16" width="6" height="5" rx="1" />
+      <path d="M12 8v4M12 12H6v4M12 12h6v4" />
+    </svg>
+  ),
   book: (
     <svg viewBox="0 0 24 24" {...s}>
       <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v15H5.5A1.5 1.5 0 0 0 4 20.5z" />

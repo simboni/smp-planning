@@ -227,14 +227,16 @@ export class HierarchyService {
         }
       }
 
-      // Visibility + myPermission per space: one team lookup + one share
-      // lookup, then resolve each space's permission in JS. Spaces that
-      // resolve to 'none' are not visible to the caller and are dropped.
+      // Visibility + myPermission per space: one team + one department lookup
+      // + one share lookup, then resolve each space's permission in JS. Spaces
+      // that resolve to 'none' are not visible to the caller and are dropped.
       const teamIds = await this.access.userTeamIds(client, userId);
+      const departmentIds = await this.access.userDepartmentIds(client, userId);
       const shareMap = await this.access.userSpaceShareMap(
         client,
         userId,
         teamIds,
+        departmentIds,
       );
 
       const spaces = spacesRes.rows
@@ -273,10 +275,12 @@ export class HierarchyService {
          ORDER BY sort_order, created_at`,
       );
       const teamIds = await this.access.userTeamIds(client, userId);
+      const departmentIds = await this.access.userDepartmentIds(client, userId);
       const shareMap = await this.access.userSpaceShareMap(
         client,
         userId,
         teamIds,
+        departmentIds,
       );
       const out: SpaceWithPermission[] = [];
       for (const r of res.rows) {

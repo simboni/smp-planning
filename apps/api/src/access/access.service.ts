@@ -52,9 +52,22 @@ export class AccessService {
     return res.rows.map((r) => r.team_id as string);
   }
 
+  /** Department ids the user belongs to (RLS-confined to the workspace). */
+  async userDepartmentIds(
+    client: PoolClient,
+    userId: string,
+  ): Promise<string[]> {
+    const res = await client.query(
+      `SELECT department_id FROM department_members WHERE user_id = $1`,
+      [userId],
+    );
+    return res.rows.map((r) => r.department_id as string);
+  }
+
   /**
-   * Highest space-level permission the user holds per space, considering both
-   * their direct (principal_type='user') shares and their teams' shares.
+   * Highest space-level permission the user holds per space, considering
+   * their direct (principal_type='user') shares plus their teams' and
+   * departments' shares.
    * NOTE (M2): only object_type='space' shares are read; folder/list shares
    * are stored but not enforced yet.
    */
@@ -62,14 +75,16 @@ export class AccessService {
     client: PoolClient,
     userId: string,
     teamIds: string[],
+    departmentIds: string[] = [],
   ): Promise<Map<string, Permission>> {
     const res = await client.query(
       `SELECT object_id, permission
          FROM shares
         WHERE object_type = 'space'
           AND ((principal_type = 'user' AND principal_id = $1)
-            OR (principal_type = 'team' AND principal_id = ANY($2::uuid[])))`,
-      [userId, teamIds],
+            OR (principal_type = 'team' AND principal_id = ANY($2::uuid[]))
+            OR (principal_type = 'department' AND principal_id = ANY($3::uuid[])))`,
+      [userId, teamIds, departmentIds],
     );
     const map = new Map<string, Permission>();
     for (const row of res.rows) {
@@ -123,13 +138,15 @@ export class AccessService {
       return new Set(res.rows.map((r) => r.id as string));
     }
     const teamIds = await this.userTeamIds(client, userId);
+    const departmentIds = await this.userDepartmentIds(client, userId);
     const shared = await client.query(
       `SELECT object_id AS id
          FROM shares
         WHERE object_type = 'space'
           AND ((principal_type = 'user' AND principal_id = $1)
-            OR (principal_type = 'team' AND principal_id = ANY($2::uuid[])))`,
-      [userId, teamIds],
+            OR (principal_type = 'team' AND principal_id = ANY($2::uuid[]))
+            OR (principal_type = 'department' AND principal_id = ANY($3::uuid[])))`,
+      [userId, teamIds, departmentIds],
     );
     const set = new Set<string>(shared.rows.map((r) => r.id as string));
     if (role === "member") {
@@ -166,7 +183,13 @@ export class AccessService {
     if (!res.rows[0]) return "none";
     const isPrivate = res.rows[0].is_private as boolean;
     const teamIds = await this.userTeamIds(client, userId);
-    const shareMap = await this.userSpaceShareMap(client, userId, teamIds);
+    const departmentIds = await this.userDepartmentIds(client, userId);
+    const shareMap = await this.userSpaceShareMap(
+      client,
+      userId,
+      teamIds,
+      departmentIds,
+    );
     return AccessService.permissionFor(
       role,
       isPrivate,

@@ -98,7 +98,7 @@ export class WorkspacesController {
   @Roles("admin") // owner + admin (meet-or-exceed)
   async addMember(
     @Req() req: AuthedRequest,
-    @Body() body: { email?: string; role?: Role },
+    @Body() body: { email?: string; role?: Role; title?: string | null },
   ) {
     const role = body?.role;
     if (!body?.email?.trim()) {
@@ -114,6 +114,7 @@ export class WorkspacesController {
       req.userId!,
       body.email,
       role,
+      body?.title,
     );
   }
 
@@ -123,7 +124,7 @@ export class WorkspacesController {
   async updateMember(
     @Req() req: AuthedRequest,
     @Param("userId", ParseUUIDPipe) userId: string,
-    @Body() body: { role?: Role; status?: string },
+    @Body() body: { role?: Role; status?: string; title?: string | null },
   ) {
     return this.workspaces.updateMember(req.workspaceId!, req.userId!, userId, body);
   }

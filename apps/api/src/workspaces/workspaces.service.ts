@@ -21,6 +21,21 @@ export interface WorkspaceMember {
   status: string;
   /** Assigned custom role id (M17), or null when none. */
   customRoleId: string | null;
+  /** Designation / job title within this workspace (HR module), or null. */
+  title: string | null;
+}
+
+/** Normalize a designation: trimmed, bounded, empty → null. */
+export function normalizeTitle(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v !== "string") {
+    throw new BadRequestException("title must be a string");
+  }
+  const trimmed = v.trim();
+  if (trimmed.length > 120) {
+    throw new BadRequestException("title must be 120 characters or fewer");
+  }
+  return trimmed || null;
 }
 
 @Injectable()
@@ -229,7 +244,7 @@ export class WorkspacesService {
   ): Promise<WorkspaceMember[]> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       const res = await client.query(
-        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status, m.custom_role_id
+        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status, m.custom_role_id, m.title
          FROM memberships m
          JOIN users u ON u.id = m.user_id
          WHERE m.workspace_id = $1
@@ -244,6 +259,7 @@ export class WorkspacesService {
         role: r.role as Role,
         status: r.status,
         customRoleId: r.custom_role_id ?? null,
+        title: r.title ?? null,
       }));
     });
   }
@@ -261,21 +277,23 @@ export class WorkspacesService {
     actorUserId: string,
     email: string,
     role: Role,
+    title?: string | null,
   ): Promise<WorkspaceMember> {
+    const normalizedTitle = normalizeTitle(title);
     const targetUserId = await this.resolveOrCreateUser(email);
     return this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
       const insert = await client.query(
-        `INSERT INTO memberships (workspace_id, user_id, role)
-         VALUES ($1, $2, $3)
+        `INSERT INTO memberships (workspace_id, user_id, role, title)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (workspace_id, user_id) DO NOTHING
          RETURNING id`,
-        [workspaceId, targetUserId, role],
+        [workspaceId, targetUserId, role, normalizedTitle],
       );
       if (!insert.rows[0]) {
         throw new ConflictException("Already a member of this workspace");
       }
       const res = await client.query(
-        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status
+        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status, m.title
          FROM memberships m
          JOIN users u ON u.id = m.user_id
          WHERE m.workspace_id = $1 AND m.user_id = $2`,
@@ -290,6 +308,7 @@ export class WorkspacesService {
         role: r.role,
         status: r.status,
         customRoleId: null,
+        title: r.title ?? null,
       };
       await this.audit.record(client, {
         workspaceId,
@@ -297,7 +316,7 @@ export class WorkspacesService {
         action: "member.invited",
         entity: "membership",
         entityId: insert.rows[0].id,
-        data: { email, role },
+        data: { email, role, ...(normalizedTitle ? { title: normalizedTitle } : {}) },
       });
       return member;
     });
@@ -313,9 +332,16 @@ export class WorkspacesService {
     workspaceId: string,
     actorUserId: string,
     targetUserId: string,
-    input: { role?: Role; status?: string },
+    input: { role?: Role; status?: string; title?: string | null },
   ): Promise<WorkspaceMember> {
-    if (targetUserId === actorUserId) {
+    // A designation is descriptive, not a privilege: title-only updates are
+    // allowed on anyone (including the owner and yourself). Role/status
+    // changes keep the original guards.
+    const titleOnly =
+      input.role === undefined &&
+      input.status === undefined &&
+      input.title !== undefined;
+    if (targetUserId === actorUserId && !titleOnly) {
       throw new BadRequestException("You can't change your own membership here");
     }
     if (input.role !== undefined && !["admin", "member", "guest"].includes(input.role)) {
@@ -324,16 +350,18 @@ export class WorkspacesService {
     if (input.status !== undefined && !["active", "suspended"].includes(input.status)) {
       throw new BadRequestException("status must be 'active' or 'suspended'");
     }
-    if (input.role === undefined && input.status === undefined) {
+    if (input.role === undefined && input.status === undefined && input.title === undefined) {
       throw new BadRequestException("Nothing to update");
     }
+    const normalizedTitle =
+      input.title === undefined ? undefined : normalizeTitle(input.title);
     return this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
       const cur = await client.query(
         `SELECT role FROM memberships WHERE workspace_id = $1 AND user_id = $2`,
         [workspaceId, targetUserId],
       );
       if (!cur.rows[0]) throw new NotFoundException("Member not found");
-      if (cur.rows[0].role === "owner") {
+      if (cur.rows[0].role === "owner" && !titleOnly) {
         throw new BadRequestException("The workspace owner can't be modified");
       }
       const sets: string[] = [];
@@ -346,6 +374,10 @@ export class WorkspacesService {
         params.push(input.status);
         sets.push(`status = $${params.length}`);
       }
+      if (normalizedTitle !== undefined) {
+        params.push(normalizedTitle);
+        sets.push(`title = $${params.length}`);
+      }
       const res = await client.query(
         `UPDATE memberships SET ${sets.join(", ")}
          WHERE workspace_id = $1 AND user_id = $2
@@ -353,7 +385,7 @@ export class WorkspacesService {
         params,
       );
       const row = await client.query(
-        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status, m.custom_role_id
+        `SELECT u.id, u.email, u.full_name, u.avatar_url, m.role, m.status, m.custom_role_id, m.title
          FROM memberships m JOIN users u ON u.id = m.user_id
          WHERE m.workspace_id = $1 AND m.user_id = $2`,
         [workspaceId, targetUserId],
@@ -377,6 +409,7 @@ export class WorkspacesService {
         role: r.role as Role,
         status: r.status,
         customRoleId: r.custom_role_id ?? null,
+        title: r.title ?? null,
       };
     });
   }

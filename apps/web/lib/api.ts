@@ -50,6 +50,39 @@ export interface Member {
   status: string;
   /** Assigned custom role id (M17), or null. */
   customRoleId?: string | null;
+  /** Designation / job title within this workspace (HR module), or null. */
+  title?: string | null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Departments (HR module): org units with designations and a roster.
+ * ------------------------------------------------------------------ */
+export type DeptRole = "head" | "member";
+
+export interface Department {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  lead: { id: string; fullName: string; avatarUrl: string | null } | null;
+  spaceId: string | null;
+  spaceName: string | null;
+  memberCount: number;
+}
+
+export interface DepartmentMember {
+  userId: string;
+  fullName: string;
+  email: string;
+  avatarUrl: string | null;
+  deptRole: DeptRole;
+  role: WorkspaceRole;
+  status: string;
+  title: string | null;
+}
+
+export interface DepartmentDetail extends Department {
+  members: DepartmentMember[];
 }
 
 /* ------------------------------------------------------------------ *
@@ -78,7 +111,7 @@ export interface TeamDetail {
  * Space sharing (Module 2): privacy + per-principal grants.
  * ------------------------------------------------------------------ */
 export interface AccessEntry {
-  principalType: "user" | "team";
+  principalType: "user" | "team" | "department";
   principalId: string;
   name: string;
   email: string | null;
@@ -824,16 +857,20 @@ export const workspacesApi = {
     api<{ members: Member[] }>("/workspaces/current/members", {
       auth: "access",
     }),
-  invite: (body: { email: string; role: WorkspaceRole }) =>
+  invite: (body: { email: string; role: WorkspaceRole; title?: string | null }) =>
     api<Member>("/workspaces/current/members", {
       method: "POST",
       body,
       auth: "access",
     }),
-  /** Change a member's role or suspend / reactivate them. Owner/admin only. */
+  /** Change a member's role, status, or designation. Owner/admin only. */
   updateMember: (
     userId: string,
-    body: { role?: WorkspaceRole; status?: "active" | "suspended" },
+    body: {
+      role?: WorkspaceRole;
+      status?: "active" | "suspended";
+      title?: string | null;
+    },
   ) =>
     api<Member>(`/workspaces/current/members/${userId}`, {
       method: "PATCH",
@@ -1214,6 +1251,77 @@ export const teamsApi = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Departments (HR module).
+ * ------------------------------------------------------------------ */
+export const departmentsApi = {
+  list: () => api<{ departments: Department[] }>("/departments", { auth: "access" }),
+  get: (id: string) =>
+    api<{ department: DepartmentDetail }>(`/departments/${id}`, {
+      auth: "access",
+    }),
+  create: (body: {
+    name: string;
+    description?: string;
+    color?: string;
+    leadUserId?: string | null;
+    createSpace?: boolean;
+  }) =>
+    api<{ department: Department }>("/departments", {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  update: (
+    id: string,
+    body: {
+      name?: string;
+      description?: string;
+      color?: string;
+      leadUserId?: string | null;
+      spaceId?: string | null;
+    },
+  ) =>
+    api<{ department: Department }>(`/departments/${id}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  remove: (id: string) =>
+    api<void>(`/departments/${id}`, { method: "DELETE", auth: "access" }),
+  /** Add an existing member (userId) or onboard by email into the department. */
+  addMember: (
+    id: string,
+    body: {
+      userId?: string;
+      email?: string;
+      role?: WorkspaceRole;
+      title?: string | null;
+      deptRole?: DeptRole;
+    },
+  ) =>
+    api<{ member: DepartmentMember }>(`/departments/${id}/members`, {
+      method: "POST",
+      body,
+      auth: "access",
+    }),
+  updateMember: (
+    id: string,
+    userId: string,
+    body: { deptRole?: DeptRole; title?: string | null },
+  ) =>
+    api<{ ok: true }>(`/departments/${id}/members/${userId}`, {
+      method: "PATCH",
+      body,
+      auth: "access",
+    }),
+  removeMember: (id: string, userId: string) =>
+    api<void>(`/departments/${id}/members/${userId}`, {
+      method: "DELETE",
+      auth: "access",
+    }),
+};
+
+/* ------------------------------------------------------------------ *
  * Space access / sharing (Module 2).
  * ------------------------------------------------------------------ */
 export const accessApi = {
@@ -1228,7 +1336,7 @@ export const accessApi = {
   upsertShare: (
     spaceId: string,
     body: {
-      principalType: "user" | "team";
+      principalType: "user" | "team" | "department";
       principalId: string;
       permission: Permission;
     },
@@ -1240,7 +1348,7 @@ export const accessApi = {
     }),
   removeShare: (
     spaceId: string,
-    principalType: "user" | "team",
+    principalType: "user" | "team" | "department",
     principalId: string,
   ) =>
     api<void>(`/spaces/${spaceId}/shares/${principalType}/${principalId}`, {

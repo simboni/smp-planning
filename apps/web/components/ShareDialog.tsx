@@ -452,7 +452,7 @@ export function ShareDialog({
                       key={`${entry.principalType}:${entry.principalId}`}
                       className="share-entry"
                     >
-                      {entry.principalType === "team" ? (
+                      {entry.principalType !== "user" ? (
                         <span
                           className="share-team-dot"
                           style={{ background: colorFor(entry.principalId) }}
@@ -473,11 +473,18 @@ export function ShareDialog({
                           {entry.principalType === "team" && (
                             <span className="badge badge-soft share-team-tag">Team</span>
                           )}
+                          {entry.principalType === "department" && (
+                            <span className="badge badge-soft share-team-tag">
+                              Department
+                            </span>
+                          )}
                         </span>
                         <span className="share-entry-sub">
                           {entry.principalType === "user"
                             ? entry.email ?? ""
-                            : "Team"}
+                            : entry.principalType === "department"
+                              ? "Department"
+                              : "Team"}
                         </span>
                       </span>
 

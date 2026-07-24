@@ -21,6 +21,7 @@ import { FormsModule } from "./forms/forms.module";
 import { GoalsModule } from "./goals/goals.module";
 import { GovernanceModule } from "./governance/governance.module";
 import { HealthController } from "./health.controller";
+import { DepartmentsModule } from "./departments/departments.module";
 import { HierarchyModule } from "./hierarchy/hierarchy.module";
 import { HomeModule } from "./home/home.module";
 import { InboxModule } from "./inbox/inbox.module";
@@ -64,6 +65,7 @@ import { WorkspacesModule } from "./workspaces/workspaces.module";
     WorkspacesModule,
     GovernanceModule,
     HierarchyModule,
+    DepartmentsModule,
     TeamsModule,
     SharingModule,
     TasksModule,

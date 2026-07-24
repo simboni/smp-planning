@@ -10,5 +10,7 @@ import { WorkspacesService } from "./workspaces.service";
   imports: [AuthModule, AuditModule, LimitsModule],
   controllers: [WorkspacesController],
   providers: [WorkspacesService],
+  // The HR module reuses addMember to onboard people straight into departments.
+  exports: [WorkspacesService],
 })
 export class WorkspacesModule {}

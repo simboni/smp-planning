@@ -14,7 +14,7 @@ import {
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
 
-type PrincipalType = "user" | "team";
+type PrincipalType = "user" | "team" | "department";
 
 export interface ShareEntry {
   principalType: PrincipalType;
@@ -91,12 +91,15 @@ export class SharingService {
         `SELECT s.principal_type, s.principal_id, s.permission,
                 u.full_name AS user_name, u.email AS user_email,
                 u.avatar_url AS user_avatar,
-                t.name AS team_name
+                t.name AS team_name,
+                d.name AS department_name
          FROM shares s
          LEFT JOIN users u
            ON s.principal_type = 'user' AND u.id = s.principal_id
          LEFT JOIN teams t
            ON s.principal_type = 'team' AND t.id = s.principal_id
+         LEFT JOIN departments d
+           ON s.principal_type = 'department' AND d.id = s.principal_id
          WHERE s.object_type = 'space' AND s.object_id = $1
          ORDER BY s.created_at`,
         [spaceId],
@@ -109,7 +112,9 @@ export class SharingService {
           name:
             principalType === "user"
               ? ((r.user_name as string | null) ?? "Unknown user")
-              : ((r.team_name as string | null) ?? "Unknown team"),
+              : principalType === "department"
+                ? ((r.department_name as string | null) ?? "Unknown department")
+                : ((r.team_name as string | null) ?? "Unknown team"),
           email: principalType === "user"
             ? ((r.user_email as string | null) ?? null)
             : null,
@@ -184,8 +189,14 @@ export class SharingService {
     const principalType = body?.principalType;
     const principalId = body?.principalId;
     const permission = body?.permission;
-    if (principalType !== "user" && principalType !== "team") {
-      throw new BadRequestException("principalType must be 'user' or 'team'");
+    if (
+      principalType !== "user" &&
+      principalType !== "team" &&
+      principalType !== "department"
+    ) {
+      throw new BadRequestException(
+        "principalType must be 'user', 'team' or 'department'",
+      );
     }
     if (typeof principalId !== "string" || !principalId) {
       throw new BadRequestException("principalId is required");
@@ -236,8 +247,14 @@ export class SharingService {
     principalType: string,
     principalId: string,
   ): Promise<void> {
-    if (principalType !== "user" && principalType !== "team") {
-      throw new BadRequestException("principalType must be 'user' or 'team'");
+    if (
+      principalType !== "user" &&
+      principalType !== "team" &&
+      principalType !== "department"
+    ) {
+      throw new BadRequestException(
+        "principalType must be 'user', 'team' or 'department'",
+      );
     }
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       const { perm } = await this.loadVisible(client, userId, role, spaceId);
@@ -272,6 +289,16 @@ export class SharingService {
       if (!res.rows[0]) {
         throw new BadRequestException("user is not a member of this workspace");
       }
+    } else if (principalType === "department") {
+      const res = await client.query(
+        `SELECT 1 FROM departments WHERE id = $1`,
+        [principalId],
+      );
+      if (!res.rows[0]) {
+        throw new BadRequestException(
+          "department does not exist in this workspace",
+        );
+      }
     } else {
       const res = await client.query(`SELECT 1 FROM teams WHERE id = $1`, [
         principalId,
@@ -303,13 +330,17 @@ export class SharingService {
         permission,
       };
     }
-    const res = await client.query(`SELECT name FROM teams WHERE id = $1`, [
-      principalId,
-    ]);
+    const table = principalType === "department" ? "departments" : "teams";
+    const res = await client.query(
+      `SELECT name FROM ${table} WHERE id = $1`,
+      [principalId],
+    );
     return {
       principalType,
       principalId,
-      name: (res.rows[0]?.name as string | null) ?? "Unknown team",
+      name:
+        (res.rows[0]?.name as string | null) ??
+        (principalType === "department" ? "Unknown department" : "Unknown team"),
       email: null,
       avatarUrl: null,
       permission,

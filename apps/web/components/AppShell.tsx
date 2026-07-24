@@ -90,6 +90,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/forms", label: "Forms", icon: "clipboard" },
   { href: "/goals", label: "Goals", icon: "goals" },
   { href: "/portfolios", label: "Portfolios", icon: "briefcase" },
+  { href: "/hr", label: "HR", icon: "org" },
   { href: "/members", label: "Members", icon: "members" },
   { href: "/teams", label: "Teams", icon: "team" },
   { href: "/settings", label: "Settings", icon: "settings" },

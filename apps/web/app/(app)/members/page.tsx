@@ -26,6 +26,7 @@ export default function MembersPage() {
 
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>("member");
+  const [inviteTitle, setInviteTitle] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteOk, setInviteOk] = useState("");
@@ -90,6 +91,24 @@ export default function MembersPage() {
     }
   };
 
+  /** Set / clear a member's designation (works on anyone, incl. the owner). */
+  const setTitle = async (m: Member): Promise<void> => {
+    const next = window.prompt(
+      `Designation for ${m.fullName || m.email}`,
+      m.title ?? "",
+    );
+    if (next === null) return;
+    setActionError("");
+    try {
+      const updated = await workspacesApi.updateMember(m.id, { title: next });
+      setMembers((prev) =>
+        prev ? prev.map((x) => (x.id === m.id ? updated : x)) : prev,
+      );
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Action failed.");
+    }
+  };
+
   const guestCount = (members ?? []).filter((m) => m.role === "guest").length;
   const memberCount = (members ?? []).length - guestCount;
   const visible = (members ?? []).filter((m) =>
@@ -110,11 +129,13 @@ export default function MembersPage() {
       const newMember = await workspacesApi.invite({
         email: email.trim(),
         role: inviteRole,
+        title: inviteTitle.trim() || undefined,
       });
       // Optimistic: splice the returned member in, then refresh from server.
       setMembers((prev) => (prev ? [...prev, newMember] : [newMember]));
       setInviteOk(`Invited ${newMember.email}.`);
       setEmail("");
+      setInviteTitle("");
       load();
     } catch (err) {
       setInviteError(err instanceof ApiError ? err.message : "Couldn't send the invite.");
@@ -159,6 +180,18 @@ export default function MembersPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+              />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="inviteTitle">
+                Designation (optional)
+              </label>
+              <input
+                id="inviteTitle"
+                className="input"
+                placeholder="e.g. Accountant"
+                value={inviteTitle}
+                onChange={(e) => setInviteTitle(e.target.value)}
               />
             </div>
             <div className="field">
@@ -247,6 +280,7 @@ export default function MembersPage() {
             <thead>
               <tr>
                 <th>Member</th>
+                <th>Designation</th>
                 <th>Role</th>
                 <th>Status</th>
                 {canManage && <th className="col-actions" aria-label="Actions" />}
@@ -280,6 +314,22 @@ export default function MembersPage() {
                       </div>
                     </td>
                     <td>
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="cell-title-btn"
+                          title="Set designation"
+                          onClick={() => void setTitle(m)}
+                        >
+                          {m.title || <span className="muted">Set designation…</span>}
+                        </button>
+                      ) : (
+                        <span className={m.title ? undefined : "muted"}>
+                          {m.title || "—"}
+                        </span>
+                      )}
+                    </td>
+                    <td>
                       <span className={`badge role-${m.role}`}>{m.role}</span>
                     </td>
                     <td>
@@ -302,7 +352,7 @@ export default function MembersPage() {
               })}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={canManage ? 4 : 3} className="muted" style={{ textAlign: "center", padding: 24 }}>
+                  <td colSpan={canManage ? 5 : 4} className="muted" style={{ textAlign: "center", padding: 24 }}>
                     No {filter === "guests" ? "guests" : "members"} to show.
                   </td>
                 </tr>
