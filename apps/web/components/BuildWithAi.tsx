@@ -111,6 +111,9 @@ const OP_LABEL: Record<string, string> = {
   set_due: "Due date",
   add_comment: "Comment",
   post_message: "Message",
+  move_task: "Move task",
+  move_list: "Move list",
+  move_folder: "Move folder",
 };
 
 /** Build an initial Dest from a plan target + context. */

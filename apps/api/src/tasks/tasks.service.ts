@@ -28,6 +28,7 @@ import {
   validPriority,
   validRecurrence,
   assertIdArray,
+  remapTasksToSpace,
 } from "./tasks.support";
 
 export interface UserRef {
@@ -884,6 +885,8 @@ export class TasksService {
       isMilestone?: boolean;
       recurrence?: Record<string, unknown> | null;
       sprintPoints?: number | null;
+      /** Move the task (and its subtasks) to another list, possibly cross-space. */
+      listId?: string;
     },
   ): Promise<TaskDetail & { spawnedTaskId?: string }> {
     const result = await this.db.withWorkspace(workspaceId, userId, async (client) => {
@@ -1038,6 +1041,45 @@ export class TasksService {
         `UPDATE tasks SET ${sets.join(", ")} WHERE id = $${i}`,
         params,
       );
+
+      // Move the task (and every descendant subtask) to another list. When the
+      // destination is in a different space we require edit there, carry the
+      // denormalized space_id across, and reconcile space-scoped attributes.
+      if (body?.listId !== undefined && body.listId !== (existing.list_id as string)) {
+        const destList = await client.query(
+          `SELECT id, space_id FROM lists WHERE id = $1`,
+          [body.listId],
+        );
+        if (!destList.rows[0]) {
+          throw new BadRequestException("listId must reference a list you can edit");
+        }
+        const toSpace = destList.rows[0].space_id as string;
+        if (toSpace !== spaceId) {
+          await requireSpaceEdit(this.access, client, userId, role, toSpace);
+        }
+        const desc = await client.query(
+          `WITH RECURSIVE d AS (
+             SELECT id FROM tasks WHERE id = $1
+             UNION ALL
+             SELECT t.id FROM tasks t JOIN d ON t.parent_task_id = d.id
+           ) SELECT id FROM d`,
+          [id],
+        );
+        const ids = desc.rows.map((r) => r.id as string);
+        await client.query(
+          `UPDATE tasks SET list_id = $1, space_id = $2, updated_at = now() WHERE id = ANY($3)`,
+          [body.listId, toSpace, ids],
+        );
+        // The moved task becomes top-level in its new list (its parent, if any,
+        // stayed behind); its own subtasks keep hanging off it.
+        await client.query(
+          `UPDATE tasks SET parent_task_id = NULL WHERE id = $1`,
+          [id],
+        );
+        if (toSpace !== spaceId) {
+          await remapTasksToSpace(client, ids, toSpace);
+        }
+      }
 
       if (datesTouched) {
         const after = await client.query(

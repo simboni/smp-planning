@@ -41,6 +41,7 @@ export interface SnapshotSpace {
   id: string;
   name: string;
   lists: { id: string; name: string }[];
+  folders: { id: string; name: string }[];
 }
 
 export interface WorkspaceSnapshot {
@@ -126,14 +127,19 @@ export class AiContextService {
     const r = await client.query(
       `SELECT sp.id, sp.name,
               coalesce(
-                json_agg(json_build_object('id', l.id, 'name', l.name)
-                         ORDER BY l.sort_order)
-                  FILTER (WHERE l.id IS NOT NULL AND l.archived = false), '[]'
-              ) AS lists
+                (SELECT json_agg(json_build_object('id', l.id, 'name', l.name)
+                          ORDER BY l.sort_order)
+                   FROM lists l
+                  WHERE l.space_id = sp.id AND l.archived = false), '[]'
+              ) AS lists,
+              coalesce(
+                (SELECT json_agg(json_build_object('id', f.id, 'name', f.name)
+                          ORDER BY f.sort_order)
+                   FROM folders f
+                  WHERE f.space_id = sp.id AND f.archived = false), '[]'
+              ) AS folders
          FROM spaces sp
-         LEFT JOIN lists l ON l.space_id = sp.id
         WHERE sp.id = ANY($1) AND sp.archived = false
-        GROUP BY sp.id
         ORDER BY sp.sort_order
         LIMIT 40`,
       [spaceIds],
@@ -142,6 +148,7 @@ export class AiContextService {
       id: x.id as string,
       name: x.name as string,
       lists: (x.lists as { id: string; name: string }[]).slice(0, 20),
+      folders: (x.folders as { id: string; name: string }[]).slice(0, 20),
     }));
   }
 

@@ -8457,6 +8457,7 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .do-op-set_assignees{background:#e6f0ff;color:#2563eb;border-color:transparent;}
 .do-op-add_comment,.do-op-post_message{background:#e8f7ee;color:#16a34a;border-color:transparent;}
 .do-op-create_task{background:#fdeee3;color:#ea580c;border-color:transparent;}
+.do-op-move_task,.do-op-move_list,.do-op-move_folder{background:#f3e8ff;color:#9333ea;border-color:transparent;}
 .do-op-summary{font-weight:600;font-size:.9rem;color:var(--ink);letter-spacing:-.01em;}
 .do-op-reason{font-size:.8rem;color:var(--muted);line-height:1.45;}
 .do-results{display:flex;flex-direction:column;gap:6px;}

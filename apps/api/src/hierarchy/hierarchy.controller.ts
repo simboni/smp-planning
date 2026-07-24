@@ -181,7 +181,7 @@ export class HierarchyController {
   async updateFolder(
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,
-    @Body() body: { name?: string; archived?: boolean },
+    @Body() body: { name?: string; archived?: boolean; spaceId?: string },
   ) {
     return {
       folder: await this.hierarchy.updateFolder(
@@ -261,6 +261,7 @@ export class HierarchyController {
       color?: string | null;
       archived?: boolean;
       folderId?: string | null;
+      spaceId?: string;
     },
   ) {
     return {

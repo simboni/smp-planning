@@ -223,3 +223,69 @@ export function advanceByRule(base: Date, rule: RecurrenceRule): Date {
   } else d.setUTCMonth(d.getUTCMonth() + rule.interval);
   return d;
 }
+
+/**
+ * After a set of tasks move INTO `spaceId`, reconcile their space-scoped
+ * attributes so nothing dangles across the boundary:
+ *   - a status from another space → the target space's first status (or null),
+ *   - a task type from another space → null,
+ *   - tag links whose tag lives in another space → removed,
+ *   - custom-field values whose field lives in another space → removed.
+ * Idempotent: attributes already valid for `spaceId` are left untouched.
+ * The caller is responsible for having already set tasks.space_id = spaceId.
+ */
+export async function remapTasksToSpace(
+  client: PoolClient,
+  taskIds: string[],
+  spaceId: string,
+): Promise<void> {
+  if (taskIds.length === 0) return;
+  // The destination space may never have had a task (statuses are provisioned
+  // lazily), so ensure its default status set exists before we remap onto it.
+  const has = await client.query(
+    `SELECT 1 FROM statuses WHERE space_id = $1 LIMIT 1`,
+    [spaceId],
+  );
+  if (!has.rows[0]) {
+    for (const s of DEFAULT_STATUSES) {
+      await client.query(
+        `INSERT INTO statuses (workspace_id, space_id, name, color, type, position)
+         VALUES (current_setting('app.current_workspace')::uuid, $1, $2, $3, $4, $5)`,
+        [spaceId, s.name, s.color, s.type, s.position],
+      );
+    }
+  }
+  const def = await client.query(
+    `SELECT id FROM statuses WHERE space_id = $1 ORDER BY position, created_at LIMIT 1`,
+    [spaceId],
+  );
+  const defId = (def.rows[0]?.id as string | undefined) ?? null;
+  await client.query(
+    `UPDATE tasks SET status_id = $1
+       WHERE id = ANY($2) AND status_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM statuses s WHERE s.id = tasks.status_id AND s.space_id = $3
+         )`,
+    [defId, taskIds, spaceId],
+  );
+  await client.query(
+    `UPDATE tasks SET task_type_id = NULL
+       WHERE id = ANY($1) AND task_type_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM task_types tt WHERE tt.id = tasks.task_type_id AND tt.space_id = $2
+         )`,
+    [taskIds, spaceId],
+  );
+  await client.query(
+    `DELETE FROM task_tags x
+       WHERE x.task_id = ANY($1)
+         AND NOT EXISTS (SELECT 1 FROM tags g WHERE g.id = x.tag_id AND g.space_id = $2)`,
+    [taskIds, spaceId],
+  );
+  await client.query(
+    `DELETE FROM custom_field_values v
+       WHERE v.task_id = ANY($1)
+         AND NOT EXISTS (SELECT 1 FROM custom_fields f WHERE f.id = v.field_id AND f.space_id = $2)`,
+    [taskIds, spaceId],
+  );
+}

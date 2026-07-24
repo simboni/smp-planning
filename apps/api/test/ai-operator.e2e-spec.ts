@@ -123,4 +123,92 @@ describe("Copilot Do (operator)", () => {
     expect(res.body.source).toBe("heuristic");
     expect(res.body.operations).toEqual([]);
   });
+
+  it("move_task moves a task (and its subtask) to a list in another space", async () => {
+    const { tok, space, list, task } = await setup();
+    // A subtask under the task, plus a second space + list to move into.
+    const sub = (
+      await http
+        .post(`/lists/${list}/tasks`)
+        .set(auth(tok))
+        .send({ name: "Subtask", parentTaskId: task })
+        .expect(201)
+    ).body.task.id as string;
+    const space2 = (
+      await http.post("/spaces").set(auth(tok)).send({ name: "Ops" }).expect(201)
+    ).body.space.id as string;
+    const list2 = (
+      await http.post(`/spaces/${space2}/lists`).set(auth(tok)).send({ name: "Queue" }).expect(201)
+    ).body.list.id as string;
+
+    const res = await http
+      .post("/ai/do")
+      .set(auth(tok))
+      .send({
+        operations: [
+          { type: "move_task", summary: "Move to Ops", taskId: task, targetListId: list2 },
+        ],
+      })
+      .expect(201);
+    expect(res.body.applied).toBe(1);
+
+    const moved = await getTask(tok, task);
+    expect(moved.listId).toBe(list2);
+    expect(moved.spaceId).toBe(space2);
+    // Status was remapped to the destination space's first status.
+    expect(moved.status?.type).toBe("not_started");
+    // The subtask travelled along into the new space.
+    const movedSub = await getTask(tok, sub);
+    expect(movedSub.spaceId).toBe(space2);
+    void space;
+  });
+
+  it("move_list relocates a list into a folder in another space", async () => {
+    const { tok, list, task } = await setup();
+    const space2 = (
+      await http.post("/spaces").set(auth(tok)).send({ name: "Archive" }).expect(201)
+    ).body.space.id as string;
+    const folder2 = (
+      await http.post(`/spaces/${space2}/folders`).set(auth(tok)).send({ name: "2024" }).expect(201)
+    ).body.folder.id as string;
+
+    const res = await http
+      .post("/ai/do")
+      .set(auth(tok))
+      .send({
+        operations: [
+          {
+            type: "move_list",
+            summary: "Move Sprint to Archive/2024",
+            listId: list,
+            targetSpaceId: space2,
+            targetFolderId: folder2,
+          },
+        ],
+      })
+      .expect(201);
+    expect(res.body.applied).toBe(1);
+
+    // The list's task followed it into the new space.
+    const moved = await getTask(tok, task);
+    expect(moved.spaceId).toBe(space2);
+  });
+
+  it("refuses a move into a space outside the caller's snapshot", async () => {
+    const a = await setup();
+    const b = await setup();
+    const res = await http
+      .post("/ai/do")
+      .set(auth(a.tok))
+      .send({
+        operations: [
+          { type: "move_task", summary: "hijack", taskId: a.task, targetListId: b.list },
+        ],
+      })
+      .expect(201);
+    // b.list isn't in A's snapshot → dropped, nothing applied.
+    expect(res.body.applied).toBe(0);
+    const stay = await getTask(a.tok, a.task);
+    expect(stay.listId).toBe(a.list);
+  });
 });

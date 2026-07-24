@@ -211,6 +211,7 @@ export class TasksController {
       isMilestone?: boolean;
       recurrence?: Record<string, unknown> | null;
       sprintPoints?: number | null;
+      listId?: string;
     },
   ) {
     return { task: await this.tasks.updateTask(...this.ctx(req), id, body ?? {}) };

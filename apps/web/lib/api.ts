@@ -414,6 +414,8 @@ export interface TaskUpdateBody {
   recurrence?: Recurrence | null;
   /** Module 10: sprint/story points (0..999, null clears). */
   sprintPoints?: number | null;
+  /** Move the task (and its subtasks) to another list. */
+  listId?: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1113,7 +1115,7 @@ export const hierarchyApi = {
       body,
       auth: "access",
     }),
-  updateFolder: (id: string, body: { name?: string; archived?: boolean }) =>
+  updateFolder: (id: string, body: { name?: string; archived?: boolean; spaceId?: string }) =>
     api<{ folder: Folder }>(`/folders/${id}`, {
       method: "PATCH",
       body,
@@ -1138,6 +1140,8 @@ export const hierarchyApi = {
       color?: string | null;
       archived?: boolean;
       folderId?: string | null;
+      /** Move the list (and its tasks) to another space. */
+      spaceId?: string;
     },
   ) =>
     api<{ list: List }>(`/lists/${id}`, {
@@ -3539,7 +3543,10 @@ export type AiOpType =
   | "set_priority"
   | "set_due"
   | "add_comment"
-  | "post_message";
+  | "post_message"
+  | "move_task"
+  | "move_list"
+  | "move_folder";
 export interface AiOperation {
   type: AiOpType;
   summary: string;
@@ -3556,6 +3563,13 @@ export interface AiOperation {
   body?: string;
   channelId?: string;
   channelName?: string;
+  folderId?: string;
+  targetListId?: string;
+  targetListName?: string;
+  targetSpaceId?: string;
+  targetSpaceName?: string;
+  targetFolderId?: string;
+  targetFolderName?: string;
 }
 export interface AiOperationPlan {
   summary: string;

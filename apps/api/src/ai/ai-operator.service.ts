@@ -7,6 +7,7 @@ import { DbService } from "../db/db.service";
 import { TasksService } from "../tasks/tasks.service";
 import { ChatService } from "../chat/chat.service";
 import { CommentsService } from "../comments/comments.service";
+import { HierarchyService } from "../hierarchy/hierarchy.service";
 
 /**
  * Do (Copilot operator) — turns a command like "reassign the overdue design
@@ -27,7 +28,10 @@ export type OpType =
   | "set_priority"
   | "set_due"
   | "add_comment"
-  | "post_message";
+  | "post_message"
+  | "move_task"
+  | "move_list"
+  | "move_folder";
 
 export interface Operation {
   type: OpType;
@@ -45,6 +49,14 @@ export interface Operation {
   body?: string;
   channelId?: string;
   channelName?: string;
+  // Move operations.
+  folderId?: string;
+  targetListId?: string;
+  targetListName?: string;
+  targetSpaceId?: string;
+  targetSpaceName?: string;
+  targetFolderId?: string;
+  targetFolderName?: string;
 }
 
 export interface OperationPlan {
@@ -86,6 +98,9 @@ const OP_SCHEMA: Record<string, unknown> = {
               "set_due",
               "add_comment",
               "post_message",
+              "move_task",
+              "move_list",
+              "move_folder",
             ],
           },
           summary: { type: "string" },
@@ -100,6 +115,10 @@ const OP_SCHEMA: Record<string, unknown> = {
           statusName: { type: "string" },
           body: { type: "string" },
           channelId: { type: "string" },
+          folderId: { type: "string" },
+          targetListId: { type: "string" },
+          targetSpaceId: { type: "string" },
+          targetFolderId: { type: "string" },
         },
         required: ["type", "summary"],
       },
@@ -114,7 +133,12 @@ const SYSTEM_DO =
   "ids from the provided context — never invent ids. Each operation needs a short " +
   "human 'summary' (what it does) and a 'reason' grounded in the context (e.g. " +
   "which member has capacity, why a task was chosen). Choose the smallest set of " +
-  "operations that satisfies the command. Reply with ONLY the structured result.";
+  "operations that satisfies the command.\n" +
+  "You can also MOVE things between places (any place in the provided context):\n" +
+  "- move_task: taskId + targetListId (moves the task, and its subtasks, to another list).\n" +
+  "- move_list: listId + targetSpaceId (+ optional targetFolderId in that space).\n" +
+  "- move_folder: folderId + targetSpaceId (moves the folder and everything in it).\n" +
+  "Use only ids present in the context. Reply with ONLY the structured result.";
 
 @Injectable()
 export class AiOperatorService {
@@ -125,6 +149,7 @@ export class AiOperatorService {
     private readonly tasks: TasksService,
     private readonly chat: ChatService,
     private readonly comments: CommentsService,
+    private readonly hierarchy: HierarchyService,
   ) {}
 
   /** Plan operations for a command (no writes). */
@@ -246,6 +271,25 @@ export class AiOperatorService {
           body: op.body,
         });
         return;
+      case "move_task":
+        if (!op.taskId || !op.targetListId) throw new Error("missing task or target list");
+        await this.tasks.updateTask(workspaceId, userId, role, op.taskId, {
+          listId: op.targetListId,
+        });
+        return;
+      case "move_list":
+        if (!op.listId || !op.targetSpaceId) throw new Error("missing list or target space");
+        await this.hierarchy.updateList(workspaceId, userId, role, op.listId, {
+          spaceId: op.targetSpaceId,
+          folderId: op.targetFolderId ?? null,
+        });
+        return;
+      case "move_folder":
+        if (!op.folderId || !op.targetSpaceId) throw new Error("missing folder or target space");
+        await this.hierarchy.updateFolder(workspaceId, userId, role, op.folderId, {
+          spaceId: op.targetSpaceId,
+        });
+        return;
       default:
         throw new Error("unknown operation");
     }
@@ -336,7 +380,20 @@ function validate(
 ): Operation[] {
   const taskIds = new Set(snapshot.tasks.map((t) => t.id));
   const taskName = new Map(snapshot.tasks.map((t) => [t.id, t.name]));
-  const listIds = new Set(snapshot.spaces.flatMap((s) => s.lists.map((l) => l.id)));
+  const listName = new Map(snapshot.spaces.flatMap((s) => s.lists.map((l) => [l.id, l.name] as const)));
+  const listIds = new Set(listName.keys());
+  const spaceName = new Map(snapshot.spaces.map((s) => [s.id, s.name] as const));
+  const spaceIds = new Set(spaceName.keys());
+  // folderId → its owning space, so a target folder can be checked against the
+  // target space (a folder from another space is not a valid destination).
+  const folderSpace = new Map<string, string>();
+  const folderName = new Map<string, string>();
+  for (const s of snapshot.spaces) {
+    for (const f of s.folders ?? []) {
+      folderSpace.set(f.id, s.id);
+      folderName.set(f.id, f.name);
+    }
+  }
   const memberIds = new Set(snapshot.members.map((m) => m.id));
   const channelIds = new Map(channels.map((c) => [c.id, c.name]));
 
@@ -407,6 +464,42 @@ function validate(
         base.body = str(o.body);
         break;
       }
+      case "move_task": {
+        const id = needTask();
+        const dest = str(o.targetListId);
+        if (!id || !dest || !listIds.has(dest)) continue;
+        base.targetListId = dest;
+        base.targetListName = listName.get(dest);
+        break;
+      }
+      case "move_list": {
+        const listId = str(o.listId);
+        const dest = str(o.targetSpaceId);
+        if (!listId || !listIds.has(listId) || !dest || !spaceIds.has(dest)) continue;
+        base.listId = listId;
+        base.name = listName.get(listId);
+        base.targetSpaceId = dest;
+        base.targetSpaceName = spaceName.get(dest);
+        // An optional target folder must live in the destination space.
+        const tf = str(o.targetFolderId);
+        if (tf && folderSpace.get(tf) === dest) {
+          base.targetFolderId = tf;
+          base.targetFolderName = folderName.get(tf);
+        }
+        break;
+      }
+      case "move_folder": {
+        const folderId = str(o.folderId);
+        const dest = str(o.targetSpaceId);
+        // Can't move a folder into the space it already lives in.
+        if (!folderId || !folderSpace.has(folderId) || !dest || !spaceIds.has(dest)) continue;
+        if (folderSpace.get(folderId) === dest) continue;
+        base.folderId = folderId;
+        base.name = folderName.get(folderId);
+        base.targetSpaceId = dest;
+        base.targetSpaceName = spaceName.get(dest);
+        break;
+      }
       default:
         continue;
     }
@@ -438,9 +531,15 @@ function buildPrompt(
     );
   }
 
-  parts.push("\nLists (use listId for create_task):");
+  parts.push("\nSpaces, folders & lists (use these ids for create_task and moves):");
   for (const s of snapshot.spaces) {
-    for (const l of s.lists) parts.push(`- listId=${l.id} "${l.name}" (space "${s.name}")`);
+    parts.push(`- spaceId=${s.id} "${s.name}"`);
+    for (const f of s.folders ?? []) {
+      parts.push(`  · folderId=${f.id} "${f.name}" (in space "${s.name}")`);
+    }
+    for (const l of s.lists) {
+      parts.push(`  · listId=${l.id} "${l.name}" (in space "${s.name}")`);
+    }
   }
 
   parts.push("\nMembers (use for assigneeIds):");

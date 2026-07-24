@@ -15,6 +15,7 @@ import {
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
 import { GovernanceService } from "../governance/governance.service";
+import { remapTasksToSpace } from "../tasks/tasks.support";
 
 /** Top division inside a workspace (department / team / client). */
 export interface Space {
@@ -565,32 +566,40 @@ export class HierarchyService {
     userId: string,
     role: Role,
     id: string,
-    body: { name?: string; archived?: boolean },
+    body: { name?: string; archived?: boolean; spaceId?: string },
   ): Promise<Folder> {
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    let i = 1;
-    if (body?.name !== undefined) {
-      sets.push(`name = $${i++}`);
-      params.push(this.requireName(body.name));
-    }
-    if (body?.archived !== undefined) {
-      sets.push(`archived = $${i++}`);
-      params.push(body.archived === true);
-    }
-
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       const owning = await client.query(
         `SELECT space_id FROM folders WHERE id = $1`,
         [id],
       );
       if (!owning.rows[0]) throw new NotFoundException("Folder not found");
-      await this.requireSpaceEdit(
-        client,
-        userId,
-        role,
-        owning.rows[0].space_id as string,
-      );
+      const fromSpace = owning.rows[0].space_id as string;
+      await this.requireSpaceEdit(client, userId, role, fromSpace);
+
+      // Cross-space move carries the folder, its lists and their tasks along.
+      const toSpace = body?.spaceId ?? fromSpace;
+      const movingSpace = toSpace !== fromSpace;
+      if (movingSpace) {
+        await this.requireSpaceEdit(client, userId, role, toSpace);
+      }
+
+      const sets: string[] = [];
+      const params: unknown[] = [];
+      let i = 1;
+      if (body?.name !== undefined) {
+        sets.push(`name = $${i++}`);
+        params.push(this.requireName(body.name));
+      }
+      if (body?.archived !== undefined) {
+        sets.push(`archived = $${i++}`);
+        params.push(body.archived === true);
+      }
+      if (movingSpace) {
+        sets.push(`space_id = $${i++}`);
+        params.push(toSpace);
+      }
+
       let folder: Folder;
       if (sets.length === 0) {
         const res = await client.query(
@@ -610,6 +619,26 @@ export class HierarchyService {
         if (!res.rows[0]) throw new NotFoundException("Folder not found");
         folder = this.toFolder(res.rows[0]);
       }
+
+      if (movingSpace) {
+        await client.query(
+          `UPDATE lists SET space_id = $1 WHERE folder_id = $2`,
+          [toSpace, id],
+        );
+        const t = await client.query(
+          `SELECT id FROM tasks WHERE list_id IN (SELECT id FROM lists WHERE folder_id = $1)`,
+          [id],
+        );
+        const taskIds = t.rows.map((r) => r.id as string);
+        if (taskIds.length) {
+          await client.query(
+            `UPDATE tasks SET space_id = $1, updated_at = now() WHERE id = ANY($2)`,
+            [toSpace, taskIds],
+          );
+          await remapTasksToSpace(client, taskIds, toSpace);
+        }
+      }
+
       await this.audit.record(client, {
         workspaceId,
         actorUserId: userId,
@@ -707,6 +736,8 @@ export class HierarchyService {
       color?: string | null;
       archived?: boolean;
       folderId?: string | null;
+      /** Move the list (and all its tasks) to another space. */
+      spaceId?: string;
     },
   ): Promise<List> {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
@@ -716,8 +747,16 @@ export class HierarchyService {
         [id],
       );
       if (!current.rows[0]) throw new NotFoundException("List not found");
-      const spaceId = current.rows[0].space_id as string;
-      await this.requireSpaceEdit(client, userId, role, spaceId);
+      const fromSpace = current.rows[0].space_id as string;
+      await this.requireSpaceEdit(client, userId, role, fromSpace);
+
+      // Cross-space move: need edit on the destination space too. The list
+      // lands at the destination's root unless a folder in THAT space is given.
+      const toSpace = body?.spaceId ?? fromSpace;
+      const movingSpace = toSpace !== fromSpace;
+      if (movingSpace) {
+        await this.requireSpaceEdit(client, userId, role, toSpace);
+      }
 
       const sets: string[] = [];
       const params: unknown[] = [];
@@ -736,10 +775,16 @@ export class HierarchyService {
         sets.push(`archived = $${i++}`);
         params.push(body.archived === true);
       }
-      if (body?.folderId !== undefined) {
-        const target = body.folderId;
+      if (movingSpace) {
+        sets.push(`space_id = $${i++}`);
+        params.push(toSpace);
+      }
+      // Folder is validated against the DESTINATION space. On a space move with
+      // no folder given, reset to root (an old-space folder can't carry over).
+      if (body?.folderId !== undefined || movingSpace) {
+        const target = body?.folderId ?? null;
         if (target !== null) {
-          await this.assertFolderInSpace(client, target, spaceId);
+          await this.assertFolderInSpace(client, target, toSpace);
         }
         sets.push(`folder_id = $${i++}`);
         params.push(target);
@@ -758,6 +803,24 @@ export class HierarchyService {
         );
         list = this.toList(res.rows[0]);
       }
+
+      // Carry the list's tasks into the new space and reconcile their
+      // space-scoped attributes (status/type/tags/fields).
+      if (movingSpace) {
+        const t = await client.query(
+          `SELECT id FROM tasks WHERE list_id = $1`,
+          [id],
+        );
+        const taskIds = t.rows.map((r) => r.id as string);
+        if (taskIds.length) {
+          await client.query(
+            `UPDATE tasks SET space_id = $1, updated_at = now() WHERE id = ANY($2)`,
+            [toSpace, taskIds],
+          );
+          await remapTasksToSpace(client, taskIds, toSpace);
+        }
+      }
+
       await this.audit.record(client, {
         workspaceId,
         actorUserId: userId,
