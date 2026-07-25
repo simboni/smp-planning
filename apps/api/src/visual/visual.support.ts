@@ -114,7 +114,9 @@ export interface FileCtx {
  * Load a file and resolve the caller's access (Module 12 rules):
  *  - task-attached  -> follows the task's SPACE (404 when invisible); the
  *                      space permission is returned for finer gating.
- *  - task_id null   -> creator ONLY; anyone else gets a 404 (never leak).
+ *  - doc-attached   -> follows the DOC's visibility (space-attached: the
+ *                      space; private: creator; else: any non-guest member).
+ *  - neither        -> creator ONLY; anyone else gets a 404 (never leak).
  */
 export async function requireFileVisible(
   access: AccessService,
@@ -124,10 +126,14 @@ export async function requireFileVisible(
   fileId: string,
 ): Promise<FileCtx> {
   const res = await client.query(
-    `SELECT f.id, f.task_id, f.name, f.mime, f.size_bytes, f.is_clip,
+    `SELECT f.id, f.task_id, f.doc_id, f.name, f.mime, f.size_bytes, f.is_clip,
             f.created_by, f.created_at,
-            t.list_id, t.space_id, t.name AS task_name
-     FROM files f LEFT JOIN tasks t ON t.id = f.task_id
+            t.list_id, t.space_id, t.name AS task_name,
+            d.space_id AS doc_space_id, d.is_private AS doc_private,
+            d.created_by AS doc_created_by
+     FROM files f
+     LEFT JOIN tasks t ON t.id = f.task_id
+     LEFT JOIN docs d ON d.id = f.doc_id
      WHERE f.id = $1`,
     [fileId],
   );
@@ -135,7 +141,27 @@ export async function requireFileVisible(
   if (!r) throw new NotFoundException("File not found");
 
   let perm: Permission;
-  if (r.task_id === null) {
+  if (r.task_id === null && r.doc_id !== null) {
+    // Uploaded document — mirror DocsService visibility exactly.
+    const docSpaceId = r.doc_space_id as string | null;
+    if (docSpaceId !== null) {
+      perm = (await requireSpaceVisible(
+        access,
+        client,
+        userId,
+        role,
+        docSpaceId,
+      )) as Permission;
+    } else if (r.doc_private as boolean) {
+      if ((r.doc_created_by as string | null) !== userId) {
+        throw new NotFoundException("File not found");
+      }
+      perm = "full";
+    } else {
+      if (role === "guest") throw new NotFoundException("File not found");
+      perm = "edit";
+    }
+  } else if (r.task_id === null) {
     if ((r.created_by as string | null) !== userId) {
       throw new NotFoundException("File not found");
     }

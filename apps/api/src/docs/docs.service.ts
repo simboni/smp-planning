@@ -10,6 +10,7 @@ import { AccessService, permAtLeast } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
 import { EventsService } from "../events/events.service";
+import { LimitsService } from "../limits/limits.service";
 import {
   optionalName,
   requireName,
@@ -17,9 +18,24 @@ import {
   requireSpaceVisible,
   requireUuid,
 } from "../tasks/tasks.support";
+import { decodeBase64File, validMime } from "../visual/visual.support";
 import { sanitizeContent } from "./docs.support";
 
-/** A Doc: container of nested Pages, workspace-wide or attached to a Space. */
+/** Card icon for an uploaded document, by mime family. */
+const DOC_FILE_ICON = (mime: string): string => {
+  const m = mime.toLowerCase();
+  if (m.includes("word") || m.includes("officedocument.wordprocessing")) return "📘";
+  if (m.includes("spreadsheet") || m.includes("excel") || m === "text/csv") return "📗";
+  if (m.includes("presentation") || m.includes("powerpoint")) return "📙";
+  if (m.startsWith("image/")) return "🖼️";
+  return "📎";
+};
+
+/**
+ * A Doc: container of nested Pages, workspace-wide or attached to a Space —
+ * or an UPLOADED document (PDF/Word/any file), in which case fileId/fileMime/
+ * fileSizeBytes are set and the doc has no editable pages.
+ */
 export interface Doc {
   id: string;
   name: string;
@@ -30,6 +46,9 @@ export interface Doc {
   createdBy: string | null;
   pageCount: number;
   updatedAt: string;
+  fileId: string | null;
+  fileMime: string | null;
+  fileSizeBytes: number | null;
 }
 
 /** Page summary as returned in a doc's flat page list (no content). */
@@ -58,9 +77,12 @@ export interface Note {
 const DOC_SELECT = `
   SELECT d.id, d.name, d.icon, d.space_id, d.is_private, d.created_by,
          d.updated_at, s.name AS space_name,
+         f.id AS file_id, f.mime AS file_mime, f.size_bytes AS file_size_bytes,
          (SELECT count(*)::int FROM doc_pages p WHERE p.doc_id = d.id)
            AS page_count
-  FROM docs d LEFT JOIN spaces s ON s.id = d.space_id`;
+  FROM docs d
+  LEFT JOIN spaces s ON s.id = d.space_id
+  LEFT JOIN files f ON f.doc_id = d.id`;
 
 const PAGE_COLUMNS =
   "id, doc_id, parent_page_id, title, content, position, updated_at, updated_by";
@@ -94,6 +116,7 @@ export class DocsService {
     private readonly access: AccessService,
     private readonly audit: AuditService,
     private readonly events: EventsService,
+    private readonly limits: LimitsService,
   ) {}
 
   // --- helpers --------------------------------------------------------------
@@ -109,6 +132,9 @@ export class DocsService {
       createdBy: (r.created_by as string | null) ?? null,
       pageCount: r.page_count as number,
       updatedAt: r.updated_at as string,
+      fileId: (r.file_id as string | null) ?? null,
+      fileMime: (r.file_mime as string | null) ?? null,
+      fileSizeBytes: (r.file_size_bytes as number | null) ?? null,
     };
   }
 
@@ -265,6 +291,72 @@ export class DocsService {
       const res = await client.query(`${DOC_SELECT} WHERE d.id = $1`, [docId]);
       return this.toDoc(res.rows[0]);
     });
+  }
+
+  /**
+   * Upload a document (PDF / Word / any file) as a first-class Doc: one
+   * transaction creates the docs row and the file row (files.doc_id), with
+   * the same location/privacy rules as created docs and the workspace
+   * storage cap enforced. No root page — an uploaded doc has no pages.
+   */
+  async uploadDoc(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+    body: {
+      name?: string;
+      mime?: string;
+      dataBase64?: string;
+      spaceId?: string;
+      isPrivate?: boolean;
+    },
+  ): Promise<Doc> {
+    if (role === "guest") {
+      throw new ForbiddenException("Guests cannot upload documents");
+    }
+    const name = requireName(body?.name);
+    const mime = validMime(body?.mime);
+    const data = decodeBase64File(body?.dataBase64);
+    const isPrivate = body?.isPrivate === true;
+    const spaceId =
+      body?.spaceId === undefined || body?.spaceId === null
+        ? null
+        : requireUuid(body.spaceId, "spaceId");
+    const icon = mime === "application/pdf" ? "📕" : DOC_FILE_ICON(mime);
+
+    const doc = await this.db.withWorkspace(workspaceId, userId, async (client) => {
+      if (spaceId !== null) {
+        await requireSpaceEdit(this.access, client, userId, role, spaceId);
+      }
+      await this.limits.assertStorageAvailable(client, workspaceId, data.length);
+      const ins = await client.query(
+        `INSERT INTO docs (workspace_id, space_id, name, icon, is_private, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
+        [workspaceId, spaceId, name, icon, isPrivate, userId],
+      );
+      const docId = ins.rows[0].id as string;
+      await client.query(
+        `INSERT INTO files (workspace_id, doc_id, name, mime, size_bytes, data, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [workspaceId, docId, name, mime, data.length, data, userId],
+      );
+      await this.audit.record(client, {
+        workspaceId,
+        actorUserId: userId,
+        action: "doc.uploaded",
+        entity: "doc",
+        entityId: docId,
+        data: { name, mime, sizeBytes: data.length, spaceId, isPrivate },
+      });
+      const res = await client.query(`${DOC_SELECT} WHERE d.id = $1`, [docId]);
+      return this.toDoc(res.rows[0]);
+    });
+    this.events.publish(workspaceId, {
+      type: "doc.changed",
+      payload: { docId: doc.id },
+    });
+    return doc;
   }
 
   /** Doc detail + its flat page list (client builds the tree). */

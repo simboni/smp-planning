@@ -78,11 +78,17 @@ export class FilesController {
     // Keep the filename header-safe: strip quotes/control/non-ascii chars.
     const safeName = file.name.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "'");
     // Only a fixed set of image types may render inline; treat everything else
-    // (incl. image/svg+xml, which can carry script) as a download.
-    const inlineOk = INLINE_IMAGE_TYPES.has(file.mime.toLowerCase());
+    // (incl. image/svg+xml, which can carry script) as a download. Exception:
+    // PDFs render inline for the in-app viewer, but under `CSP: sandbox`,
+    // which puts the response in an opaque origin — a hostile PDF (or a
+    // renderer bug) can't touch our origin's storage/cookies.
+    const mime = file.mime.toLowerCase();
+    const isPdf = mime === "application/pdf";
+    const inlineOk = INLINE_IMAGE_TYPES.has(mime) || isPdf;
     const disposition = inlineOk ? "inline" : "attachment";
     res.setHeader("Content-Type", inlineOk ? file.mime : "application/octet-stream");
     res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}"`);
+    if (isPdf) res.setHeader("Content-Security-Policy", "sandbox");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, max-age=3600");
     res.send(file.data);

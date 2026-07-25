@@ -1963,6 +1963,10 @@ export interface Doc {
   createdBy: string;
   pageCount: number;
   updatedAt: string;
+  /** Set when this doc is an UPLOADED document (PDF/Word/any file). */
+  fileId?: string | null;
+  fileMime?: string | null;
+  fileSizeBytes?: number | null;
 }
 
 /** A page as it appears in the doc's flat page list (no content). */
@@ -2002,6 +2006,15 @@ export const docsApi = {
     spaceId?: string | null;
     isPrivate?: boolean;
   }) => api<{ doc: Doc }>("/docs", { method: "POST", body, auth: "access" }),
+  /** Upload a PDF/Word/any file as a first-class doc (max 5MB). */
+  upload: (body: {
+    name: string;
+    mime: string;
+    dataBase64: string;
+    spaceId?: string | null;
+    isPrivate?: boolean;
+  }) =>
+    api<{ doc: Doc }>("/docs/upload", { method: "POST", body, auth: "access" }),
   /** The doc plus its flat page list — build the tree client-side. */
   get: (id: string) =>
     api<{ doc: Doc; pages: DocPageMeta[] }>(`/docs/${id}`, { auth: "access" }),

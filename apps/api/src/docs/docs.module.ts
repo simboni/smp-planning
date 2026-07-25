@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AccessModule } from "../access/access.module";
 import { AuditModule } from "../audit/audit.module";
+import { LimitsModule } from "../limits/limits.module";
 import { DocsController } from "./docs.controller";
 import { DocsService } from "./docs.service";
 
@@ -11,7 +12,7 @@ import { DocsService } from "./docs.service";
  * are @Global so the service injects them freely.
  */
 @Module({
-  imports: [AccessModule, AuditModule],
+  imports: [AccessModule, AuditModule, LimitsModule],
   controllers: [DocsController],
   providers: [DocsService],
   exports: [DocsService],

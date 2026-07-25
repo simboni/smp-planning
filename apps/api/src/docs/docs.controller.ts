@@ -45,6 +45,22 @@ export class DocsController {
     return { doc: await this.docs.createDoc(...this.ctx(req), body ?? {}) };
   }
 
+  /** Upload a PDF/Word/any file as a first-class doc. */
+  @Post("docs/upload")
+  async uploadDoc(
+    @Req() req: AuthedRequest,
+    @Body()
+    body: {
+      name?: string;
+      mime?: string;
+      dataBase64?: string;
+      spaceId?: string;
+      isPrivate?: boolean;
+    },
+  ) {
+    return { doc: await this.docs.uploadDoc(...this.ctx(req), body ?? {}) };
+  }
+
   @Get("docs/:id")
   async getDoc(
     @Req() req: AuthedRequest,

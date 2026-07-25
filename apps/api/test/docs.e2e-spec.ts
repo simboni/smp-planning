@@ -454,6 +454,64 @@ describe("docs", () => {
     await http.get(`/docs/${doc.id}`).set(auth(owner.accessToken)).expect(404);
   });
 
+  it("uploaded documents: PDF becomes a doc, downloads inline-sandboxed, deletes with the doc", async () => {
+    const owner = await ownerWorkspace();
+    const guest = await memberOf(owner.accessToken, owner.workspaceId, "guest");
+    const pdfBytes = Buffer.from("%PDF-1.4 fake-but-fine");
+    const dataBase64 = pdfBytes.toString("base64");
+
+    // Guests can't upload.
+    await http
+      .post("/docs/upload")
+      .set(auth(guest.accessToken))
+      .send({ name: "Nope", mime: "application/pdf", dataBase64 })
+      .expect(403);
+
+    const up = await http
+      .post("/docs/upload")
+      .set(auth(owner.accessToken))
+      .send({ name: "Company policy", mime: "application/pdf", dataBase64 })
+      .expect(201);
+    const doc = up.body.doc;
+    expect(doc.fileId).toBeTruthy();
+    expect(doc.fileMime).toBe("application/pdf");
+    expect(doc.fileSizeBytes).toBe(pdfBytes.length);
+    expect(doc.pageCount).toBe(0);
+
+    // Appears in the docs list with its file metadata.
+    const listed = await http
+      .get("/docs")
+      .set(auth(owner.accessToken))
+      .expect(200);
+    const row = listed.body.docs.find((d: { id: string }) => d.id === doc.id);
+    expect(row.fileId).toBe(doc.fileId);
+
+    // Download streams the bytes inline with the sandbox CSP (PDF viewer).
+    const dl = await http
+      .get(`/files/${doc.fileId}`)
+      .set(auth(owner.accessToken))
+      .expect(200);
+    expect(dl.headers["content-type"]).toContain("application/pdf");
+    expect(dl.headers["content-disposition"]).toContain("inline");
+    expect(dl.headers["content-security-policy"]).toBe("sandbox");
+
+    // A guest can't reach a workspace-level uploaded doc's file.
+    await http
+      .get(`/files/${doc.fileId}`)
+      .set(auth(guest.accessToken))
+      .expect(404);
+
+    // Deleting the doc cascades the file away.
+    await http
+      .delete(`/docs/${doc.id}`)
+      .set(auth(owner.accessToken))
+      .expect(204);
+    await http
+      .get(`/files/${doc.fileId}`)
+      .set(auth(owner.accessToken))
+      .expect(404);
+  });
+
   it("notepad is strictly per-user CRUD", async () => {
     const owner = await ownerWorkspace();
     const other = await memberOf(owner.accessToken, owner.workspaceId, "member");
