@@ -8958,3 +8958,26 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .badge.lv-st-approved { color: #36b37e; }
 .badge.lv-st-rejected { color: var(--danger); }
 .badge.lv-st-cancelled { color: var(--muted); }
+
+/* ---- Copilot builder: editable task timeline (start → due) ---- */
+.aib-dates {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.aib-date {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: inherit;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 2px 4px;
+  width: 118px;
+}
+.aib-date:focus { outline: none; border-color: var(--brand); }
+.aib-date-sep { font-size: 11px; }
+@media (max-width: 560px) {
+  .aib-date { width: 105px; }
+}

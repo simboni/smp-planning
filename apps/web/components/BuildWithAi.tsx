@@ -339,10 +339,26 @@ export function BuildWithAi({
         setStage("preview");
       } else if (mode === "build") {
         const r = await aiApi.buildPlan(brief);
-        setPlan(r.plan);
+        // Materialize the AI's relative offsets into concrete due dates so
+        // the timeline is visible AND editable in the preview.
+        const isoFromDays = (d?: number): string | undefined =>
+          d === undefined
+            ? undefined
+            : new Date(Date.now() + d * 86_400_000).toISOString().slice(0, 10);
+        const plan = {
+          ...r.plan,
+          targets: r.plan.targets.map((t) => ({
+            ...t,
+            tasks: (t.tasks ?? []).map((tk) => ({
+              ...tk,
+              dueDate: tk.dueDate ?? isoFromDays(tk.dueInDays) ?? null,
+            })),
+          })),
+        };
+        setPlan(plan);
         setContext(r.context);
         setSource(r.source);
-        setDests(r.plan.targets.map(destFromTarget));
+        setDests(plan.targets.map(destFromTarget));
         setStage("preview");
       } else {
         // Fetch the workspace context alongside the plan so the destination
@@ -464,6 +480,28 @@ export function BuildWithAi({
                 k !== taskIdx
                   ? tk
                   : { ...tk, assigneeIds: ids.length ? ids : undefined },
+              ),
+            },
+      ),
+    });
+  };
+
+  /** Edit a proposed task's timeline (start / due) in place. */
+  const setTaskDates = (
+    ti: number,
+    taskIdx: number,
+    patch: { startDate?: string | null; dueDate?: string | null },
+  ) => {
+    if (!plan) return;
+    setPlan({
+      ...plan,
+      targets: plan.targets.map((t, i) =>
+        i !== ti
+          ? t
+          : {
+              ...t,
+              tasks: t.tasks.map((tk, k) =>
+                k !== taskIdx ? tk : { ...tk, ...patch },
               ),
             },
       ),
@@ -812,6 +850,7 @@ export function BuildWithAi({
                   context={context}
                   onDest={(patch) => setDest(i, patch)}
                   onAssignees={(taskIdx, ids) => setTaskAssignees(i, taskIdx, ids)}
+                  onDates={(taskIdx, patch) => setTaskDates(i, taskIdx, patch)}
                   onDrop={() => dropTarget(i)}
                 />
               ))}
@@ -1191,6 +1230,7 @@ function TargetCard({
   context,
   onDest,
   onAssignees,
+  onDates,
   onDrop,
 }: {
   target: AiPlanTarget;
@@ -1198,6 +1238,10 @@ function TargetCard({
   context: AiBuilderContext;
   onDest: (patch: Partial<Dest>) => void;
   onAssignees: (taskIndex: number, ids: string[]) => void;
+  onDates: (
+    taskIndex: number,
+    patch: { startDate?: string | null; dueDate?: string | null },
+  ) => void;
   onDrop: () => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -1234,9 +1278,29 @@ function TargetCard({
               {t.priority && (
                 <span className={`aib-pri aib-pri-${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
               )}
-              {typeof t.dueInDays === "number" && (
-                <span className="aib-due">{t.dueInDays === 0 ? "today" : `${t.dueInDays}d`}</span>
-              )}
+              <span className="aib-dates" title="Timeline: start → due">
+                <input
+                  type="date"
+                  className="aib-date"
+                  aria-label="Start date"
+                  value={t.startDate ?? ""}
+                  max={t.dueDate ?? undefined}
+                  onChange={(e) =>
+                    onDates(ti, { startDate: e.target.value || null })
+                  }
+                />
+                <span className="aib-date-sep muted">→</span>
+                <input
+                  type="date"
+                  className="aib-date"
+                  aria-label="Due date"
+                  value={t.dueDate ?? ""}
+                  min={t.startDate ?? undefined}
+                  onChange={(e) =>
+                    onDates(ti, { dueDate: e.target.value || null })
+                  }
+                />
+              </span>
               {t.recurrence && (
                 <span className="aib-recur" title="Repeats when completed">
                   {Icons.repeat}

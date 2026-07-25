@@ -3868,6 +3868,9 @@ export interface AiPlanTask {
   description?: string;
   priority?: "urgent" | "high" | "normal" | "low";
   dueInDays?: number;
+  /** User-edited schedule (builder preview); overrides dueInDays. null = cleared. */
+  startDate?: string | null;
+  dueDate?: string | null;
   assigneeIds?: string[];
   recurrence?: { freq: "daily" | "weekly" | "monthly"; interval: number; mode: "on_complete" };
 }

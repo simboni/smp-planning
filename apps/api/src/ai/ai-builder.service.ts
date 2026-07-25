@@ -47,6 +47,14 @@ export interface PlanTask {
   description?: string;
   priority?: "urgent" | "high" | "normal" | "low";
   dueInDays?: number;
+  /**
+   * Explicit schedule, set when the user edits the timeline in the builder
+   * preview. Takes precedence over dueInDays; an explicit null due date
+   * means "no due date" (the user cleared it), NOT "fall back to the AI's
+   * offset". YYYY-MM-DD.
+   */
+  startDate?: string | null;
+  dueDate?: string | null;
   /** Workspace member ids to assign (validated against the context). */
   assigneeIds?: string[];
   /** Repeat rule — the task re-spawns when completed. */
@@ -311,7 +319,13 @@ export class AiBuilderService {
               name: pt.name,
               description: pt.description,
               priority: pt.priority ?? null,
-              dueDate: dueDateFromDays(pt.dueInDays),
+              // User-edited schedule wins; an explicit null means "no due
+              // date"; only an untouched task falls back to the AI's offset.
+              startDate: pt.startDate ?? null,
+              dueDate:
+                pt.dueDate !== undefined
+                  ? pt.dueDate
+                  : dueDateFromDays(pt.dueInDays),
               assigneeIds: pt.assigneeIds?.length ? pt.assigneeIds : undefined,
             },
           );
@@ -654,6 +668,15 @@ function normalizeTask(v: unknown, memberIds: Set<string>): PlanTask | null {
     typeof o.dueInDays === "number" && isFinite(o.dueInDays)
       ? Math.max(0, Math.min(365, Math.round(o.dueInDays)))
       : undefined;
+  // Explicit user-edited schedule: a valid date passes through, an explicit
+  // null survives as null (= cleared), anything else is "not set".
+  const isoDate = (v: unknown): string | null | undefined => {
+    if (v === null) return null;
+    if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+    return Number.isNaN(new Date(`${v}T00:00:00Z`).getTime()) ? undefined : v;
+  };
+  const startDate = isoDate(o.startDate);
+  const dueDate = isoDate(o.dueDate);
   const assigneeIds = Array.isArray(o.assigneeIds)
     ? (o.assigneeIds
         .map((x) => str(x))
@@ -665,6 +688,8 @@ function normalizeTask(v: unknown, memberIds: Set<string>): PlanTask | null {
     description: str(o.description),
     priority,
     dueInDays,
+    ...(startDate !== undefined ? { startDate } : {}),
+    ...(dueDate !== undefined ? { dueDate } : {}),
     assigneeIds: assigneeIds && assigneeIds.length ? assigneeIds : undefined,
     recurrence: normalizeRecurrence(o.recurrence),
   };

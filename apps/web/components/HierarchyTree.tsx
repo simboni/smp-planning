@@ -20,6 +20,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  docsApi,
   hierarchyApi,
   permissionAtLeast,
   type FolderWithLists,
@@ -144,6 +145,25 @@ export function HierarchyTree() {
   const [colorFor_, setColorPicker] = useState<string | null>(null); // "space:id" | "list:id"
   const [busy, setBusy] = useState(false);
   const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
+  /**
+   * "New doc" from any container's menu. Docs attach at the SPACE level in
+   * the data model, so a doc created from a folder/list menu attaches to
+   * that container's space; on success we drop straight into the editor.
+   */
+  const newDoc = (spaceId: string, whereLabel: string): void => {
+    setMenu(null);
+    const name = window.prompt(`New doc ${whereLabel}`, "");
+    if (!name?.trim()) return;
+    void docsApi
+      .create({ name: name.trim(), spaceId })
+      .then((r) => router.push(`/doc?id=${r.doc.id}`))
+      .catch((e) =>
+        showToast(
+          e instanceof ApiError ? e.message : "Couldn't create the doc.",
+        ),
+      );
+  };
+
   // "New form" flow — scope (space/folder/list) the form will be created in.
   const [formScope, setFormScope] = useState<{
     label: string;
@@ -508,6 +528,9 @@ export function HierarchyTree() {
                 >
                   {Icons.docs} New form
                 </button>
+                <button type="button" onClick={() => newDoc(spaceId, `in ${list.name}'s space`)}>
+                  {Icons.book} New doc
+                </button>
                 <button
                   type="button"
                   onClick={() => { const ids = move(bucket, list.id, -1); if (ids) reorderLists(spaceId, folderId, ids); setMenu(null); }}
@@ -602,6 +625,9 @@ export function HierarchyTree() {
                   }}
                 >
                   {Icons.docs} New form
+                </button>
+                <button type="button" onClick={() => newDoc(space.id, `in ${folder.name}`)}>
+                  {Icons.book} New doc
                 </button>
                 <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
                   {Icons.edit} Rename
@@ -769,6 +795,9 @@ export function HierarchyTree() {
                       }}
                     >
                       {Icons.docs} New form
+                    </button>
+                    <button type="button" onClick={() => newDoc(space.id, `in ${space.name}`)}>
+                      {Icons.book} New doc
                     </button>
                     <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
                       {Icons.edit} Rename
