@@ -20,7 +20,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
-  docsApi,
   hierarchyApi,
   permissionAtLeast,
   type FolderWithLists,
@@ -32,6 +31,7 @@ import { CopilotOption } from "@/components/BuildWithAi";
 import { Icons } from "@/components/icons";
 import { ShareDialog } from "@/components/ShareDialog";
 import { NewFormModal } from "@/components/NewFormModal";
+import { TreeDocModal } from "@/components/TreeDocModal";
 import { colorFor } from "@/lib/format";
 import { showToast } from "@/lib/toast";
 
@@ -146,22 +146,17 @@ export function HierarchyTree() {
   const [busy, setBusy] = useState(false);
   const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
   /**
-   * "New doc" from any container's menu. Docs attach at the SPACE level in
-   * the data model, so a doc created from a folder/list menu attaches to
-   * that container's space; on success we drop straight into the editor.
+   * "New doc" from any container's menu — opens a modal to write a doc or
+   * upload a file. Docs attach at the SPACE level in the data model, so a
+   * doc from a folder/list menu attaches to that container's space.
    */
+  const [docScope, setDocScope] = useState<{
+    spaceId: string;
+    label: string;
+  } | null>(null);
   const newDoc = (spaceId: string, whereLabel: string): void => {
     setMenu(null);
-    const name = window.prompt(`New doc ${whereLabel}`, "");
-    if (!name?.trim()) return;
-    void docsApi
-      .create({ name: name.trim(), spaceId })
-      .then((r) => router.push(`/doc?id=${r.doc.id}`))
-      .catch((e) =>
-        showToast(
-          e instanceof ApiError ? e.message : "Couldn't create the doc.",
-        ),
-      );
+    setDocScope({ spaceId, label: whereLabel });
   };
 
   // "New form" flow — scope (space/folder/list) the form will be created in.
@@ -970,6 +965,22 @@ export function HierarchyTree() {
         spaceName={sharing.name}
         onClose={() => setSharing(null)}
         onChanged={() => void reload()}
+      />
+    )}
+
+    {docScope && (
+      <TreeDocModal
+        spaceId={docScope.spaceId}
+        scopeLabel={docScope.label}
+        onClose={() => setDocScope(null)}
+        onDone={(doc, openEditor) => {
+          setDocScope(null);
+          if (openEditor) router.push(`/doc?id=${doc.id}`);
+          else {
+            showToast(`Uploaded “${doc.name}”`);
+            router.push("/docs");
+          }
+        }}
       />
     )}
 

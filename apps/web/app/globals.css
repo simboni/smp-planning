@@ -9012,3 +9012,4 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   transition: opacity 120ms ease;
 }
 .doc-card-upload:hover .doc-card-del { opacity: 1; }
+.tree-doc-err { margin-top: 12px; }
