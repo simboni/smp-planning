@@ -38,6 +38,7 @@ const GROUP_LABEL: Record<Exclude<ViewGroupBy, null>, string> = {
   status: "Status",
   assignee: "Assignee",
   priority: "Priority",
+  list: "List",
 };
 
 export function FilterBar({
@@ -47,6 +48,7 @@ export function FilterBar({
   config,
   onChange,
   showGroup,
+  showListGroup = false,
 }: {
   statuses: Status[];
   members: Member[];
@@ -54,6 +56,8 @@ export function FilterBar({
   config: ViewConfig;
   onChange: (config: ViewConfig) => void;
   showGroup: boolean;
+  /** Offer "Group: List" — space-level views only. */
+  showListGroup?: boolean;
 }) {
   const [pop, setPop] = useState<"filter" | "sort" | "group" | null>(null);
 
@@ -280,7 +284,9 @@ export function FilterBar({
           </button>
           {pop === "group" && (
             <Popover onClose={() => setPop(null)} className="tp-pop-menu">
-              {(Object.keys(GROUP_LABEL) as Exclude<ViewGroupBy, null>[]).map((g) => (
+              {(Object.keys(GROUP_LABEL) as Exclude<ViewGroupBy, null>[])
+                .filter((g) => g !== "list" || showListGroup)
+                .map((g) => (
                 <button
                   key={g}
                   type="button"

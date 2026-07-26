@@ -571,7 +571,8 @@ export interface ViewSort {
   dir: "asc" | "desc";
 }
 
-export type ViewGroupBy = "status" | "assignee" | "priority" | null;
+/** "list" only applies to space-level views (tasks span many lists). */
+export type ViewGroupBy = "status" | "assignee" | "priority" | "list" | null;
 
 /** Client-owned view configuration blob (the API stores it opaquely). */
 export interface ViewConfig {
@@ -1590,6 +1591,9 @@ export const tasksApi = {
   /** Top-level tasks for a list (subtasks come nested in the detail). */
   listForList: (listId: string) =>
     api<{ tasks: TaskCard[] }>(`/lists/${listId}/tasks`, { auth: "access" }),
+  /** Every top-level task in a space, across all its lists. */
+  listForSpace: (spaceId: string) =>
+    api<{ tasks: TaskCard[] }>(`/spaces/${spaceId}/tasks`, { auth: "access" }),
   create: (listId: string, body: TaskCreateBody) =>
     api<{ task: TaskDetail }>(`/lists/${listId}/tasks`, {
       method: "POST",

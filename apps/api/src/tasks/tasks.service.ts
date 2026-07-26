@@ -603,6 +603,29 @@ export class TasksService {
     });
   }
 
+  /**
+   * Every task in a SPACE, across all its lists and folders — the space-level
+   * view (same shape as listTasks, so all the view components render it
+   * unchanged). Subtasks are excluded like the list view; archived too.
+   */
+  async listSpaceTasks(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+    spaceId: string,
+  ): Promise<TaskCard[]> {
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      await requireSpaceVisible(this.access, client, userId, role, spaceId);
+      const rows = await client.query(
+        `SELECT ${TASK_COLS} ${TASK_FROM}
+         WHERE t.space_id = $1 AND t.parent_task_id IS NULL AND t.archived = false
+         ORDER BY s.position NULLS LAST, t.position, t.created_at`,
+        [spaceId],
+      );
+      return this.buildCards(client, rows.rows);
+    });
+  }
+
   async getTask(
     workspaceId: string,
     userId: string,

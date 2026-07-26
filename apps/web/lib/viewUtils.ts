@@ -138,8 +138,29 @@ export function groupTasks(
   tasks: TaskCard[],
   groupBy: ViewGroupBy,
   statuses: Status[],
+  /** id → name, required only for space-level "list" grouping. */
+  listNames?: Map<string, string>,
 ): TaskGroup[] {
   const mode = groupBy ?? "status";
+
+  if (mode === "list") {
+    const byList = new Map<string, TaskGroup>();
+    for (const t of tasks) {
+      let g = byList.get(t.listId);
+      if (!g) {
+        g = {
+          key: t.listId,
+          label: listNames?.get(t.listId) ?? "List",
+          color: colorFor(t.listId),
+          statusId: null,
+          tasks: [],
+        };
+        byList.set(t.listId, g);
+      }
+      g.tasks.push(t);
+    }
+    return [...byList.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }
 
   if (mode === "status") {
     const groups: TaskGroup[] = statuses.map((s) => ({

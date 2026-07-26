@@ -17,6 +17,8 @@ import type { ViewProps } from "@/components/views/types";
 
 export interface BoardViewProps extends ViewProps {
   groupBy: ViewGroupBy;
+  /** id → name, for space-level "list" grouping. */
+  listNames?: Map<string, string>;
   onQuickAdd: (statusId: string, name: string) => void;
   /** Persist a drop: the moved task, its (new) status column, the column's full id order. */
   onMoveTask: (taskId: string, statusId: string, orderedIds: string[]) => void;
@@ -42,6 +44,7 @@ export function BoardView({
   canEdit,
   onOpenTask,
   groupBy,
+  listNames,
   onQuickAdd,
   onMoveTask,
   onManageStatuses,
@@ -51,7 +54,10 @@ export function BoardView({
   const [over, setOver] = useState<OverState | null>(null);
   const [addingIn, setAddingIn] = useState<string | null>(null);
 
-  const groups = useMemo(() => groupTasks(tasks, groupBy, statuses), [tasks, groupBy, statuses]);
+  const groups = useMemo(
+    () => groupTasks(tasks, groupBy, statuses, listNames),
+    [tasks, groupBy, statuses, listNames],
+  );
   const statusGrouping = (groupBy ?? "status") === "status";
   const dndEnabled = canEdit && statusGrouping;
 

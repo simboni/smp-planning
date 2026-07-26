@@ -146,6 +146,17 @@ export class TasksController {
     return { tasks: await this.tasks.listTasks(...this.ctx(req), listId) };
   }
 
+  /** Every task in a space (all lists) — powers the space-level views. */
+  @Get("spaces/:id/tasks")
+  async listSpaceTasks(
+    @Req() req: AuthedRequest,
+    @Param("id", ParseUUIDPipe) spaceId: string,
+  ) {
+    return {
+      tasks: await this.tasks.listSpaceTasks(...this.ctx(req), spaceId),
+    };
+  }
+
   @Post("lists/:id/tasks")
   async createTask(
     @Req() req: AuthedRequest,

@@ -9085,3 +9085,17 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 }
 .doc-card-upload:hover .doc-card-del { opacity: 1; }
 .tree-doc-err { margin-top: 12px; }
+
+/* ---- Space-level task views ---- */
+.sp-tasks { margin: 4px 0 22px; }
+.sp-tasks-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.sp-view-chips { flex-wrap: wrap; }
+.sp-view-chips .chip svg { width: 14px; height: 14px; }
+.sp-tasks-count { font-size: 12px; white-space: nowrap; }

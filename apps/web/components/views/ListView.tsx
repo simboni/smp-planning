@@ -16,6 +16,8 @@ import type { ViewProps } from "@/components/views/types";
 
 export interface ListViewProps extends ViewProps {
   groupBy: ViewGroupBy;
+  /** id → name, for space-level "list" grouping. */
+  listNames?: Map<string, string>;
   onChangeStatus: (task: TaskCard, statusId: string) => void;
   onDelete: (task: TaskCard) => void;
   onQuickAdd: (statusId: string, name: string) => void;
@@ -31,6 +33,7 @@ export function ListView({
   canEdit,
   onOpenTask,
   groupBy,
+  listNames,
   onChangeStatus,
   onDelete,
   onQuickAdd,
@@ -40,7 +43,10 @@ export function ListView({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [addingIn, setAddingIn] = useState<string | null>(null);
 
-  const groups = useMemo(() => groupTasks(tasks, groupBy, statuses), [tasks, groupBy, statuses]);
+  const groups = useMemo(
+    () => groupTasks(tasks, groupBy, statuses, listNames),
+    [tasks, groupBy, statuses, listNames],
+  );
   const statusGrouping = (groupBy ?? "status") === "status";
 
   // Header "New Task" → open quick-add in the first status group. The ref

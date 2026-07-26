@@ -22,6 +22,7 @@ import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { ShareDialog } from "@/components/ShareDialog";
 import { ClickAppsModal } from "@/components/ClickAppsModal";
+import { SpaceTasks } from "@/components/SpaceTasks";
 import { FavoriteStar } from "@/components/FavoriteStar";
 import { saveEntityAsTemplate } from "@/lib/toast";
 import {
@@ -803,6 +804,16 @@ function SpaceView() {
           </button>
         </div>
       )}
+
+      {/* Every task in the space, in any view (Module 5 views reused) */}
+      <SpaceTasks
+        spaceId={space.id}
+        lists={[...lists, ...folders.flatMap((f) => f.lists)].map((l) => ({
+          id: l.id,
+          name: l.name,
+        }))}
+        canEdit={canEdit}
+      />
 
       {/* Folders */}
       {folders.map((f) => (

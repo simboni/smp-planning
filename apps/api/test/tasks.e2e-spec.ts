@@ -468,4 +468,47 @@ describe("toggle-done (My Work quick action)", () => {
     expect(reopened.status.type).not.toBe("done");
     expect(reopened.completedAt ?? null).toBeNull();
   });
-});
+
+  it("space-level task list spans every list in the space", async () => {
+    const owner = await ownerWorkspace();
+    const { space, list } = await makeSpaceAndList(owner.accessToken);
+    const listB = (
+      await http
+        .post(`/spaces/${space.id}/lists`)
+        .set(auth(owner.accessToken))
+        .send({ name: "Second list" })
+        .expect(201)
+    ).body.list;
+
+    for (const [listId, name] of [
+      [list.id, "In list A"],
+      [listB.id, "In list B"],
+    ] as const) {
+      await http
+        .post(`/lists/${listId}/tasks`)
+        .set(auth(owner.accessToken))
+        .send({ name })
+        .expect(201);
+    }
+
+    const spaceTasks = (
+      await http
+        .get(`/spaces/${space.id}/tasks`)
+        .set(auth(owner.accessToken))
+        .expect(200)
+    ).body.tasks as { name: string; listId: string }[];
+    expect(spaceTasks.map((t) => t.name)).toEqual(
+      expect.arrayContaining(["In list A", "In list B"]),
+    );
+    // Each card still carries its own list, so the UI can group by list.
+    expect(new Set(spaceTasks.map((t) => t.listId)).size).toBeGreaterThan(1);
+
+    // A guest with no share can't see the space — 404, no task names leaked.
+    const outsider = await memberOf(owner.accessToken, owner.workspaceId, "guest");
+    await http
+      .get(`/spaces/${space.id}/tasks`)
+      .set(auth(outsider.accessToken))
+      .expect(404);
+  });
+  });
+
