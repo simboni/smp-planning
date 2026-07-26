@@ -8077,7 +8077,7 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 46vh;
+  max-height: 52vh;
   overflow-y: auto;
   margin: 0 -4px;
   padding: 0 4px;
@@ -8085,7 +8085,6 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .aib-space {
   border: 1px solid var(--line);
   border-radius: 11px;
-  overflow: hidden;
   background: var(--card-2);
 }
 .aib-space-head {
@@ -8158,14 +8157,87 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   padding: 1px 5px;
   margin-left: 6px;
 }
-.aib-tasks { display: flex; flex-direction: column; gap: 3px; padding-left: 4px; }
+.aib-tasks { display: flex; flex-direction: column; gap: 6px; padding-left: 4px; }
+/* Many tasks in one destination: scroll inside the card instead of pushing
+   the Build button off-screen. */
+.aib-target-tasks {
+  max-height: 340px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+/* A proposed task is an editable CARD: name on top, every control below on a
+   wrapping meta row — so nothing is ever clipped out of reach. */
 .aib-task {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   font-size: 0.85rem;
   color: var(--ink);
-  padding: 2px 0;
+  padding: 8px 9px;
+  border: 1px solid var(--line-soft, var(--line));
+  border-radius: 9px;
+  background: var(--card);
+}
+.aib-task-doc {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.aib-task-empty {
+  font-size: 0.85rem;
+  font-style: italic;
+  padding: 4px 2px;
+}
+.aib-task-top { display: flex; align-items: center; gap: 8px; }
+.aib-task-name-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 3px 5px;
+}
+.aib-task-name-input:hover { border-color: var(--line); }
+.aib-task-name-input:focus { outline: none; border-color: var(--brand); }
+.aib-task-drop {
+  flex: none;
+  display: inline-flex;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 6px;
+}
+.aib-task-drop:hover { color: var(--danger); background: var(--danger-soft, rgba(220,38,38,.1)); }
+.aib-task-drop svg { width: 14px; height: 14px; }
+.aib-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding-left: 14px;
+}
+.aib-field { display: inline-flex; flex-direction: column; gap: 2px; }
+.aib-field-l {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.aib-mini-select {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  padding: 3px 4px;
 }
 .aib-task.muted { color: var(--muted); font-style: italic; }
 .aib-task-dot {

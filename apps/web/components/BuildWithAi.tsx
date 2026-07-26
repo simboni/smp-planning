@@ -36,6 +36,7 @@ import {
   type AiFormPlan,
   type AiListRef,
   type AiPlanTarget,
+  type AiPlanTask,
   type AiSpaceRef,
 } from "@/lib/api";
 
@@ -486,11 +487,11 @@ export function BuildWithAi({
     });
   };
 
-  /** Edit a proposed task's timeline (start / due) in place. */
-  const setTaskDates = (
+  /** Patch any field of a proposed task (name, priority, dates…) in place. */
+  const setTaskField = (
     ti: number,
     taskIdx: number,
-    patch: { startDate?: string | null; dueDate?: string | null },
+    patch: Partial<AiPlanTask>,
   ) => {
     if (!plan) return;
     setPlan({
@@ -504,6 +505,17 @@ export function BuildWithAi({
                 k !== taskIdx ? tk : { ...tk, ...patch },
               ),
             },
+      ),
+    });
+  };
+
+  /** Drop a single proposed task from the plan. */
+  const dropTask = (ti: number, taskIdx: number) => {
+    if (!plan) return;
+    setPlan({
+      ...plan,
+      targets: plan.targets.map((t, i) =>
+        i !== ti ? t : { ...t, tasks: t.tasks.filter((_, k) => k !== taskIdx) },
       ),
     });
   };
@@ -850,7 +862,9 @@ export function BuildWithAi({
                   context={context}
                   onDest={(patch) => setDest(i, patch)}
                   onAssignees={(taskIdx, ids) => setTaskAssignees(i, taskIdx, ids)}
-                  onDates={(taskIdx, patch) => setTaskDates(i, taskIdx, patch)}
+                  onDates={(taskIdx, patch) => setTaskField(i, taskIdx, patch)}
+                  onField={(taskIdx, patch) => setTaskField(i, taskIdx, patch)}
+                  onDropTask={(taskIdx) => dropTask(i, taskIdx)}
                   onDrop={() => dropTarget(i)}
                 />
               ))}
@@ -1231,6 +1245,8 @@ function TargetCard({
   onDest,
   onAssignees,
   onDates,
+  onField,
+  onDropTask,
   onDrop,
 }: {
   target: AiPlanTarget;
@@ -1242,6 +1258,8 @@ function TargetCard({
     taskIndex: number,
     patch: { startDate?: string | null; dueDate?: string | null },
   ) => void;
+  onField: (taskIndex: number, patch: Partial<AiPlanTask>) => void;
+  onDropTask: (taskIndex: number) => void;
   onDrop: () => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -1273,34 +1291,77 @@ function TargetCard({
         <div className="aib-tasks aib-target-tasks">
           {(target.tasks ?? []).map((t, ti) => (
             <div key={ti} className="aib-task">
-              <span className="aib-task-dot" />
-              <span className="aib-task-name">{t.name}</span>
-              {t.priority && (
-                <span className={`aib-pri aib-pri-${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
-              )}
-              <span className="aib-dates" title="Timeline: start → due">
+              {/* Row 1: the task name (editable) + remove */}
+              <div className="aib-task-top">
+                <span className="aib-task-dot" />
                 <input
-                  type="date"
-                  className="aib-date"
-                  aria-label="Start date"
-                  value={t.startDate ?? ""}
-                  max={t.dueDate ?? undefined}
-                  onChange={(e) =>
-                    onDates(ti, { startDate: e.target.value || null })
-                  }
+                  className="aib-task-name-input"
+                  value={t.name}
+                  aria-label="Task name"
+                  placeholder="Task name"
+                  onChange={(e) => onField(ti, { name: e.target.value })}
                 />
-                <span className="aib-date-sep muted">→</span>
-                <input
-                  type="date"
-                  className="aib-date"
-                  aria-label="Due date"
-                  value={t.dueDate ?? ""}
-                  min={t.startDate ?? undefined}
-                  onChange={(e) =>
-                    onDates(ti, { dueDate: e.target.value || null })
-                  }
-                />
-              </span>
+                <button
+                  type="button"
+                  className="aib-task-drop"
+                  title="Remove this task"
+                  aria-label={`Remove ${t.name}`}
+                  onClick={() => onDropTask(ti)}
+                >
+                  {Icons.close}
+                </button>
+              </div>
+
+              {/* Row 2: everything you can set — wraps instead of clipping */}
+              <div className="aib-task-meta">
+                <label className="aib-field">
+                  <span className="aib-field-l">Priority</span>
+                  <select
+                    className="aib-mini-select"
+                    value={t.priority ?? ""}
+                    onChange={(e) =>
+                      onField(ti, {
+                        priority: (e.target.value || undefined) as
+                          | AiPlanTask["priority"]
+                          | undefined,
+                      })
+                    }
+                  >
+                    <option value="">None</option>
+                    {(["urgent", "high", "normal", "low"] as const).map((p) => (
+                      <option key={p} value={p}>
+                        {PRIORITY_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="aib-field">
+                  <span className="aib-field-l">Start</span>
+                  <input
+                    type="date"
+                    className="aib-date"
+                    value={t.startDate ?? ""}
+                    max={t.dueDate ?? undefined}
+                    onChange={(e) =>
+                      onDates(ti, { startDate: e.target.value || null })
+                    }
+                  />
+                </label>
+
+                <label className="aib-field">
+                  <span className="aib-field-l">Due</span>
+                  <input
+                    type="date"
+                    className="aib-date"
+                    value={t.dueDate ?? ""}
+                    min={t.startDate ?? undefined}
+                    onChange={(e) =>
+                      onDates(ti, { dueDate: e.target.value || null })
+                    }
+                  />
+                </label>
+
               {t.recurrence && (
                 <span className="aib-recur" title="Repeats when completed">
                   {Icons.repeat}
@@ -1309,19 +1370,22 @@ function TargetCard({
                     : t.recurrence.freq}
                 </span>
               )}
-              {context.members.length > 0 && (
-                <TaskAssignees
-                  members={context.members}
-                  memberName={memberName}
-                  ids={t.assigneeIds ?? []}
-                  onChange={(ids) => onAssignees(ti, ids)}
-                />
-              )}
+                {context.members.length > 0 && (
+                  <TaskAssignees
+                    members={context.members}
+                    memberName={memberName}
+                    ids={t.assigneeIds ?? []}
+                    onChange={(ids) => onAssignees(ti, ids)}
+                  />
+                )}
+              </div>
             </div>
           ))}
-          {(target.tasks?.length ?? 0) === 0 && <div className="aib-task muted">No tasks</div>}
+          {(target.tasks?.length ?? 0) === 0 && (
+            <div className="aib-task-empty muted">No tasks</div>
+          )}
           {(target.docs ?? []).map((d, di) => (
-            <div key={`doc-${di}`} className="aib-task">
+            <div key={`doc-${di}`} className="aib-task aib-task-doc">
               <span className="aib-task-ic">{Icons.docs}</span>
               <span className="aib-task-name">
                 {d.icon ? `${d.icon} ` : ""}
