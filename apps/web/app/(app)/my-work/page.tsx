@@ -16,29 +16,70 @@ import {
   ApiError,
   getUser,
   homeApi,
+  statusesApi,
   tasksApi,
+  workspacesApi,
   type HomeData,
+  type Member,
+  type Status,
   type TaskCard,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
+import { TaskPanel } from "@/components/TaskPanel";
+import { showToast, showToastAction } from "@/lib/toast";
 import { AvatarStack, DueChip, PriorityFlag } from "@/components/TaskBits";
 import { colorFor, firstName, formatDateTime, timeAgo } from "@/lib/format";
 
-function CompactRow({ task, onChanged }: { task: TaskCard; onChanged: () => void }) {
-  const router = useRouter();
+function CompactRow({
+  task,
+  onChanged,
+  onOpen,
+}: {
+  task: TaskCard;
+  onChanged: () => void;
+  onOpen: (task: TaskCard) => void;
+}) {
   const [busy, setBusy] = useState(false);
-  const done = task.status?.type === "done";
+  // Local echo of completion so the row confirms INSTANTLY (and animates out)
+  // instead of silently disappearing on the next reload.
+  const [justDone, setJustDone] = useState(false);
+  const done = task.status?.type === "done" || justDone;
   const dot = task.status?.color || colorFor(task.statusId);
 
-  // Complete / reopen straight from My Work — the module's primary action.
+  /**
+   * Complete / reopen — the module's primary action. Feedback is threefold:
+   * the checkbox fills immediately, the row strikes through and fades, and a
+   * toast confirms WITH an Undo, so a mis-click is never a dead end.
+   */
   const toggle = async (e: React.MouseEvent): Promise<void> => {
     e.stopPropagation();
     if (busy) return;
     setBusy(true);
+    const wasDone = task.status?.type === "done";
     try {
       await tasksApi.toggleDone(task.id);
-      onChanged();
+      if (!wasDone) {
+        setJustDone(true);
+        showToastAction(`Completed “${task.name}”`, "Undo", () => {
+          void tasksApi
+            .toggleDone(task.id)
+            .then(() => {
+              setJustDone(false);
+              onChanged();
+            })
+            .catch(() => onChanged());
+        });
+        // Let the strike-through + fade play before the list refreshes.
+        setTimeout(onChanged, 900);
+      } else {
+        showToast(`Reopened “${task.name}”`);
+        onChanged();
+      }
     } catch (err) {
+      setJustDone(false);
+      showToast(
+        err instanceof ApiError ? err.message : "Couldn't update that task.",
+      );
       if (!(err instanceof ApiError)) throw err;
     } finally {
       setBusy(false);
@@ -47,30 +88,35 @@ function CompactRow({ task, onChanged }: { task: TaskCard; onChanged: () => void
 
   return (
     <div
-      className={`mw-task${done ? " done" : ""}`}
+      className={`mw-task${done ? " done" : ""}${justDone ? " leaving" : ""}`}
       role="button"
       tabIndex={0}
-      onClick={() => router.push(`/list?id=${task.listId}&task=${task.id}`)}
+      onClick={() => onOpen(task)}
       onKeyDown={(e) => {
-        if (e.key === "Enter") router.push(`/list?id=${task.listId}&task=${task.id}`);
+        if (e.key === "Enter") onOpen(task);
       }}
     >
       <button
         type="button"
         className={`mw-task-check${done ? " done" : ""}`}
         style={done ? undefined : { borderColor: dot }}
-        title={done ? "Mark as not done" : "Mark as done"}
-        aria-label={done ? "Mark as not done" : "Mark as done"}
+        title={done ? "Mark as not done" : "Mark complete"}
+        aria-label={done ? "Mark as not done" : "Mark complete"}
         onClick={toggle}
         disabled={busy}
       >
-        {done ? Icons.check : null}
+        {/* The check is always rendered; CSS reveals a ghost of it on hover so
+            the circle's purpose is obvious BEFORE clicking. */}
+        <span className="mw-check-mark">{Icons.check}</span>
       </button>
       <span className="mw-task-name">{task.name}</span>
       <span className="mw-task-meta">
         <PriorityFlag priority={task.priority} />
         <DueChip due={task.dueDate} />
         <AvatarStack users={task.assignees} size={22} />
+        <span className="mw-task-open" aria-hidden="true">
+          Open {Icons.chevronRight}
+        </span>
       </span>
     </div>
   );
@@ -82,12 +128,14 @@ function Section({
   tone,
   tasks,
   onChanged,
+  onOpen,
 }: {
   title: string;
   icon: keyof typeof Icons;
   tone?: "danger" | "warn";
   tasks: TaskCard[];
   onChanged: () => void;
+  onOpen: (task: TaskCard) => void;
 }) {
   if (tasks.length === 0) return null;
   return (
@@ -99,7 +147,7 @@ function Section({
       </div>
       <div className="mw-tasks">
         {tasks.map((t) => (
-          <CompactRow key={t.id} task={t} onChanged={onChanged} />
+          <CompactRow key={t.id} task={t} onChanged={onChanged} onOpen={onOpen} />
         ))}
       </div>
     </div>
@@ -110,6 +158,27 @@ export default function MyWorkPage() {
   const router = useRouter();
   const [data, setData] = useState<HomeData | null>(null);
   const [error, setError] = useState("");
+  /**
+   * Opening a task from My Work shows it in a panel RIGHT HERE — the old
+   * behaviour navigated to its list, which lost your place in the day's
+   * queue. Statuses are per-space, so they load on demand for the task's
+   * space; the panel still offers a link into the full list context.
+   */
+  const [openTask, setOpenTask] = useState<TaskCard | null>(null);
+  const [panelStatuses, setPanelStatuses] = useState<Status[]>([]);
+  const [panelMembers, setPanelMembers] = useState<Member[]>([]);
+
+  const openTaskPanel = (task: TaskCard): void => {
+    setOpenTask(task);
+    statusesApi
+      .list(task.spaceId)
+      .then((r) => setPanelStatuses(r.statuses))
+      .catch(() => setPanelStatuses([]));
+    workspacesApi
+      .members()
+      .then((r) => setPanelMembers(r.members))
+      .catch(() => setPanelMembers([]));
+  };
   const name = firstName(getUser()?.fullName ?? "");
 
   const reload = (): void => {
@@ -183,10 +252,10 @@ export default function MyWorkPage() {
             </div>
           ) : (
             <>
-              <Section title="Overdue" icon="ban" tone="danger" tasks={data.overdue} onChanged={reload} />
-              <Section title="Due today" icon="calendar" tone="warn" tasks={data.dueToday} onChanged={reload} />
-              <Section title="Next 7 days" icon="clock" tasks={data.upcoming} onChanged={reload} />
-              <Section title="Unscheduled" icon="inbox" tasks={data.unscheduled} onChanged={reload} />
+              <Section title="Overdue" icon="ban" tone="danger" tasks={data.overdue} onChanged={reload} onOpen={openTaskPanel} />
+              <Section title="Due today" icon="calendar" tone="warn" tasks={data.dueToday} onChanged={reload} onOpen={openTaskPanel} />
+              <Section title="Next 7 days" icon="clock" tasks={data.upcoming} onChanged={reload} onOpen={openTaskPanel} />
+              <Section title="Unscheduled" icon="inbox" tasks={data.unscheduled} onChanged={reload} onOpen={openTaskPanel} />
             </>
           )}
         </div>
@@ -251,6 +320,21 @@ export default function MyWorkPage() {
           </div>
         </div>
       </div>
+
+      {openTask && (
+        <TaskPanel
+          taskId={openTask.id}
+          statuses={panelStatuses}
+          members={panelMembers}
+          canEdit
+          canComment
+          onClose={() => setOpenTask(null)}
+          onChanged={reload}
+          onOpenTask={(tid) =>
+            setOpenTask((prev) => (prev ? { ...prev, id: tid } : prev))
+          }
+        />
+      )}
     </div>
   );
 }

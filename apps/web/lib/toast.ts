@@ -32,6 +32,47 @@ export function showToast(message: string): void {
 }
 
 /**
+ * A toast that carries ONE action — used for reversible actions (completing
+ * a task, archiving) so a mis-click is never destructive: the confirmation
+ * and the way back are the same element. Stays longer than a plain toast
+ * because the user has to read it and decide.
+ */
+export function showToastAction(
+  message: string,
+  actionLabel: string,
+  onAction: () => void,
+): void {
+  if (typeof document === "undefined") return;
+  let el = document.getElementById("stackup-global-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "stackup-global-toast";
+    el.className = "toast-global";
+    document.body.appendChild(el);
+  }
+  el.textContent = "";
+  const text = document.createElement("span");
+  text.className = "toast-text";
+  text.textContent = message;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "toast-action";
+  btn.textContent = actionLabel;
+  btn.onclick = () => {
+    el?.classList.remove("show");
+    if (toastTimer) clearTimeout(toastTimer);
+    onAction();
+  };
+  el.appendChild(text);
+  el.appendChild(btn);
+  el.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el?.classList.remove("show");
+  }, 6000);
+}
+
+/**
  * Prompt for a name, then snapshot an entity as a template. Resolves true on
  * success. Toasts either way so the caller only needs one onClick.
  */
