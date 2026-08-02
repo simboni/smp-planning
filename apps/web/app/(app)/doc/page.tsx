@@ -27,6 +27,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ApiError,
+  getUser,
   docsApi,
   permissionAtLeast,
   type Doc,
@@ -411,7 +412,7 @@ function TreeNode({
 /* ------------------------------------------------------------------ *
  * The doc view.
  * ------------------------------------------------------------------ */
-type SaveState = "idle" | "saving" | "saved";
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 function DocView() {
   const search = useSearchParams();
@@ -429,6 +430,7 @@ function DocView() {
   const [pageError, setPageError] = useState("");
   const [title, setTitle] = useState("");
   const [contentVersion, setContentVersion] = useState(0);
+  const [saveError, setSaveError] = useState("");
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -445,8 +447,16 @@ function DocView() {
 
   const editorRef = useRef<HTMLDivElement | null>(null);
   const dirtyRef = useRef(false);
+  /** A remote edit arrived while typing — apply it once the editor is idle. */
+  const pendingRemoteRef = useRef(false);
+  /** Mirror of the live buffer — survives ref detach so the unmount flush works. */
+  const latestHtmlRef = useRef<string>("");
   const lastEditRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Monotonic save id — only the newest response may update UI state. */
+  const saveSeqRef = useRef(0);
+  const flushRef = useRef<(() => void) | null>(null);
+  const refetchOpenPageRef = useRef<(() => void) | null>(null);
   const pageIdRef = useRef<string | null>(null);
   pageIdRef.current = page?.id ?? null;
 
@@ -514,22 +524,43 @@ function DocView() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    if (!dirtyRef.current || !pageIdRef.current || !editorRef.current) return;
-    const html = editorRef.current.innerHTML;
+    if (!dirtyRef.current || !pageIdRef.current) return;
+    // editorRef is already null during unmount cleanup — fall back to the
+    // mirror so navigating away never loses the last keystrokes.
+    const html = editorRef.current?.innerHTML ?? latestHtmlRef.current;
+    if (!html && !editorRef.current) return;
     const id = pageIdRef.current;
     dirtyRef.current = false;
+    // Sequence saves: a slow request must never let an older payload land
+    // after a newer one (that would silently resurrect stale text).
+    const seq = ++saveSeqRef.current;
     setSaveState("saving");
     docsApi
       .updatePage(id, { content: html })
-      .then(() => setSaveState("saved"))
-      .catch(() => {
+      .then(() => {
+        if (seq !== saveSeqRef.current) return; // superseded by a newer save
+        setSaveState("saved");
+        setSaveError("");
+        // A remote edit that arrived mid-typing can now be applied safely.
+        if (pendingRemoteRef.current && !dirtyRef.current) refetchOpenPageRef.current?.();
+      })
+      .catch((err) => {
+        if (seq !== saveSeqRef.current) return;
+        // Keep the text dirty so the next flush retries it, and SAY so —
+        // a silent failure is what makes writing look like it vanished.
         dirtyRef.current = true;
-        setSaveState("idle");
+        setSaveState("error");
+        setSaveError(
+          err instanceof ApiError ? err.message : "Couldn't save — will retry.",
+        );
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => flushRef.current?.(), 4000);
       });
   }, []);
 
   const markDirty = useCallback((): void => {
     dirtyRef.current = true;
+    if (editorRef.current) latestHtmlRef.current = editorRef.current.innerHTML;
     lastEditRef.current = Date.now();
     setSaveState("saving");
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -539,10 +570,45 @@ function DocView() {
   // Save any pending edit when leaving the page entirely.
   useEffect(() => flushNow, [flushNow]);
 
+  // Closing the tab / backgrounding the app (mobile) is the last chance to
+  // persist — 'pagehide' fires where 'beforeunload' is unreliable on iOS.
+  useEffect(() => {
+    const save = (): void => flushNow();
+    window.addEventListener("pagehide", save);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") save();
+    });
+    return () => {
+      window.removeEventListener("pagehide", save);
+    };
+  }, [flushNow]);
+
+  // Mirror the callbacks into refs so the save routine can call the latest
+  // versions without re-creating itself (which would restart the debounce).
+  useEffect(() => {
+    flushRef.current = flushNow;
+  }, [flushNow]);
+  /**
+   * Leaving the editor is the safe moment to apply a remote edit that landed
+   * while typing (the realtime handler deferred it).
+   */
+  const handleBlur = useCallback((): void => {
+    flushNow();
+    if (pendingRemoteRef.current && !dirtyRef.current) {
+      window.setTimeout(() => {
+        if (!dirtyRef.current) refetchOpenPageRef.current?.();
+      }, 400);
+    }
+  }, [flushNow]);
+
   const exec = useCallback(
     (cmd: string, value?: string): void => {
       editorRef.current?.focus();
       try {
+        // Emit <span style> rather than <font>: the server's allow-list keeps
+        // styles but drops <font>, which is why colour/size formatting used
+        // to disappear after a reload.
+        document.execCommand("styleWithCSS", false, "true");
         document.execCommand(cmd, false, value);
       } catch {
         /* unsupported command — ignore */
@@ -664,33 +730,77 @@ function DocView() {
       .catch(() => window.alert("Couldn't delete the doc."));
   };
 
+  /**
+   * Pull the open page from the server and re-seed the editor. Only ever
+   * called when the editor is NOT in use (see the realtime handler).
+   */
+  const refetchOpenPage = useCallback((): void => {
+    const id = pageIdRef.current;
+    if (!id) return;
+    pendingRemoteRef.current = false;
+    docsApi
+      .getPage(id)
+      .then((r) => {
+        if (pageIdRef.current !== r.page.id) return;
+        // Re-check on ARRIVAL: typing may have resumed while this was in
+        // flight, and remounting now would wipe those keystrokes.
+        const busyNow =
+          dirtyRef.current ||
+          Date.now() - lastEditRef.current < 3000 ||
+          (typeof document !== "undefined" &&
+            editorRef.current !== null &&
+            document.activeElement === editorRef.current);
+        if (busyNow) {
+          pendingRemoteRef.current = true;
+          return;
+        }
+        // A no-op refetch must not remount either (it would drop the caret).
+        if (editorRef.current && r.page.content === editorRef.current.innerHTML) {
+          setPage(r.page);
+          setTitle(r.page.title);
+          return;
+        }
+        setPage(r.page);
+        setTitle(r.page.title);
+        setContentVersion((v) => v + 1);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    refetchOpenPageRef.current = refetchOpenPage;
+  }, [refetchOpenPage]);
+
   /* ---- realtime ---- */
   useRealtime(
     (e) => {
       if (e.type !== "doc.changed" || !docId || e.payload.docId !== docId) return;
-      // Someone touched this doc — refresh the tree (titles, order, counts).
+      // OUR OWN autosave echoes back here. Re-seeding the buffer on that echo
+      // destroys the caret and drops whatever was typed since the save — the
+      // "shaky editor / disappearing text" bug. Ignore anything we caused.
+      const actorId = (e.payload as { actorUserId?: string }).actorUserId;
+      if (actorId && actorId === getUser()?.id) return;
+
+      // Someone else touched this doc — refresh the tree (titles, order).
       loadDoc();
-      // If it's the open page and WE haven't typed in the last 2s, assume the
-      // change is someone else's and refetch. No merge (no CRDT): the remote
-      // buffer simply replaces ours, which is safe because we only skip the
-      // refetch while our own debounce window is hot.
-      if (
-        e.payload.pageId === pageIdRef.current &&
-        Date.now() - lastEditRef.current > 2000 &&
-        !dirtyRef.current
-      ) {
-        docsApi
-          .getPage(e.payload.pageId)
-          .then((r) => {
-            if (pageIdRef.current !== r.page.id) return;
-            setPage(r.page);
-            setTitle(r.page.title);
-            setContentVersion((v) => v + 1);
-          })
-          .catch(() => undefined);
+
+      // Only re-seed the OPEN page from a remote edit, and never while this
+      // editor is in use: a focused or dirty buffer keeps what the user is
+      // writing. The refresh is deferred to the next blur rather than lost.
+      if (e.payload.pageId !== pageIdRef.current) return;
+      const editorBusy =
+        dirtyRef.current ||
+        Date.now() - lastEditRef.current < 3000 ||
+        (typeof document !== "undefined" &&
+          editorRef.current !== null &&
+          document.activeElement === editorRef.current);
+      if (editorBusy) {
+        pendingRemoteRef.current = true;
+        return;
       }
+      refetchOpenPage();
     },
-    [docId, loadDoc],
+    [docId, loadDoc, refetchOpenPage],
   );
 
   // Click-away closes any open menu/popovers.
@@ -898,6 +1008,16 @@ function DocView() {
                 <span className="doc-save-dot pulsing" />
                 Saving…
               </>
+            ) : saveState === "error" ? (
+              <button
+                type="button"
+                className="doc-save-retry"
+                title={saveError || "Retry now"}
+                onClick={() => flushNow()}
+              >
+                <span className="doc-save-dot failed" />
+                Not saved — retry
+              </button>
             ) : (
               <>
                 <span className="doc-save-dot" />
@@ -1038,7 +1158,7 @@ function DocView() {
                 data-placeholder="Start writing — or press / on your keyboard someday. For now, just write."
                 dangerouslySetInnerHTML={{ __html: page.content || "" }}
                 onInput={markDirty}
-                onBlur={flushNow}
+                onBlur={handleBlur}
               />
             </div>
           )}

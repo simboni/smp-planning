@@ -596,9 +596,12 @@ export class DocsService {
         return this.toPage(res.rows[0]);
       },
     );
+    // actorUserId lets a client ignore the echo of its OWN save: without it
+    // the editor treats its own autosave as a remote edit and re-seeds the
+    // buffer mid-typing (lost caret, lost characters).
     this.events.publish(workspaceId, {
       type: "doc.changed",
-      payload: { docId: page.docId, pageId: page.id },
+      payload: { docId: page.docId, pageId: page.id, actorUserId: userId },
     });
     return page;
   }

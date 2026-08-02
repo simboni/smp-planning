@@ -9160,3 +9160,19 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   font-size: 0.72rem;
 }
 .toast-action:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* Doc autosave: a FAILED save must be visible and retryable, never silent. */
+.doc-save-dot.failed { background: var(--danger); }
+.doc-save-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  padding: 0;
+}
+.doc-save-retry:hover { text-decoration: underline; }
