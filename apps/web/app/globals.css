@@ -9176,3 +9176,52 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   padding: 0;
 }
 .doc-save-retry:hover { text-decoration: underline; }
+
+
+/* ============================================================
+   My Work on phones — the task NAME is what matters
+   ============================================================
+   On a narrow screen the flag + due chip + avatars + "Open" hint squeezed
+   the name down to "Pay for …". The row becomes two lines instead: the full
+   name (up to two lines) on top, its metadata beneath. Nothing is hidden —
+   it is re-flowed, so every task is readable at a glance. */
+@media (max-width: 720px) {
+  .mw-task {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    grid-template-areas:
+      "check name"
+      "check meta";
+    column-gap: 10px;
+    row-gap: 4px;
+    align-items: start;
+    padding: 11px 8px;
+  }
+  .mw-task-check { grid-area: check; margin-top: 1px; }
+  .mw-task-name {
+    grid-area: name;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-y: hidden;
+    line-height: 1.35;
+    font-weight: 550;
+  }
+  .mw-task-meta {
+    grid-area: meta;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+  /* The hover-only "Open ›" hint is meaningless on touch. */
+  .mw-task-open { display: none; }
+  /* Tighter chips so a date + flag + avatar fit one meta line. */
+  .mw-task-meta .due-chip { font-size: 0.72rem; padding: 2px 7px; }
+  .mw-task-meta .avatar { width: 20px; height: 20px; font-size: 0.6rem; }
+  /* A comfortable touch target for completing without opening the task. */
+  .mw-task-check { width: 24px; height: 24px; }
+  .mw-task-check::after { inset: -11px; }
+}
