@@ -12,6 +12,7 @@ import {
   getUser,
   getWorkspace,
   notificationsApi,
+  renewSession,
   setSessionExpiryHandler,
   setUser,
   setWorkspace,
@@ -25,6 +26,7 @@ import {
   type WorkspaceSummary,
 } from "@/lib/api";
 import { useRealtime } from "@/lib/realtime";
+import { startSessionActivityTracking } from "@/lib/session";
 import {
   applyBranding,
   applyTheme,
@@ -356,6 +358,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Soft session expiry: show the "Still working?" prompt instead of a hard
   // bounce to login. The handler resolves true (renewed → retry) or false.
+  // api() only CALLS this when the app has been open and idle (see
+  // lib/session.ts) — a cold start or an active user renews silently.
   useEffect(() => {
     setSessionExpiryHandler(
       () =>
@@ -369,6 +373,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }),
     );
     return () => setSessionExpiryHandler(null);
+  }, []);
+
+  /**
+   * Presence tracking + resume refresh. Opening the app after a long
+   * background (the classic phone case) refreshes tokens BEFORE the first
+   * tap, so a returning user never meets an expired-session interruption at
+   * all — they just find their work.
+   */
+  useEffect(() => {
+    const stop = startSessionActivityTracking(() => {
+      void renewSession();
+    });
+    // A cold start with a stale-looking session: refresh in the background
+    // rather than waiting for the first request to 401.
+    void renewSession();
+    return stop;
   }, []);
 
   // Close transient UI on navigation.

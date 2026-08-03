@@ -16,6 +16,7 @@
  */
 
 import { siteOrigin } from "./format";
+import { shouldPromptOnExpiry } from "./session";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -723,7 +724,8 @@ function tokenFor(auth: AuthMode): string | null {
  * identity token and re-issue the workspace access token, then the original
  * request is retried transparently.
  * ------------------------------------------------------------------ */
-let renewing = false;
+/** The in-flight renewal, so concurrent callers share ONE refresh. */
+let renewPromise: Promise<boolean> | null = null;
 let expiryInFlight: Promise<boolean> | null = null;
 let expiryHandler: (() => Promise<boolean>) | null = null;
 
@@ -735,32 +737,50 @@ export function setSessionExpiryHandler(fn: (() => Promise<boolean>) | null): vo
 
 /** Renew the session in place: refresh token → new identity token → re-mint the
  *  workspace access token. Returns true on success. Never prompts. */
-export async function renewSession(): Promise<boolean> {
+export function renewSession(): Promise<boolean> {
+  // Coalesce: a proactive refresh (app resume) and a 401-driven one must
+  // never race — the second caller waits for the first instead of failing,
+  // which would otherwise sign the user out mid-refresh.
+  if (renewPromise) return renewPromise;
   const rt = getRefreshToken();
-  if (!rt) return false;
-  renewing = true;
-  try {
-    const r = await authApi.refresh(rt);
-    setIdentityToken(r.identityToken);
-    setRefreshToken(r.refreshToken);
-    const ws = getWorkspace();
-    if (ws?.id) {
-      const t = await workspacesApi.selectToken(ws.id);
-      setAccessToken(t.accessToken);
+  if (!rt) return Promise.resolve(false);
+  renewPromise = (async () => {
+    try {
+      const r = await authApi.refresh(rt);
+      setIdentityToken(r.identityToken);
+      setRefreshToken(r.refreshToken);
+      const ws = getWorkspace();
+      if (ws?.id) {
+        const t = await workspacesApi.selectToken(ws.id);
+        setAccessToken(t.accessToken);
+      }
+      return true;
+    } catch {
+      return false;
     }
-    return true;
-  } catch {
-    return false;
-  } finally {
-    renewing = false;
-  }
+  })();
+  return renewPromise.finally(() => {
+    renewPromise = null;
+  });
 }
 
-/** Coalesced expiry decision — one prompt even if many calls 401 at once. */
+/**
+ * Coalesced expiry decision — one prompt even if many calls 401 at once.
+ *
+ * The "Still working?" prompt is reserved for a session that expired while
+ * the app sat OPEN AND IDLE (plausibly unattended). A cold start after hours,
+ * a resumed mobile app, or a user who is actively clicking all renew
+ * silently — asking them would be noise. See lib/session.ts.
+ */
 function handleExpiredSession(): Promise<boolean> {
-  if (renewing) return Promise.resolve(false); // don't re-enter during our own refresh
+  // A refresh is already running (e.g. the app just resumed): WAIT for it.
+  // Treating it as failure here is what used to sign people out on resume.
+  if (renewPromise) return renewPromise;
   if (expiryInFlight) return expiryInFlight;
-  const run = expiryHandler ?? (() => renewSession()); // no UI mounted → silent renew
+  const run =
+    expiryHandler && shouldPromptOnExpiry()
+      ? expiryHandler
+      : () => renewSession(); // no UI mounted, cold start, or active user
   expiryInFlight = Promise.resolve()
     .then(run)
     .catch(() => false)
