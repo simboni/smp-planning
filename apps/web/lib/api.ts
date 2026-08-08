@@ -642,7 +642,13 @@ function rawDel(key: string): void {
 }
 
 export const getIdentityToken = (): string | null => rawGet(KEYS.identity);
-export const setIdentityToken = (t: string): void => rawSet(KEYS.identity, t);
+export const setIdentityToken = (t: string): void => {
+  // A new identity = a new session. Bump the generation so any renewal still
+  // in flight from the PREVIOUS account discards its result instead of
+  // signing that account back in over this one.
+  workspaceGeneration += 1;
+  rawSet(KEYS.identity, t);
+};
 export const getRefreshToken = (): string | null => rawGet(KEYS.refresh);
 export const setRefreshToken = (t: string): void => rawSet(KEYS.refresh, t);
 export const getAccessToken = (): string | null => rawGet(KEYS.access);
@@ -802,15 +808,26 @@ export function renewSession(): Promise<boolean> {
   renewPromise = (async () => {
     try {
       const r = await authApi.refresh(rt);
-      // The identity/refresh pair is workspace-independent — always safe.
+      // CRITICAL: a renewal started before a sign-out / sign-in must never
+      // write anything. Its tokens belong to the PREVIOUS ACCOUNT, and
+      // writing them here silently signs that account back in over the new
+      // one — the browser then shows the previous user's workspaces under
+      // whatever the new user is looking at. Verify the session we started
+      // under is still the current one before EVERY write, identity and
+      // refresh included (they are not "workspace-independent" across a
+      // user switch).
+      if (
+        workspaceGeneration !== startedGeneration ||
+        getRefreshToken() !== rt
+      ) {
+        return true; // superseded — the newer session stands, untouched
+      }
       setIdentityToken(r.identityToken);
       setRefreshToken(r.refreshToken);
       if (!targetWs) return true;
       const t = await workspacesApi.selectToken(targetWs);
-      // Re-check AFTER the round trip: the user may have switched workspace,
-      // signed out, or created a new one while this was in flight. Writing
-      // now would resurrect the old workspace's token under the new
-      // workspace's name — the cross-workspace mix-up this guard prevents.
+      // Re-check again after the second round trip, for the same reason plus
+      // workspace switches (create/enter another workspace mid-flight).
       if (
         workspaceGeneration !== startedGeneration ||
         getWorkspace()?.id !== targetWs
@@ -845,9 +862,13 @@ export function reconcileWorkspaceSession(): Promise<void> {
   if (!cached?.id || !tokenWs || cached.id === tokenWs) {
     return Promise.resolve();
   }
+  const startedGeneration = workspaceGeneration;
   reconcilePromise = (async () => {
     try {
       const t = await workspacesApi.selectToken(cached.id);
+      // Sign-out / sign-in / another switch happened while we were asking:
+      // leave the newer session completely alone.
+      if (workspaceGeneration !== startedGeneration) return;
       setWorkspaceSession(t.workspace ?? cached, t.accessToken);
     } catch {
       // Can't enter the cached workspace (removed, access revoked) — fall
@@ -855,6 +876,7 @@ export function reconcileWorkspaceSession(): Promise<void> {
       try {
         const r = await workspacesApi.current();
         const tok = getAccessToken();
+        if (workspaceGeneration !== startedGeneration) return;
         if (tok) setWorkspaceSession(r.workspace, tok);
       } catch {
         /* leave as-is; the next 401 resolves it */
