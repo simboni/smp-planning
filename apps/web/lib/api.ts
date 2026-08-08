@@ -674,12 +674,62 @@ export function setUser(u: PublicUser): void {
   rawSet(KEYS.user, JSON.stringify(u));
 }
 
+/**
+ * Workspace-session generation. The access token and the cached workspace
+ * MUST agree — if they drift, the app renders one workspace's name over
+ * another workspace's data (and writes land in the wrong place). Every
+ * change to that pair bumps this counter so an in-flight renewal that was
+ * started under an older generation knows to discard its result.
+ */
+let workspaceGeneration = 0;
+export const currentWorkspaceGeneration = (): number => workspaceGeneration;
+
+/** The workspace id an access token is actually scoped to (its `wsp` claim). */
+export function tokenWorkspaceId(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = JSON.parse(
+      decodeURIComponent(
+        atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
+          .split("")
+          .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+          .join(""),
+      ),
+    ) as { wsp?: unknown };
+    return typeof json.wsp === "string" ? json.wsp : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The workspace the CURRENT access token really belongs to. */
+export const accessTokenWorkspaceId = (): string | null =>
+  tokenWorkspaceId(getAccessToken());
+
+/**
+ * Store the access token and its workspace as ONE unit. Every path that
+ * enters or switches a workspace must use this — writing the two keys
+ * separately is what allowed them to drift apart.
+ */
+export function setWorkspaceSession(
+  ws: WorkspaceSummary,
+  accessToken: string,
+): void {
+  workspaceGeneration += 1;
+  rawSet(KEYS.access, accessToken);
+  rawSet(KEYS.workspace, JSON.stringify(ws));
+}
+
 /** Clear the whole session. */
 export function clearTokens(): void {
+  workspaceGeneration += 1;
   for (const k of Object.values(KEYS)) rawDel(k);
 }
 /** Drop only the workspace-scoped session (keeps the identity/login). */
 export function clearWorkspace(): void {
+  workspaceGeneration += 1;
   rawDel(KEYS.access);
   rawDel(KEYS.workspace);
 }
@@ -726,6 +776,8 @@ function tokenFor(auth: AuthMode): string | null {
  * ------------------------------------------------------------------ */
 /** The in-flight renewal, so concurrent callers share ONE refresh. */
 let renewPromise: Promise<boolean> | null = null;
+/** Which workspace the in-flight renewal targets (coalesce only within it). */
+let renewTargetWs: string | null = null;
 let expiryInFlight: Promise<boolean> | null = null;
 let expiryHandler: (() => Promise<boolean>) | null = null;
 
@@ -738,22 +790,34 @@ export function setSessionExpiryHandler(fn: (() => Promise<boolean>) | null): vo
 /** Renew the session in place: refresh token → new identity token → re-mint the
  *  workspace access token. Returns true on success. Never prompts. */
 export function renewSession(): Promise<boolean> {
-  // Coalesce: a proactive refresh (app resume) and a 401-driven one must
-  // never race — the second caller waits for the first instead of failing,
-  // which would otherwise sign the user out mid-refresh.
-  if (renewPromise) return renewPromise;
+  // Coalesce concurrent renewals — but ONLY within the same workspace. A
+  // renewal started for workspace A must never satisfy a caller that now
+  // needs workspace B (that handed B's screen a token scoped to A).
+  const targetWs = getWorkspace()?.id ?? null;
+  if (renewPromise && renewTargetWs === targetWs) return renewPromise;
   const rt = getRefreshToken();
   if (!rt) return Promise.resolve(false);
+  const startedGeneration = workspaceGeneration;
+  renewTargetWs = targetWs;
   renewPromise = (async () => {
     try {
       const r = await authApi.refresh(rt);
+      // The identity/refresh pair is workspace-independent — always safe.
       setIdentityToken(r.identityToken);
       setRefreshToken(r.refreshToken);
-      const ws = getWorkspace();
-      if (ws?.id) {
-        const t = await workspacesApi.selectToken(ws.id);
-        setAccessToken(t.accessToken);
+      if (!targetWs) return true;
+      const t = await workspacesApi.selectToken(targetWs);
+      // Re-check AFTER the round trip: the user may have switched workspace,
+      // signed out, or created a new one while this was in flight. Writing
+      // now would resurrect the old workspace's token under the new
+      // workspace's name — the cross-workspace mix-up this guard prevents.
+      if (
+        workspaceGeneration !== startedGeneration ||
+        getWorkspace()?.id !== targetWs
+      ) {
+        return true; // superseded — the newer session stands
       }
+      setAccessToken(t.accessToken);
       return true;
     } catch {
       return false;
@@ -761,7 +825,45 @@ export function renewSession(): Promise<boolean> {
   })();
   return renewPromise.finally(() => {
     renewPromise = null;
+    renewTargetWs = null;
   });
+}
+
+/**
+ * Repair a token/workspace mismatch. If the access token is scoped to a
+ * different workspace than the one the UI shows, screens render one
+ * workspace's name over another's data — and anything created is written
+ * into the token's workspace. Preference goes to the workspace the user
+ * believes they are in (the cached one); if that can no longer be entered,
+ * the label is corrected from the token instead, so the two always agree.
+ */
+let reconcilePromise: Promise<void> | null = null;
+export function reconcileWorkspaceSession(): Promise<void> {
+  if (reconcilePromise) return reconcilePromise;
+  const cached = getWorkspace();
+  const tokenWs = accessTokenWorkspaceId();
+  if (!cached?.id || !tokenWs || cached.id === tokenWs) {
+    return Promise.resolve();
+  }
+  reconcilePromise = (async () => {
+    try {
+      const t = await workspacesApi.selectToken(cached.id);
+      setWorkspaceSession(t.workspace ?? cached, t.accessToken);
+    } catch {
+      // Can't enter the cached workspace (removed, access revoked) — fall
+      // back to the token's own workspace so label and data still match.
+      try {
+        const r = await workspacesApi.current();
+        const tok = getAccessToken();
+        if (tok) setWorkspaceSession(r.workspace, tok);
+      } catch {
+        /* leave as-is; the next 401 resolves it */
+      }
+    }
+  })().finally(() => {
+    reconcilePromise = null;
+  });
+  return reconcilePromise;
 }
 
 /**
@@ -792,6 +894,16 @@ function handleExpiredSession(): Promise<boolean> {
 
 export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
   const auth: AuthMode = opts.auth ?? "access";
+  // Never send a workspace-scoped request whose token belongs to a DIFFERENT
+  // workspace than the one on screen — that is how one workspace's data ends
+  // up under another's name, and how writes land in the wrong place.
+  if (auth === "access" && !opts._retry) {
+    const cachedWs = getWorkspace()?.id ?? null;
+    const tokWs = accessTokenWorkspaceId();
+    if (cachedWs && tokWs && cachedWs !== tokWs) {
+      await reconcileWorkspaceSession();
+    }
+  }
   const token = tokenFor(auth);
 
   let res: Response;

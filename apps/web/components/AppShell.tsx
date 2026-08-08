@@ -12,6 +12,7 @@ import {
   getUser,
   getWorkspace,
   notificationsApi,
+  reconcileWorkspaceSession,
   renewSession,
   setSessionExpiryHandler,
   setUser,
@@ -279,15 +280,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         })
         .catch(() => undefined);
     }
-    if (!cachedWs) {
-      workspacesApi
-        .current()
-        .then((r) => {
-          setWorkspace(r.workspace);
-          setWorkspaceState(r.workspace);
-        })
-        .catch(() => undefined);
-    }
+    // ALWAYS confirm the workspace from the server, not just when the cache
+    // is empty: /workspaces/current is derived from the ACCESS TOKEN, so it
+    // is the only source that can expose a cache that drifted to a different
+    // workspace (the "someone else's workspace shows my folders" symptom).
+    workspacesApi
+      .current()
+      .then((r) => {
+        setWorkspace(r.workspace);
+        setWorkspaceState(r.workspace);
+      })
+      .catch(() => undefined);
   }, []);
 
   // Theme: sync React state to the persisted choice (the no-flash script in
@@ -383,11 +386,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    */
   useEffect(() => {
     const stop = startSessionActivityTracking(() => {
-      void renewSession();
+      // Resume: repair any token/workspace drift FIRST, then refresh.
+      void reconcileWorkspaceSession().then(() => renewSession());
     });
-    // A cold start with a stale-looking session: refresh in the background
+    // A cold start with a stale-looking session: reconcile the workspace the
+    // token belongs to with the one on screen, then refresh in the background
     // rather than waiting for the first request to 401.
-    void renewSession();
+    void reconcileWorkspaceSession().then(() => renewSession());
     return stop;
   }, []);
 

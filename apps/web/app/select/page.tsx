@@ -7,8 +7,7 @@ import {
   clearWorkspace,
   getIdentityToken,
   getUser,
-  setAccessToken,
-  setWorkspace,
+  setWorkspaceSession,
   workspacesApi,
   type WorkspaceSummary,
 } from "@/lib/api";
@@ -50,8 +49,10 @@ export default function SelectPage() {
     setLoadError("");
     try {
       const res = await workspacesApi.selectToken(ws.id);
-      setAccessToken(res.accessToken);
-      setWorkspace(res.workspace ?? ws);
+      // ONE atomic write: the token and the workspace it belongs to must
+      // never be stored separately (that let them drift apart, showing one
+      // workspace's data under another's name).
+      setWorkspaceSession(res.workspace ?? ws, res.accessToken);
       router.replace("/dashboard");
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : "Couldn't open that workspace.");
