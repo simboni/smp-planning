@@ -16,7 +16,6 @@ import { useRouter } from "next/navigation";
 import {
   ApiError,
   docsApi,
-  filesApi,
   permissionAtLeast,
   type Doc,
 } from "@/lib/api";
@@ -24,6 +23,7 @@ import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { DOC_EMOJI, timeAgo } from "@/lib/format";
 import { showToast } from "@/lib/toast";
+import { docPlace, docsChanged, openUploadedDoc } from "@/lib/docs";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
@@ -383,31 +383,14 @@ export default function DocsPage() {
     load();
   }, []);
 
-  /** Open an uploaded document: PDFs/images view in a new tab, else download. */
-  const openUpload = async (d: Doc): Promise<void> => {
-    if (!d.fileId) return;
-    try {
-      const url = await filesApi.blobUrl(d.fileId);
-      const m = (d.fileMime ?? "").toLowerCase();
-      if (m === "application/pdf" || m.startsWith("image/")) {
-        window.open(url, "_blank", "noopener");
-      } else {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = d.name;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      }
-    } catch {
-      showToast("Couldn't open the document.");
-    }
-  };
+  const openUpload = openUploadedDoc;
 
   const removeUpload = async (d: Doc): Promise<void> => {
     if (!window.confirm(`Delete “${d.name}”? The file is removed for everyone.`)) return;
     try {
       await docsApi.remove(d.id);
       load();
+      docsChanged();
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : "Couldn't delete it.");
     }
@@ -473,7 +456,7 @@ export default function DocsPage() {
                 <span className="doc-card-name">{d.name}</span>
                 <span className="doc-card-meta">
                   {d.spaceId ? (
-                    <span className="doc-chip doc-chip-space">{d.spaceName ?? "Space"}</span>
+                    <span className="doc-chip doc-chip-space" title={docPlace(d)}>{docPlace(d) || "Space"}</span>
                   ) : d.isPrivate ? (
                     <span className="doc-chip doc-chip-private">{Icons.lock} Private</span>
                   ) : (
@@ -503,7 +486,7 @@ export default function DocsPage() {
                 <span className="doc-card-name">{d.name}</span>
                 <span className="doc-card-meta">
                   {d.spaceId ? (
-                    <span className="doc-chip doc-chip-space">{d.spaceName ?? "Space"}</span>
+                    <span className="doc-chip doc-chip-space" title={docPlace(d)}>{docPlace(d) || "Space"}</span>
                   ) : d.isPrivate ? (
                     <span className="doc-chip doc-chip-private">{Icons.lock} Private</span>
                   ) : (

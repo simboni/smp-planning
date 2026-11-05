@@ -2,8 +2,9 @@
 
 /**
  * "New doc" from the sidebar tree — create a blank doc OR upload a file
- * (PDF / Word / anything), both landing in the container's space so the
- * space's members (e.g. a department's roster) see it.
+ * (PDF / Word / anything), landing in the space, folder or list it was
+ * made from — so it shows under that spot in the tree, and the space's
+ * members (e.g. a department's roster) see it.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -33,12 +34,17 @@ function readBase64(file: File): Promise<string> {
 
 export function TreeDocModal({
   spaceId,
+  folderId = null,
+  listId = null,
   scopeLabel,
   onClose,
   onDone,
 }: {
   /** Space the doc/upload attaches to. */
   spaceId: string;
+  /** The folder or list it was made from — the doc lives there. */
+  folderId?: string | null;
+  listId?: string | null;
   /** e.g. "in Marketing" — shown in the subtitle. */
   scopeLabel: string;
   onClose: () => void;
@@ -80,7 +86,7 @@ export function TreeDocModal({
     setError("");
     try {
       if (tab === "create") {
-        const r = await docsApi.create({ name: name.trim(), icon, spaceId });
+        const r = await docsApi.create({ name: name.trim(), icon, spaceId, folderId, listId });
         onDone(r.doc, true);
       } else {
         const dataBase64 = await readBase64(file!);
@@ -89,6 +95,8 @@ export function TreeDocModal({
           mime: file!.type || "application/octet-stream",
           dataBase64,
           spaceId,
+          folderId,
+          listId,
         });
         onDone(r.doc, false);
       }

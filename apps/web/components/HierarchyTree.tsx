@@ -20,8 +20,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  docsApi,
   hierarchyApi,
   permissionAtLeast,
+  type Doc,
   type FolderWithLists,
   type List,
   type SpaceTree,
@@ -33,6 +35,7 @@ import { ShareDialog } from "@/components/ShareDialog";
 import { NewFormModal } from "@/components/NewFormModal";
 import { TreeDocModal } from "@/components/TreeDocModal";
 import { colorFor } from "@/lib/format";
+import { openUploadedDoc } from "@/lib/docs";
 import { showToast } from "@/lib/toast";
 
 const EXPANDED_KEY = "stackup.tree.expanded";
@@ -147,17 +150,104 @@ export function HierarchyTree() {
   const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
   /**
    * "New doc" from any container's menu — opens a modal to write a doc or
-   * upload a file. Docs attach at the SPACE level in the data model, so a
-   * doc from a folder/list menu attaches to that container's space.
+   * upload a file. The doc lives exactly where it was made (space, folder or
+   * list) and is listed under that spot in the tree.
    */
   const [docScope, setDocScope] = useState<{
     spaceId: string;
+    folderId: string | null;
+    listId: string | null;
     label: string;
   } | null>(null);
-  const newDoc = (spaceId: string, whereLabel: string): void => {
+  const newDoc = (
+    spaceId: string,
+    whereLabel: string,
+    folderId: string | null = null,
+    listId: string | null = null,
+  ): void => {
     setMenu(null);
-    setDocScope({ spaceId, label: whereLabel });
+    setDocScope({ spaceId, folderId, listId, label: whereLabel });
+    // Show it the moment it exists: open the container it goes into.
+    ensureOpen(spaceId);
+    if (folderId) ensureOpen(folderId);
+    if (listId) ensureOpen(`docs:${listId}`);
   };
+
+  /* Docs, shown under the space / folder / list they live in. Refreshed on
+   * every navigation and whenever a doc is created, renamed, moved or
+   * deleted elsewhere (the "stackup:docs-changed" window event). */
+  const [docs, setDocs] = useState<Doc[]>([]);
+  const loadDocs = (): void => {
+    docsApi
+      .list()
+      .then((r) => setDocs(r.docs))
+      .catch(() => undefined);
+  };
+  useEffect(() => {
+    loadDocs();
+  }, [pathname]);
+  useEffect(() => {
+    const on = (): void => loadDocs();
+    window.addEventListener("stackup:docs-changed", on);
+    return () => window.removeEventListener("stackup:docs-changed", on);
+  }, []);
+  const activeDocId = pathname === "/doc" ? search.get("id") : null;
+
+  /** Docs grouped by the most specific container that is in the tree: a doc
+   *  whose list is archived (so not shown) falls back to its folder, then to
+   *  the top of its space — it never just disappears. */
+  const docsByPlace = (() => {
+    const lists = new Set<string>();
+    const folders = new Set<string>();
+    for (const sp of tree) {
+      for (const l of sp.lists) lists.add(l.id);
+      for (const f of sp.folders) {
+        folders.add(f.id);
+        for (const l of f.lists) lists.add(l.id);
+      }
+    }
+    const m = new Map<string, Doc[]>();
+    const put = (key: string, d: Doc): void => {
+      const arr = m.get(key);
+      if (arr) arr.push(d);
+      else m.set(key, [d]);
+    };
+    for (const d of docs) {
+      if (!d.spaceId) continue;
+      if (d.listId && lists.has(d.listId)) put(`list:${d.listId}`, d);
+      else if (d.folderId && folders.has(d.folderId)) put(`folder:${d.folderId}`, d);
+      else put(`space:${d.spaceId}`, d);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
+    return m;
+  })();
+  const docsAt = (key: string): Doc[] => docsByPlace.get(key) ?? [];
+
+  const renderDoc = (d: Doc, indent: number) => (
+    <div key={d.id} className="tree-item">
+      <div
+        className={`tree-row tree-doc${activeDocId === d.id ? " active" : ""}`}
+        style={{ paddingLeft: indent }}
+      >
+        {d.fileId ? (
+          <button
+            type="button"
+            className="tree-label tree-label-btn"
+            title={`Open ${d.name}`}
+            onClick={() => void openUploadedDoc(d)}
+          >
+            <span className="tree-emoji">{d.icon || "📎"}</span>
+            <span className="tree-name">{d.name}</span>
+          </button>
+        ) : (
+          <Link href={`/doc?id=${d.id}`} className="tree-label" title={d.name}>
+            <span className="tree-emoji">{d.icon || "📄"}</span>
+            <span className="tree-name">{d.name}</span>
+          </Link>
+        )}
+      </div>
+    </div>
+  );
 
   // "New form" flow — scope (space/folder/list) the form will be created in.
   const [formScope, setFormScope] = useState<{
@@ -467,6 +557,9 @@ export function HierarchyTree() {
     const container = `lists:${spaceId}:${folderId ?? "root"}`;
     const active = activeListId === list.id;
     const dot = list.color || colorFor(list.id);
+    const listDocs = docsAt(`list:${list.id}`);
+    const docsKey = `docs:${list.id}`;
+    const docsOpen = isOpen(docsKey);
     return (
       <div key={list.id} className="tree-item">
         {renaming === k ? (
@@ -491,9 +584,28 @@ export function HierarchyTree() {
                 )
               : {})}
           >
+            {listDocs.length > 0 && (
+              <button
+                type="button"
+                className={`tree-caret tree-caret-btn${docsOpen ? " open" : ""}`}
+                aria-label={docsOpen ? `Hide docs in ${list.name}` : `Show docs in ${list.name}`}
+                aria-expanded={docsOpen}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle(docsKey);
+                }}
+              >
+                {Icons.chevronRight}
+              </button>
+            )}
             <Link href={`/list?id=${list.id}`} className="tree-label">
               <span className="tree-dot" style={{ background: dot }} />
               <span className="tree-name">{list.name}</span>
+              {listDocs.length > 0 && !docsOpen && (
+                <span className="tree-count" title={`${listDocs.length} doc${listDocs.length === 1 ? "" : "s"}`}>
+                  {listDocs.length}
+                </span>
+              )}
             </Link>
             {canEdit && (
               <span className="tree-actions">
@@ -523,7 +635,7 @@ export function HierarchyTree() {
                 >
                   {Icons.docs} New form
                 </button>
-                <button type="button" onClick={() => newDoc(spaceId, `in ${list.name}'s space`)}>
+                <button type="button" onClick={() => newDoc(spaceId, `in ${list.name}`, folderId, list.id)}>
                   {Icons.book} New doc
                 </button>
                 <button
@@ -547,6 +659,11 @@ export function HierarchyTree() {
               </div>
             )}
             {colorFor_ === k && <ColorPopover kind="list" id={list.id} />}
+          </div>
+        )}
+        {docsOpen && listDocs.length > 0 && (
+          <div className="tree-children">
+            {listDocs.map((d) => renderDoc(d, indent + 22))}
           </div>
         )}
       </div>
@@ -621,7 +738,7 @@ export function HierarchyTree() {
                 >
                   {Icons.docs} New form
                 </button>
-                <button type="button" onClick={() => newDoc(space.id, `in ${folder.name}`)}>
+                <button type="button" onClick={() => newDoc(space.id, `in ${folder.name}`, folder.id)}>
                   {Icons.book} New doc
                 </button>
                 <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
@@ -653,6 +770,7 @@ export function HierarchyTree() {
         {open && (
           <div className="tree-children">
             {folder.lists.map((l) => renderList(l, space.id, folder.id, folder.lists, indent + 34, canEdit))}
+            {docsAt(`folder:${folder.id}`).map((d) => renderDoc(d, indent + 34))}
             {creating?.type === "list" &&
               creating.spaceId === space.id &&
               creating.folderId === folder.id && (
@@ -672,6 +790,7 @@ export function HierarchyTree() {
                 </>
               )}
             {folder.lists.length === 0 &&
+              docsAt(`folder:${folder.id}`).length === 0 &&
               !(creating?.type === "list" && creating.folderId === folder.id) && (
                 <div className="tree-empty" style={{ paddingLeft: indent + 34 }}>
                   No lists yet
@@ -857,6 +976,7 @@ export function HierarchyTree() {
             )}
 
             {space.lists.map((l) => renderList(l, space.id, null, space.lists, 24, canEdit))}
+            {docsAt(`space:${space.id}`).map((d) => renderDoc(d, 24))}
 
             {creating?.type === "list" &&
               creating.spaceId === space.id &&
@@ -879,6 +999,7 @@ export function HierarchyTree() {
 
             {space.folders.length === 0 &&
               space.lists.length === 0 &&
+              docsAt(`space:${space.id}`).length === 0 &&
               !(creating && "spaceId" in creating && creating.spaceId === space.id) && (
                 <div className="tree-empty" style={{ paddingLeft: 24 }}>
                   Empty — add a folder or list
@@ -971,15 +1092,15 @@ export function HierarchyTree() {
     {docScope && (
       <TreeDocModal
         spaceId={docScope.spaceId}
+        folderId={docScope.folderId}
+        listId={docScope.listId}
         scopeLabel={docScope.label}
         onClose={() => setDocScope(null)}
         onDone={(doc, openEditor) => {
           setDocScope(null);
+          setDocs((prev) => [doc, ...prev.filter((d) => d.id !== doc.id)]);
           if (openEditor) router.push(`/doc?id=${doc.id}`);
-          else {
-            showToast(`Uploaded “${doc.name}”`);
-            router.push("/docs");
-          }
+          else showToast(`Uploaded “${doc.name}” ${docScope.label}`);
         }}
       />
     )}

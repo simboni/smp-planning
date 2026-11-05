@@ -41,6 +41,7 @@ import { FavoriteStar } from "@/components/FavoriteStar";
 import { PublicShareButton } from "@/components/PublicShareButton";
 import { saveEntityAsTemplate } from "@/lib/toast";
 import { DOC_EMOJI } from "@/lib/format";
+import { docPlace, docsChanged } from "@/lib/docs";
 
 /* ------------------------------------------------------------------ *
  * Page tree (client-side, from the flat meta list).
@@ -711,7 +712,10 @@ function DocView() {
     if (!doc) return;
     docsApi
       .update(doc.id, body)
-      .then((r) => setDoc(r.doc))
+      .then((r) => {
+        setDoc(r.doc);
+        docsChanged(); // the sidebar tree lists docs by name and place
+      })
       .catch(loadDoc);
   };
 
@@ -986,7 +990,14 @@ function DocView() {
           )}
 
           {doc.spaceId ? (
-            <span className="doc-chip doc-chip-space">{doc.spaceName ?? space?.name ?? "Space"}</span>
+            // Where the doc lives — click to go there.
+            <Link
+              href={doc.listId ? `/list?id=${doc.listId}` : `/space?id=${doc.spaceId}`}
+              className="doc-chip doc-chip-space doc-chip-place"
+              title={`In ${docPlace(doc) || doc.spaceName || "a space"}`}
+            >
+              {Icons.folder} {docPlace(doc) || space?.name || "Space"}
+            </Link>
           ) : doc.isPrivate ? (
             <span className="doc-chip doc-chip-private">{Icons.lock} Private</span>
           ) : (
@@ -1043,7 +1054,7 @@ function DocView() {
               <div className="menu doc-menu" onClick={(e) => e.stopPropagation()}>
                 {canEdit && !movePick && (
                   <button type="button" onClick={() => setMovePick(true)}>
-                    {Icons.folder} Move to space…
+                    {Icons.folder} Move to…
                   </button>
                 )}
                 {movePick && (
@@ -1058,19 +1069,42 @@ function DocView() {
                     >
                       {Icons.globe} Workspace (no space)
                     </button>
-                    {editableSpaces.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          setDocMenu(false);
-                          setMovePick(false);
-                          patchDoc({ spaceId: s.id, isPrivate: false });
-                        }}
-                      >
-                        {Icons.spaces} {s.name}
-                      </button>
-                    ))}
+                    {editableSpaces.map((s) => {
+                      const go = (body: { spaceId?: string; folderId?: string; listId?: string }) => {
+                        setDocMenu(false);
+                        setMovePick(false);
+                        patchDoc({ ...body, isPrivate: false });
+                      };
+                      const here = (f: string | null, l: string | null) =>
+                        doc.spaceId === s.id && (doc.folderId ?? null) === f && (doc.listId ?? null) === l;
+                      const mark = (on: boolean) => (on ? <span className="move-here">here</span> : null);
+                      return (
+                        <div key={s.id} className="move-group">
+                          <button type="button" onClick={() => go({ spaceId: s.id })}>
+                            {Icons.spaces} {s.name} {mark(here(null, null))}
+                          </button>
+                          {s.folders.map((f) => (
+                            <div key={f.id}>
+                              <button type="button" className="move-l1" onClick={() => go({ folderId: f.id })}>
+                                {Icons.folder} {f.name} {mark(here(f.id, null))}
+                              </button>
+                              {f.lists.map((l) => (
+                                <button key={l.id} type="button" className="move-l2" onClick={() => go({ listId: l.id })}>
+                                  <span className="tree-dot" style={{ background: l.color || "#7B68EE" }} /> {l.name}{" "}
+                                  {mark(here(f.id, l.id))}
+                                </button>
+                              ))}
+                            </div>
+                          ))}
+                          {s.lists.map((l) => (
+                            <button key={l.id} type="button" className="move-l1" onClick={() => go({ listId: l.id })}>
+                              <span className="tree-dot" style={{ background: l.color || "#7B68EE" }} /> {l.name}{" "}
+                              {mark(here(null, l.id))}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </>
                 )}
                 {canEdit && !doc.spaceId && !movePick && (

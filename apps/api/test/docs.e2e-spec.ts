@@ -591,3 +591,77 @@ describe("docs", () => {
     expect(notes.map((n: { id: string }) => n.id)).not.toContain(second.id);
   });
 });
+
+describe("doc location (space → folder → list)", () => {
+  async function place() {
+    const owner = await ownerWorkspace("Location WS");
+    const a = auth(owner.accessToken);
+    const space = (await http.post("/spaces").set(a).send({ name: "Coding" }).expect(201)).body.space;
+    const other = (await http.post("/spaces").set(a).send({ name: "Sales" }).expect(201)).body.space;
+    const folder = (
+      await http.post(`/spaces/${space.id}/folders`).set(a).send({ name: "Apps" }).expect(201)
+    ).body.folder;
+    const list = (
+      await http.post(`/spaces/${space.id}/lists`).set(a).send({ name: "Pharmacy", folderId: folder.id }).expect(201)
+    ).body.list;
+    return { owner, a, space, other, folder, list };
+  }
+
+  it("a doc made in a list remembers the list, its folder and space", async () => {
+    const { a, space, folder, list } = await place();
+    const doc = (await http.post("/docs").set(a).send({ name: "Pharmacy spec", listId: list.id }).expect(201)).body.doc;
+    expect(doc).toMatchObject({
+      spaceId: space.id,
+      spaceName: "Coding",
+      folderId: folder.id,
+      folderName: "Apps",
+      listId: list.id,
+      listName: "Pharmacy",
+    });
+    const listed = (await http.get("/docs").set(a).expect(200)).body.docs.find((d: { id: string }) => d.id === doc.id);
+    expect(listed.listName).toBe("Pharmacy");
+  });
+
+  it("a doc made in a folder sits in the folder; uploads too", async () => {
+    const { a, space, folder } = await place();
+    const doc = (await http.post("/docs").set(a).send({ name: "Notes", folderId: folder.id }).expect(201)).body.doc;
+    expect(doc).toMatchObject({ spaceId: space.id, folderId: folder.id, listId: null });
+    const up = (
+      await http
+        .post("/docs/upload")
+        .set(a)
+        .send({ name: "brief.pdf", mime: "application/pdf", dataBase64: Buffer.from("%PDF-1.4").toString("base64"), folderId: folder.id })
+        .expect(201)
+    ).body.doc;
+    expect(up).toMatchObject({ spaceId: space.id, folderId: folder.id });
+  });
+
+  it("refuses a list from another space", async () => {
+    const { a, other, list } = await place();
+    await http.post("/docs").set(a).send({ name: "x", spaceId: other.id, listId: list.id }).expect(400);
+  });
+
+  it("moves between levels, and a move to a space puts it at the top", async () => {
+    const { a, space, folder, list } = await place();
+    const doc = (await http.post("/docs").set(a).send({ name: "Spec", spaceId: space.id }).expect(201)).body.doc;
+    expect(doc.folderId).toBeNull();
+    const inList = (await http.patch(`/docs/${doc.id}`).set(a).send({ listId: list.id }).expect(200)).body.doc;
+    expect(inList).toMatchObject({ folderId: folder.id, listId: list.id });
+    const top = (await http.patch(`/docs/${doc.id}`).set(a).send({ spaceId: space.id }).expect(200)).body.doc;
+    expect(top).toMatchObject({ spaceId: space.id, folderId: null, listId: null });
+  });
+
+  it("follows its list when the list moves; falls back to the space when the list is deleted", async () => {
+    const { a, space, other, list } = await place();
+    const doc = (await http.post("/docs").set(a).send({ name: "Spec", listId: list.id }).expect(201)).body.doc;
+    await http.patch(`/lists/${list.id}`).set(a).send({ folderId: null }).expect(200);
+    let now = (await http.get(`/docs/${doc.id}`).set(a).expect(200)).body.doc;
+    expect(now).toMatchObject({ spaceId: space.id, folderId: null, listId: list.id });
+    await http.patch(`/lists/${list.id}`).set(a).send({ spaceId: other.id }).expect(200);
+    now = (await http.get(`/docs/${doc.id}`).set(a).expect(200)).body.doc;
+    expect(now).toMatchObject({ spaceId: other.id, spaceName: "Sales", listId: list.id });
+    await http.delete(`/lists/${list.id}`).set(a);
+    now = (await http.get(`/docs/${doc.id}`).set(a).expect(200)).body.doc;
+    expect(now).toMatchObject({ spaceId: other.id, listId: null });
+  });
+});

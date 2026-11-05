@@ -42,6 +42,11 @@ export interface Doc {
   icon: string;
   spaceId: string | null;
   spaceName: string | null;
+  /** Folder / list inside the space the doc lives in (null = top of the space). */
+  folderId: string | null;
+  folderName: string | null;
+  listId: string | null;
+  listName: string | null;
   isPrivate: boolean;
   createdBy: string | null;
   pageCount: number;
@@ -77,11 +82,14 @@ export interface Note {
 const DOC_SELECT = `
   SELECT d.id, d.name, d.icon, d.space_id, d.is_private, d.created_by,
          d.updated_at, s.name AS space_name,
+         d.folder_id, fo.name AS folder_name, d.list_id, l.name AS list_name,
          f.id AS file_id, f.mime AS file_mime, f.size_bytes AS file_size_bytes,
          (SELECT count(*)::int FROM doc_pages p WHERE p.doc_id = d.id)
            AS page_count
   FROM docs d
   LEFT JOIN spaces s ON s.id = d.space_id
+  LEFT JOIN folders fo ON fo.id = d.folder_id
+  LEFT JOIN lists l ON l.id = d.list_id
   LEFT JOIN files f ON f.doc_id = d.id`;
 
 const PAGE_COLUMNS =
@@ -128,6 +136,10 @@ export class DocsService {
       icon: r.icon as string,
       spaceId: (r.space_id as string | null) ?? null,
       spaceName: (r.space_name as string | null) ?? null,
+      folderId: (r.folder_id as string | null) ?? null,
+      folderName: (r.folder_name as string | null) ?? null,
+      listId: (r.list_id as string | null) ?? null,
+      listName: (r.list_name as string | null) ?? null,
       isPrivate: r.is_private as boolean,
       createdBy: (r.created_by as string | null) ?? null,
       pageCount: r.page_count as number,
@@ -246,11 +258,51 @@ export class DocsService {
     });
   }
 
+  /**
+   * Where a doc goes: a space, a folder or a list. Given a list or folder,
+   * the space (and the list's folder) come from it, so the three always
+   * agree; a spaceId that disagrees is refused. All null = workspace level.
+   */
+  private async resolveLocation(
+    client: PoolClient,
+    body: { spaceId?: string | null; folderId?: string | null; listId?: string | null },
+  ): Promise<{ spaceId: string | null; folderId: string | null; listId: string | null }> {
+    const given = (v: string | null | undefined, field: string): string | null =>
+      v === undefined || v === null || v === "" ? null : requireUuid(v, field);
+    let spaceId = given(body.spaceId, "spaceId");
+    let folderId = given(body.folderId, "folderId");
+    const listId = given(body.listId, "listId");
+    if (listId) {
+      const r = await client.query(`SELECT space_id, folder_id FROM lists WHERE id = $1`, [listId]);
+      if (!r.rows[0]) throw new BadRequestException("listId must reference a list");
+      if (spaceId && spaceId !== r.rows[0].space_id) {
+        throw new BadRequestException("That list is in a different space");
+      }
+      spaceId = r.rows[0].space_id as string;
+      folderId = (r.rows[0].folder_id as string | null) ?? null;
+    } else if (folderId) {
+      const r = await client.query(`SELECT space_id FROM folders WHERE id = $1`, [folderId]);
+      if (!r.rows[0]) throw new BadRequestException("folderId must reference a folder");
+      if (spaceId && spaceId !== r.rows[0].space_id) {
+        throw new BadRequestException("That folder is in a different space");
+      }
+      spaceId = r.rows[0].space_id as string;
+    }
+    return { spaceId, folderId, listId };
+  }
+
   async createDoc(
     workspaceId: string,
     userId: string,
     role: Role,
-    body: { name?: string; icon?: string; spaceId?: string; isPrivate?: boolean },
+    body: {
+      name?: string;
+      icon?: string;
+      spaceId?: string;
+      folderId?: string | null;
+      listId?: string | null;
+      isPrivate?: boolean;
+    },
   ): Promise<Doc> {
     if (role === "guest") {
       throw new ForbiddenException("Guests cannot create docs");
@@ -258,20 +310,17 @@ export class DocsService {
     const name = requireName(body?.name);
     const icon = this.validIcon(body?.icon) ?? "📄";
     const isPrivate = body?.isPrivate === true;
-    const spaceId =
-      body?.spaceId === undefined || body?.spaceId === null
-        ? null
-        : requireUuid(body.spaceId, "spaceId");
 
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const { spaceId, folderId, listId } = await this.resolveLocation(client, body ?? {});
       if (spaceId !== null) {
         await requireSpaceEdit(this.access, client, userId, role, spaceId);
       }
       const ins = await client.query(
-        `INSERT INTO docs (workspace_id, space_id, name, icon, is_private, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO docs (workspace_id, space_id, folder_id, list_id, name, icon, is_private, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id`,
-        [workspaceId, spaceId, name, icon, isPrivate, userId],
+        [workspaceId, spaceId, folderId, listId, name, icon, isPrivate, userId],
       );
       const docId = ins.rows[0].id as string;
       // Every doc starts with one root page titled like the doc.
@@ -286,7 +335,7 @@ export class DocsService {
         action: "doc.created",
         entity: "doc",
         entityId: docId,
-        data: { name, spaceId, isPrivate },
+        data: { name, spaceId, folderId, listId, isPrivate },
       });
       const res = await client.query(`${DOC_SELECT} WHERE d.id = $1`, [docId]);
       return this.toDoc(res.rows[0]);
@@ -308,6 +357,8 @@ export class DocsService {
       mime?: string;
       dataBase64?: string;
       spaceId?: string;
+      folderId?: string | null;
+      listId?: string | null;
       isPrivate?: boolean;
     },
   ): Promise<Doc> {
@@ -318,22 +369,19 @@ export class DocsService {
     const mime = validMime(body?.mime);
     const data = decodeBase64File(body?.dataBase64);
     const isPrivate = body?.isPrivate === true;
-    const spaceId =
-      body?.spaceId === undefined || body?.spaceId === null
-        ? null
-        : requireUuid(body.spaceId, "spaceId");
     const icon = mime === "application/pdf" ? "📕" : DOC_FILE_ICON(mime);
 
     const doc = await this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const { spaceId, folderId, listId } = await this.resolveLocation(client, body ?? {});
       if (spaceId !== null) {
         await requireSpaceEdit(this.access, client, userId, role, spaceId);
       }
       await this.limits.assertStorageAvailable(client, workspaceId, data.length);
       const ins = await client.query(
-        `INSERT INTO docs (workspace_id, space_id, name, icon, is_private, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO docs (workspace_id, space_id, folder_id, list_id, name, icon, is_private, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id`,
-        [workspaceId, spaceId, name, icon, isPrivate, userId],
+        [workspaceId, spaceId, folderId, listId, name, icon, isPrivate, userId],
       );
       const docId = ins.rows[0].id as string;
       await client.query(
@@ -347,7 +395,7 @@ export class DocsService {
         action: "doc.uploaded",
         entity: "doc",
         entityId: docId,
-        data: { name, mime, sizeBytes: data.length, spaceId, isPrivate },
+        data: { name, mime, sizeBytes: data.length, spaceId, folderId, listId, isPrivate },
       });
       const res = await client.query(`${DOC_SELECT} WHERE d.id = $1`, [docId]);
       return this.toDoc(res.rows[0]);
@@ -387,6 +435,8 @@ export class DocsService {
       name?: string;
       icon?: string;
       spaceId?: string | null;
+      folderId?: string | null;
+      listId?: string | null;
       isPrivate?: boolean;
     },
   ): Promise<Doc> {
@@ -410,15 +460,19 @@ export class DocsService {
         sets.push(`is_private = $${i++}`);
         params.push(body.isPrivate === true);
       }
-      if (body?.spaceId !== undefined) {
-        const spaceId =
-          body.spaceId === null ? null : requireUuid(body.spaceId, "spaceId");
+      const moving =
+        body?.spaceId !== undefined || body?.folderId !== undefined || body?.listId !== undefined;
+      let moved: { spaceId: string | null; folderId: string | null; listId: string | null } | null =
+        null;
+      if (moving) {
+        // A move names the whole new place: a space, a folder or a list.
+        moved = await this.resolveLocation(client, body ?? {});
         // Attaching (or moving) requires edit on the TARGET space too.
-        if (spaceId !== null) {
-          await requireSpaceEdit(this.access, client, userId, role, spaceId);
+        if (moved.spaceId !== null) {
+          await requireSpaceEdit(this.access, client, userId, role, moved.spaceId);
         }
-        sets.push(`space_id = $${i++}`);
-        params.push(spaceId);
+        sets.push(`space_id = $${i++}`, `folder_id = $${i++}`, `list_id = $${i++}`);
+        params.push(moved.spaceId, moved.folderId, moved.listId);
       }
 
       if (sets.length > 0) {
@@ -441,7 +495,7 @@ export class DocsService {
           ...(body?.isPrivate !== undefined
             ? { isPrivate: body.isPrivate === true }
             : {}),
-          ...(body?.spaceId !== undefined ? { spaceId: body.spaceId } : {}),
+          ...(moved ? moved : {}),
         },
       });
       const res = await client.query(`${DOC_SELECT} WHERE d.id = $1`, [docId]);

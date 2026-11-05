@@ -2132,6 +2132,11 @@ export interface Doc {
   /** Space the doc is attached to; null = workspace-level (or private). */
   spaceId: string | null;
   spaceName: string | null;
+  /** Where in the space: a folder and/or list (null = top of the space). */
+  folderId?: string | null;
+  folderName?: string | null;
+  listId?: string | null;
+  listName?: string | null;
   /** Only meaningful when unattached — a private doc is visible to its creator. */
   isPrivate: boolean;
   createdBy: string;
@@ -2178,6 +2183,8 @@ export const docsApi = {
     name: string;
     icon?: string | null;
     spaceId?: string | null;
+    folderId?: string | null;
+    listId?: string | null;
     isPrivate?: boolean;
   }) => api<{ doc: Doc }>("/docs", { method: "POST", body, auth: "access" }),
   /** Upload a PDF/Word/any file as a first-class doc (max 5MB). */
@@ -2186,6 +2193,8 @@ export const docsApi = {
     mime: string;
     dataBase64: string;
     spaceId?: string | null;
+    folderId?: string | null;
+    listId?: string | null;
     isPrivate?: boolean;
   }) =>
     api<{ doc: Doc }>("/docs/upload", { method: "POST", body, auth: "access" }),
@@ -2198,6 +2207,8 @@ export const docsApi = {
       name?: string;
       icon?: string | null;
       spaceId?: string | null;
+    folderId?: string | null;
+    listId?: string | null;
       isPrivate?: boolean;
     },
   ) => api<{ doc: Doc }>(`/docs/${id}`, { method: "PATCH", body, auth: "access" }),

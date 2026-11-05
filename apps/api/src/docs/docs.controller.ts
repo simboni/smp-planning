@@ -40,7 +40,14 @@ export class DocsController {
   async createDoc(
     @Req() req: AuthedRequest,
     @Body()
-    body: { name?: string; icon?: string; spaceId?: string; isPrivate?: boolean },
+    body: {
+      name?: string;
+      icon?: string;
+      spaceId?: string;
+      folderId?: string | null;
+      listId?: string | null;
+      isPrivate?: boolean;
+    },
   ) {
     return { doc: await this.docs.createDoc(...this.ctx(req), body ?? {}) };
   }
@@ -55,6 +62,8 @@ export class DocsController {
       mime?: string;
       dataBase64?: string;
       spaceId?: string;
+      folderId?: string | null;
+      listId?: string | null;
       isPrivate?: boolean;
     },
   ) {
@@ -78,6 +87,8 @@ export class DocsController {
       name?: string;
       icon?: string;
       spaceId?: string | null;
+      folderId?: string | null;
+      listId?: string | null;
       isPrivate?: boolean;
     },
   ) {
