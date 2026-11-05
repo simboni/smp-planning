@@ -31,6 +31,13 @@ export interface PublicUser {
   avatarUrl: string | null;
 }
 
+export type EmailNotify = "instant" | "digest" | "off";
+export interface EmailPreferences {
+  emailNotify: EmailNotify;
+  /** False while the server has no email relay set up (nothing is sent). */
+  deliveryConfigured: boolean;
+}
+
 export type WorkspaceRole = "owner" | "admin" | "member" | "guest";
 
 export interface WorkspaceSummary {
@@ -1024,6 +1031,15 @@ export const authApi = {
     api<{ user: PublicUser }>("/auth/me", {
       method: "PATCH",
       body,
+      auth: "identity",
+    }),
+  /** Notification emails: each as it happens, one daily summary, or none. */
+  emailPreferences: () =>
+    api<EmailPreferences>("/auth/me/email", { auth: "identity" }),
+  setEmailPreferences: (emailNotify: EmailNotify) =>
+    api<EmailPreferences>("/auth/me/email", {
+      method: "PATCH",
+      body: { emailNotify },
       auth: "identity",
     }),
   /** Revoke the given refresh token server-side (best-effort on sign-out). */

@@ -18,7 +18,7 @@ import type {
   WorkspaceSummary,
   WorkspaceTokenClaims,
 } from "@stackup/shared";
-import { loadConfig } from "../config";
+import { loadConfig, publicWebBase } from "../config";
 import { DbService } from "../db/db.service";
 import { EmailService } from "../comms/email.service";
 import { GoogleOAuthClient } from "./google-oauth.client";
@@ -474,7 +474,7 @@ export class AuthService {
           "password won't change.",
         buttonLabel: "Reset password",
         buttonUrl: link,
-      })
+      }, { kind: "reset", userId: user.id })
       .catch(() => undefined);
   }
 
@@ -531,6 +531,93 @@ export class AuthService {
       [userId],
     );
     return res.rows[0] as UserRow | undefined;
+  }
+
+  /**
+   * Email someone that they were added to a workspace. Someone who has never
+   * signed in (the shell account addMember just made, or an earlier invitee
+   * who never came) gets a link that sets their password — valid for 7 days,
+   * single-use, the same token table as a reset. Everyone else gets a link to
+   * the app. Never throws: a failed email must not undo the invite.
+   */
+  async sendInvite(input: {
+    userId: string;
+    inviterName: string;
+    workspaceName: string;
+  }): Promise<void> {
+    try {
+      const res = await this.db.query(
+        `SELECT u.email, u.full_name,
+                NOT EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id) AS never_signed_in
+         FROM users u WHERE u.id = $1 AND u.status = 'active'`,
+        [input.userId],
+      );
+      const user = res.rows[0] as
+        | { email: string; full_name: string; never_signed_in: boolean }
+        | undefined;
+      if (!user) return;
+      const base = publicWebBase(this.config);
+      const inviter = input.inviterName || "A teammate";
+      const ws = input.workspaceName || "their workspace";
+      let buttonLabel = "Open StackUp";
+      let buttonUrl = `${base}/login`;
+      let howTo = "Sign in with this email address to find it in your workspace list.";
+      if (user.never_signed_in) {
+        const token = randomBytes(32).toString("hex");
+        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        await this.db.query(
+          `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+           VALUES ($1, $2, $3)`,
+          [input.userId, sha256(token), expires],
+        );
+        buttonLabel = "Accept and set your password";
+        buttonUrl = `${base}/reset?token=${token}&invite=1`;
+        howTo =
+          "Use the button below to choose a password — the link works once and " +
+          "expires in 7 days. After that, sign in with this email address.";
+      }
+      await this.email.sendBranded(
+        {
+          to: user.email,
+          subject: `${inviter} invited you to ${ws} on StackUp`,
+          heading: `Join ${ws} on StackUp`,
+          preheader: `${inviter} added you to ${ws}.`,
+          body:
+            `Hi ${(user.full_name || "there").split(" ")[0]},\n\n` +
+            `${inviter} added you to the ${ws} workspace on StackUp, where the team ` +
+            "plans and tracks its work.\n\n" +
+            howTo,
+          buttonLabel,
+          buttonUrl,
+        },
+        { kind: "invite", userId: input.userId },
+      );
+    } catch {
+      // Best effort: the membership is already committed.
+    }
+  }
+
+  /** The caller's notification-email choice. */
+  async emailPreferences(
+    userId: string,
+  ): Promise<{ emailNotify: EmailNotify; deliveryConfigured: boolean }> {
+    const res = await this.db.query("SELECT email_notify FROM users WHERE id = $1", [userId]);
+    if (!res.rows[0]) throw new UnauthorizedException();
+    return {
+      emailNotify: res.rows[0].email_notify as EmailNotify,
+      deliveryConfigured: this.email.configured(),
+    };
+  }
+
+  async setEmailPreferences(
+    userId: string,
+    emailNotify: unknown,
+  ): Promise<{ emailNotify: EmailNotify; deliveryConfigured: boolean }> {
+    if (typeof emailNotify !== "string" || !EMAIL_NOTIFY.includes(emailNotify as EmailNotify)) {
+      throw new BadRequestException("emailNotify must be one of 'instant', 'digest' or 'off'");
+    }
+    await this.db.query("UPDATE users SET email_notify = $1 WHERE id = $2", [emailNotify, userId]);
+    return this.emailPreferences(userId);
   }
 
   /** The public profile for the authenticated user. */
@@ -702,6 +789,9 @@ function normalizeAvatar(value: string | null | undefined): string | null {
   }
   return value;
 }
+
+export const EMAIL_NOTIFY = ["instant", "digest", "off"] as const;
+export type EmailNotify = (typeof EMAIL_NOTIFY)[number];
 
 function toPublicUser(row: {
   id: string;

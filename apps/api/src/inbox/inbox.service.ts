@@ -329,7 +329,7 @@ export class InboxService implements OnModuleInit, OnModuleDestroy {
         const remindAt = parseDate(body.remindAt, "remindAt");
         if (!remindAt) throw new BadRequestException("remindAt is required");
         // Re-arming a reminder lets it fire (and notify) again.
-        sets.push(`remind_at = $${i++}`, `notified_at = NULL`);
+        sets.push(`remind_at = $${i++}`, `notified_at = NULL`, `emailed_at = NULL`);
         params.push(remindAt);
       }
       if (body?.done !== undefined) {

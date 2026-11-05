@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { loadConfig } from "../config";
+import { loadConfig, publicWebBase } from "../config";
+import { DbService } from "../db/db.service";
 import {
   brandedText,
   renderBrandedEmail,
@@ -18,6 +19,12 @@ export interface EmailMessage {
 export interface BrandedMessage extends BrandedEmail {
   to: string;
   subject: string;
+}
+
+/** What a send was for, so the daily cap can count it (email_sends). */
+export interface SendMeta {
+  kind: string;
+  userId?: string | null;
 }
 
 export interface EmailResult {
@@ -46,6 +53,8 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private readonly config = loadConfig();
 
+  constructor(private readonly db: DbService) {}
+
   /** Which provider is active (drives the settings status chip). */
   providerName(): string {
     return this.config.emailProvider === "http" && this.config.emailRelayUrl
@@ -58,7 +67,22 @@ export class EmailService {
     return this.providerName() === "http";
   }
 
-  async send(message: EmailMessage): Promise<EmailResult> {
+  async send(message: EmailMessage, meta?: SendMeta): Promise<EmailResult> {
+    const result = await this.deliver(message);
+    // Count what actually went out through the relay: the daily cap is about
+    // the relay's allowance, so logged-only messages do not use it up.
+    if (result.ok && result.provider === "http") {
+      await this.db
+        .query("INSERT INTO email_sends (kind, user_id) VALUES ($1, $2)", [
+          meta?.kind ?? "other",
+          meta?.userId ?? null,
+        ])
+        .catch(() => undefined);
+    }
+    return result;
+  }
+
+  private async deliver(message: EmailMessage): Promise<EmailResult> {
     const provider = this.providerName();
     if (provider === "http") {
       try {
@@ -103,14 +127,17 @@ export class EmailService {
    * built from the merge vars and a matching plain-text part is derived, so
    * every branded email degrades gracefully in text-only clients.
    */
-  async sendBranded(message: BrandedMessage): Promise<EmailResult> {
+  async sendBranded(message: BrandedMessage, meta?: SendMeta): Promise<EmailResult> {
     const { to, subject, ...fields } = message;
-    return this.send({
-      to,
-      subject,
-      text: brandedText(fields),
-      html: renderBrandedEmail(fields),
-    });
+    return this.send(
+      {
+        to,
+        subject,
+        text: brandedText(fields),
+        html: renderBrandedEmail(fields),
+      },
+      meta,
+    );
   }
 
   /** Send a canned test message so an admin can verify delivery is live. */
@@ -125,7 +152,7 @@ export class EmailService {
         "If it reached your inbox, outbound email is configured correctly — " +
         "password resets, invites and task notifications will now be delivered to your team.",
       buttonLabel: "Open StackUp",
-      buttonUrl: "https://www.stackup.co.ke",
-    });
+      buttonUrl: publicWebBase(this.config),
+    }, { kind: "test" });
   }
 }

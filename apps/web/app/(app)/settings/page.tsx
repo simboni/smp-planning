@@ -15,6 +15,7 @@ import {
 import { Icons } from "@/components/icons";
 import { colorFor } from "@/lib/format";
 import { applyBranding } from "@/lib/theme";
+import EmailSettings from "@/components/EmailSettings";
 import ProfileSettings from "@/components/ProfileSettings";
 import SecuritySettings from "@/components/SecuritySettings";
 
@@ -47,6 +48,8 @@ export default function SettingsPage() {
       </div>
 
       <ProfileSettings />
+
+      <EmailSettings />
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-head">

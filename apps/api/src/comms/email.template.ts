@@ -18,7 +18,7 @@ export interface BrandedEmail {
   buttonUrl?: string;
   /** Inbox preview text. Falls back to the heading. */
   preheader?: string;
-  /** Unsubscribe / manage-notifications link. */
+  /** Manage-notifications link, shown in the footer as "Email settings". */
   unsubscribeUrl?: string;
 }
 
@@ -117,7 +117,7 @@ const TEMPLATE = `<!DOCTYPE html>
                 You're receiving this because you have a StackUp account.
               </p>
               <p class="muted" style="margin:0; font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:1.6; color:#9a9ba8;">
-                &copy; StackUp &middot; <a href="https://www.stackup.co.ke" style="color:#9a9ba8; text-decoration:underline;">stackup.co.ke</a>{{unsubscribe}}
+                &copy; StackUp &middot; <a href="https://stackup.smp.co.ke" style="color:#9a9ba8; text-decoration:underline;">stackup.smp.co.ke</a>{{unsubscribe}}
               </p>
             </td>
           </tr>
@@ -200,7 +200,7 @@ export function renderBrandedEmail(m: BrandedEmail): string {
   }
 
   const unsubscribe = m.unsubscribeUrl
-    ? ` &middot; <a href="${escUrl(m.unsubscribeUrl)}" style="color:#9a9ba8; text-decoration:underline;">Unsubscribe</a>`
+    ? ` &middot; <a href="${escUrl(m.unsubscribeUrl)}" style="color:#9a9ba8; text-decoration:underline;">Email settings</a>`
     : "";
 
   return TEMPLATE.replace(/\{\{preheader\}\}/g, esc(m.preheader || m.heading))
@@ -216,6 +216,6 @@ export function brandedText(m: BrandedEmail): string {
   if (m.buttonLabel && m.buttonUrl) {
     parts.push("", `${m.buttonLabel}: ${m.buttonUrl}`);
   }
-  parts.push("", "— StackUp · stackup.co.ke");
+  parts.push("", "— StackUp · stackup.smp.co.ke");
   return parts.join("\n");
 }

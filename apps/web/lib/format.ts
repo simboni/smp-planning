@@ -260,7 +260,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * serve. Order: an explicit build-time override, else the current origin when
  * it's a real public domain, else the production default.
  */
-const CANONICAL_WEB_ORIGIN = "https://www.stackup.co.ke";
+const CANONICAL_WEB_ORIGIN = "https://stackup.smp.co.ke";
 export function siteOrigin(): string {
   const env = process.env.NEXT_PUBLIC_WEB_URL;
   if (env) return env.replace(/\/+$/, "");

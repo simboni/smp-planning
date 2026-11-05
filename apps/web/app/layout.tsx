@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   // Absolute base for social-card URLs. og:image MUST be absolute for
   // WhatsApp/Facebook/Slack; the canonical host serves the image no matter
   // which origin the page itself was loaded from.
-  metadataBase: new URL("https://www.stackup.co.ke"),
+  metadataBase: new URL("https://stackup.smp.co.ke"),
   title: "StackUp",
   description: "One app to plan, track, and get work done.",
   openGraph: {

@@ -37,6 +37,32 @@ export interface AppConfig {
   emailRelayAuthHeader: string;
   /** From address stamped on outbound mail. */
   emailFrom: string;
+  /**
+   * Most notification emails (assignments, mentions, reminders, summaries)
+   * sent in any 24 hours. The relay's free plan has a hard daily limit shared
+   * with other apps; past the cap, updates roll into the next daily summary.
+   * Invites and password resets are never held back by it.
+   */
+  emailDailyCap: number;
+  /** Hour (UTC) the daily summary goes out. 4 = 07:00 in Nairobi. */
+  emailDigestHourUtc: number;
+  /** How often the notification sender looks for work; 0 turns it off. */
+  emailNotifyIntervalMs: number;
+}
+
+/** Where emailed links point when WEB_BASE_URL is not set. */
+export const DEFAULT_WEB_BASE_URL = "https://stackup.smp.co.ke";
+
+/** The public web origin for links in emails, without a trailing slash. */
+export function publicWebBase(cfg: Pick<AppConfig, "webBaseUrl">): string {
+  return (cfg.webBaseUrl || DEFAULT_WEB_BASE_URL).replace(/\/+$/, "");
+}
+
+function intEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.floor(n))) : fallback;
 }
 
 /** The committed dev fallback — usable locally, never acceptable in prod. */
@@ -104,6 +130,9 @@ export function loadConfig(): AppConfig {
     emailRelayAuth: process.env.EMAIL_RELAY_AUTH ?? "",
     emailRelayAuthHeader: process.env.EMAIL_RELAY_AUTH_HEADER ?? "Authorization",
     emailFrom: process.env.EMAIL_FROM ?? "no-reply@stackup.app",
+    emailDailyCap: intEnv("EMAIL_DAILY_CAP", 200, 0, 100_000),
+    emailDigestHourUtc: intEnv("EMAIL_DIGEST_HOUR_UTC", 4, 0, 23),
+    emailNotifyIntervalMs: intEnv("EMAIL_NOTIFY_INTERVAL_MS", 60_000, 0, 3_600_000),
   };
   return cfg;
 }

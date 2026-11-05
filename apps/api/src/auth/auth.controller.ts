@@ -221,6 +221,28 @@ export class AuthController {
     return { user: await this.auth.updateProfile(auth.sub, body ?? {}) };
   }
 
+  /**
+   * Notification emails: 'instant' (each assignment / mention / reminder as it
+   * happens), 'digest' (one summary a day; reminders still on time) or 'off'.
+   * Invites and password resets are always sent.
+   */
+  @Get("me/email")
+  @UseGuards(JwtAuthGuard)
+  async emailPreferences(
+    @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
+  ) {
+    return this.auth.emailPreferences(auth.sub);
+  }
+
+  @Patch("me/email")
+  @UseGuards(JwtAuthGuard)
+  async setEmailPreferences(
+    @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
+    @Body() body: { emailNotify?: string },
+  ) {
+    return this.auth.setEmailPreferences(auth.sub, body?.emailNotify);
+  }
+
   /* ---- Two-factor auth (authenticated) ----------------------------- */
 
   @Get("2fa/status")

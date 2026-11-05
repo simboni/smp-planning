@@ -16,7 +16,10 @@ const MIN = 8;
 
 function ResetView() {
   const router = useRouter();
-  const token = useSearchParams().get("token") ?? "";
+  const params = useSearchParams();
+  const token = params.get("token") ?? "";
+  // Arrived from an invite email: same token flow, welcoming words.
+  const invite = params.get("invite") === "1";
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -79,9 +82,11 @@ function ResetView() {
             </>
           ) : done ? (
             <>
-              <h1 className="auth-title">Password updated</h1>
+              <h1 className="auth-title">{invite ? "You're all set" : "Password updated"}</h1>
               <p className="auth-sub">
-                Your password has been changed. Taking you to the login page…
+                {invite
+                  ? "Your password is set. Taking you to the login page — sign in with your email address…"
+                  : "Your password has been changed. Taking you to the login page…"}
               </p>
               <Link href="/login" className="btn btn-primary btn-lg btn-block" style={{ marginTop: 8 }}>
                 Log in now
@@ -89,8 +94,12 @@ function ResetView() {
             </>
           ) : (
             <>
-              <h1 className="auth-title">Set a new password</h1>
-              <p className="auth-sub">Choose a strong password for your account.</p>
+              <h1 className="auth-title">{invite ? "Welcome to StackUp" : "Set a new password"}</h1>
+              <p className="auth-sub">
+                {invite
+                  ? "You've been invited to a workspace. Choose a password to join."
+                  : "Choose a strong password for your account."}
+              </p>
               <form onSubmit={(e) => void submit(e)}>
                 {error && <div className="form-error">{error}</div>}
                 <div className="field">
@@ -138,7 +147,7 @@ function ResetView() {
                   disabled={busy}
                   style={{ marginTop: 8 }}
                 >
-                  {busy ? <span className="spinner" /> : "Update password"}
+                  {busy ? <span className="spinner" /> : invite ? "Set password" : "Update password"}
                 </button>
               </form>
               <p className="auth-alt">

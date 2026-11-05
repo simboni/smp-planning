@@ -281,7 +281,9 @@ export class WorkspacesService {
   ): Promise<WorkspaceMember> {
     const normalizedTitle = normalizeTitle(title);
     const targetUserId = await this.resolveOrCreateUser(email);
-    return this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
+    let inviterName = "";
+    let workspaceName = "";
+    const added = await this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
       const insert = await client.query(
         `INSERT INTO memberships (workspace_id, user_id, role, title)
          VALUES ($1, $2, $3, $4)
@@ -318,8 +320,19 @@ export class WorkspacesService {
         entityId: insert.rows[0].id,
         data: { email, role, ...(normalizedTitle ? { title: normalizedTitle } : {}) },
       });
+      const names = await client.query(
+        `SELECT (SELECT name FROM workspaces WHERE id = $1) AS ws,
+                (SELECT full_name FROM users WHERE id = $2) AS inviter`,
+        [workspaceId, actorUserId],
+      );
+      workspaceName = (names.rows[0]?.ws as string | null) ?? "";
+      inviterName = (names.rows[0]?.inviter as string | null) ?? "";
       return member;
     });
+    // After the commit, and without waiting on it: the invite stands whether
+    // or not the email gets through.
+    void this.auth.sendInvite({ userId: targetUserId, inviterName, workspaceName });
+    return added;
   }
 
   /**
