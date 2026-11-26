@@ -25,6 +25,7 @@ import {
   type TaskCard,
   type ViewConfig,
   type ViewKind,
+  permissionAtLeast,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { FilterBar } from "@/components/views/FilterBar";
@@ -35,6 +36,8 @@ import { TableView } from "@/components/views/TableView";
 import { GanttView } from "@/components/views/GanttView";
 import { TimelineView } from "@/components/views/TimelineView";
 import { TaskPanel } from "@/components/TaskPanel";
+import { useHierarchy } from "@/components/HierarchyProvider";
+import { showToast } from "@/lib/toast";
 import { activeFilterCount, applyView } from "@/lib/viewUtils";
 
 const KINDS: { kind: ViewKind; label: string; icon: keyof typeof Icons }[] = [
@@ -155,7 +158,76 @@ export function SpaceTasks({
     listId: lists[0]?.id ?? "",
   };
 
-  const noop = (): void => undefined;
+  // Commenting needs 'comment', not 'edit' (the server allows comment).
+  const { tree } = useHierarchy();
+  const canComment = useMemo(() => {
+    const s = tree.find((sp) => sp.id === spaceId);
+    return s ? permissionAtLeast(s.myPermission, "comment") : canEdit;
+  }, [tree, spaceId, canEdit]);
+
+  /**
+   * Quick-add from a space-level view. A task must live in a List; a space
+   * view spans many, so it goes into the space's first List — and says so.
+   * (These controls used to be wired to a no-op: they took a name, cleared
+   * the box and created nothing.)
+   */
+  const firstList = lists[0] ?? null;
+  const createInSpace = (name: string, extra: { statusId?: string; dueDate?: string }): void => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (!firstList) {
+      setError("This Space has no Lists yet. Add a List first, then add tasks to it.");
+      return;
+    }
+    tasksApi
+      .create(firstList.id, { name: trimmed, ...extra })
+      .then(() => {
+        showToast(`Added to ${firstList.name}`);
+        loadTasks();
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Couldn't create the task."));
+  };
+  const quickAdd = (statusId: string, name: string): void => createInSpace(name, { statusId });
+  const quickAddDate = (dueDate: string, name: string): void =>
+    createInSpace(name, { statusId: statuses[0]?.id, dueDate });
+
+  /**
+   * Board drag at space level. A column can hold tasks from several Lists,
+   * and order is stored per List, so the new order is saved List by List.
+   * (The handler used to ignore the order, so a card moved within a column
+   * snapped back.)
+   */
+  const moveTask = (taskId: string, statusId: string, orderedIds: string[]): void => {
+    const target = statuses.find((st) => st.id === statusId);
+    const byId = new Map((tasks ?? []).map((t) => [t.id, t]));
+    const pos = new Map(orderedIds.map((tid, i) => [tid, i]));
+    setTasks((prev) =>
+      prev
+        ? prev.map((t) => {
+            let next = t;
+            if (t.id === taskId && target) {
+              next = { ...t, statusId, status: { id: target.id, name: target.name, color: target.color, type: target.type } };
+            }
+            const p = pos.get(t.id);
+            return p !== undefined ? { ...next, position: p } : next;
+          })
+        : prev,
+    );
+    const perList = new Map<string, string[]>();
+    for (const tid of orderedIds) {
+      const listId = byId.get(tid)?.listId;
+      if (!listId) continue;
+      const arr = perList.get(listId) ?? [];
+      arr.push(tid);
+      perList.set(listId, arr);
+    }
+    Promise.all([...perList].map(([listId, ids]) => tasksApi.reorder(listId, statusId, ids)))
+      .then(() => loadTasks())
+      .catch(() => {
+        showToast("Couldn't save the new order.");
+        loadTasks();
+      });
+  };
 
   return (
     <div className="sp-tasks">
@@ -222,7 +294,7 @@ export function SpaceTasks({
             setTasks((prev) => (prev ?? []).filter((t) => t.id !== task.id));
             tasksApi.remove(task.id).catch(() => loadTasks());
           }}
-          onQuickAdd={noop}
+          onQuickAdd={quickAdd}
           addSignal={0}
           filtersActive={filtersActive}
         />
@@ -231,25 +303,15 @@ export function SpaceTasks({
           {...viewProps}
           groupBy={config.groupBy ?? "status"}
           listNames={listNames}
-          onQuickAdd={noop}
-          onMoveTask={(taskId, statusId) => {
-            setTasks((prev) =>
-              prev
-                ? prev.map((t) => (t.id === taskId ? { ...t, statusId } : t))
-                : prev,
-            );
-            tasksApi
-              .update(taskId, { statusId })
-              .then(() => loadTasks())
-              .catch(() => loadTasks());
-          }}
-          onManageStatuses={noop}
+          onQuickAdd={quickAdd}
+          onMoveTask={moveTask}
+          onManageStatuses={() => showToast("Statuses are managed from a List: open one and use Statuses.")}
           addSignal={0}
         />
       ) : kind === "calendar" ? (
         <CalendarView
           {...viewProps}
-          onQuickAddDate={noop}
+          onQuickAddDate={quickAddDate}
           onSetDueDate={(task, due) =>
             updateTask(task, { dueDate: due }, { dueDate: due })
           }
@@ -277,7 +339,7 @@ export function SpaceTasks({
               .then(() => loadTasks())
               .catch(() => loadTasks());
           }}
-          onQuickAdd={noop}
+          onQuickAdd={quickAdd}
         />
       ) : kind === "gantt" ? (
         <GanttView
@@ -296,7 +358,7 @@ export function SpaceTasks({
           statuses={statuses}
           members={members}
           canEdit={canEdit}
-          canComment={canEdit}
+          canComment={canComment}
           onClose={() => setSelectedTask(null)}
           onChanged={loadTasks}
           onOpenTask={(tid) => setSelectedTask(tid)}

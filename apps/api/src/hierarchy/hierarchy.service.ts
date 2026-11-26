@@ -217,9 +217,12 @@ export class HierarchyService {
       const folderlessBySpace = new Map<string, List[]>();
       for (const row of listsRes.rows) {
         const list = this.toList(row);
-        if (list.folderId) {
-          const parent = folderNodes.get(list.folderId);
-          if (parent) parent.lists.push(list);
+        // A live list whose folder is archived (or gone) surfaces at space
+        // level. Dropping it made the list — and the way to its tasks —
+        // vanish from the sidebar, the space page and every picker.
+        const parent = list.folderId ? folderNodes.get(list.folderId) : undefined;
+        if (parent) {
+          parent.lists.push(list);
         } else {
           const arr = folderlessBySpace.get(list.spaceId) ?? [];
           arr.push(list);
@@ -257,6 +260,68 @@ export class HierarchyService {
           lists: folderlessBySpace.get(space.id) ?? [],
         }));
       return { spaces };
+    });
+  }
+
+  /**
+   * Everything archived that the caller can see, so it can be restored.
+   * Every read filters `archived = false` and nothing ever sent
+   * `archived: false`, so archiving used to be a one-way door: an archived
+   * Space — with all its folders, lists and tasks — was gone from the product.
+   * `canRestore` mirrors the server rules: 'full' for a Space, 'edit' for a
+   * folder or list.
+   */
+  async archived(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+  ): Promise<{
+    spaces: { id: string; name: string; color: string | null; canRestore: boolean }[];
+    folders: { id: string; name: string; spaceId: string; spaceName: string; canRestore: boolean }[];
+    lists: { id: string; name: string; spaceId: string; spaceName: string; folderName: string | null; canRestore: boolean }[];
+  }> {
+    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      const spacesRes = await client.query(
+        `SELECT id, name, color, is_private, archived FROM spaces ORDER BY sort_order, created_at`,
+      );
+      const teamIds = await this.access.userTeamIds(client, userId);
+      const departmentIds = await this.access.userDepartmentIds(client, userId);
+      const shareMap = await this.access.userSpaceShareMap(client, userId, teamIds, departmentIds);
+      const perm = new Map<string, { name: string; p: string; archived: boolean; color: string | null }>();
+      for (const r of spacesRes.rows) {
+        const p = AccessService.permissionFor(role, r.is_private as boolean, shareMap.get(r.id as string) ?? null);
+        if (p !== "none") perm.set(r.id as string, { name: r.name as string, p, archived: r.archived as boolean, color: (r.color as string | null) ?? null });
+      }
+      const canEdit = (p: string) => p === "edit" || p === "full";
+      const spaces = [...perm]
+        .filter(([, v]) => v.archived)
+        .map(([id, v]) => ({ id, name: v.name, color: v.color, canRestore: v.p === "full" }));
+      // Folders and lists inside a LIVE space (inside an archived one they come
+      // back with the space).
+      const foldersRes = await client.query(
+        `SELECT id, name, space_id FROM folders WHERE archived = true ORDER BY created_at DESC`,
+      );
+      const folders = foldersRes.rows
+        .filter((r) => perm.has(r.space_id as string) && !perm.get(r.space_id as string)!.archived)
+        .map((r) => {
+          const sp = perm.get(r.space_id as string)!;
+          return { id: r.id as string, name: r.name as string, spaceId: r.space_id as string, spaceName: sp.name, canRestore: canEdit(sp.p) };
+        });
+      const listsRes = await client.query(
+        `SELECT l.id, l.name, l.space_id, f.name AS folder_name
+           FROM lists l LEFT JOIN folders f ON f.id = l.folder_id
+          WHERE l.archived = true ORDER BY l.created_at DESC`,
+      );
+      const lists = listsRes.rows
+        .filter((r) => perm.has(r.space_id as string) && !perm.get(r.space_id as string)!.archived)
+        .map((r) => {
+          const sp = perm.get(r.space_id as string)!;
+          return {
+            id: r.id as string, name: r.name as string, spaceId: r.space_id as string, spaceName: sp.name,
+            folderName: (r.folder_name as string | null) ?? null, canRestore: canEdit(sp.p),
+          };
+        });
+      return { spaces, folders, lists };
     });
   }
 
@@ -332,10 +397,12 @@ export class HierarchyService {
         [workspaceId, name, color, icon, isPrivate, nextOrder, userId],
       );
       const space = this.toSpace(res.rows[0]);
-      // A plain member who creates a PRIVATE space would otherwise be unable
-      // to see it (private + no share = invisible). Grant them a full
-      // self-share so the creator keeps ownership of what they just made.
-      if (isPrivate && role !== "owner" && role !== "admin") {
+      // The creator owns what they make: a full self-share. Without it a plain
+      // member who created a PUBLIC space resolved to 'edit' and could never
+      // rename, recolor, archive or delete it (all need 'full'); a private one
+      // would be invisible to them altogether.
+      const creatorShare = role !== "owner" && role !== "admin";
+      if (creatorShare) {
         await client.query(
           `INSERT INTO shares
              (workspace_id, object_type, object_id, principal_type, principal_id, permission, created_by)
@@ -348,7 +415,7 @@ export class HierarchyService {
       const myPermission = AccessService.permissionFor(
         role,
         space.isPrivate,
-        isPrivate && role !== "owner" && role !== "admin" ? "full" : null,
+        creatorShare ? "full" : null,
       );
       await this.audit.record(client, {
         workspaceId,
@@ -518,9 +585,12 @@ export class HierarchyService {
       const folderless: List[] = [];
       for (const row of listsRes.rows) {
         const list = this.toList(row);
-        if (list.folderId) {
-          const parent = folderNodes.get(list.folderId);
-          if (parent) parent.lists.push(list);
+        // A live list whose folder is archived (or gone) surfaces at space
+        // level. Dropping it made the list — and the way to its tasks —
+        // vanish from the sidebar, the space page and every picker.
+        const parent = list.folderId ? folderNodes.get(list.folderId) : undefined;
+        if (parent) {
+          parent.lists.push(list);
         } else {
           folderless.push(list);
         }

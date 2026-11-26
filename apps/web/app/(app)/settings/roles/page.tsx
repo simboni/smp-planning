@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  ApiError,
   BASE_ROLE_CAPABILITIES,
   CAPABILITIES,
   CAPABILITY_LABELS,
@@ -14,6 +15,7 @@ import {
   type WorkspaceRole,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
+import { showToast } from "@/lib/toast";
 
 /** Effective (baseline + overrides) capability set for display. */
 function effective(role: CustomRole): Record<Capability, boolean> {
@@ -147,7 +149,12 @@ export default function RolesPage() {
                     <button
                       className="btn btn-ghost btn-sm danger"
                       onClick={async () => {
-                        await governanceApi.deleteRole(r.id);
+                        if (!window.confirm(`Delete the “${r.name}” role? People with it go back to their default role.`)) return;
+                        try {
+                          await governanceApi.deleteRole(r.id);
+                        } catch (err) {
+                          showToast(err instanceof ApiError ? err.message : "Couldn't delete the role.");
+                        }
                         loadRoles();
                         loadMembers();
                       }}
@@ -314,8 +321,14 @@ function MembersCard({
     [members],
   );
 
+  // A refusal (e.g. custom roles need the Business plan) used to reject
+  // unhandled: the select snapped back with no word of why.
   const assign = async (userId: string, value: string) => {
-    await governanceApi.assignRole(userId, value || null);
+    try {
+      await governanceApi.assignRole(userId, value || null);
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Couldn't assign the role.");
+    }
     onAssign();
   };
 

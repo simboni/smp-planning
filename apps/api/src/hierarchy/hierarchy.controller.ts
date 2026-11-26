@@ -33,6 +33,12 @@ export class HierarchyController {
 
   // --- Reads ----------------------------------------------------------------
 
+  /** Archived spaces / folders / lists the caller can see (to restore them). */
+  @Get("hierarchy/archived")
+  async archived(@Req() req: AuthedRequest) {
+    return this.hierarchy.archived(req.workspaceId!, req.userId!, req.role!);
+  }
+
   @Get("hierarchy")
   async tree(@Req() req: AuthedRequest) {
     return this.hierarchy.tree(req.workspaceId!, req.userId!, req.role!);

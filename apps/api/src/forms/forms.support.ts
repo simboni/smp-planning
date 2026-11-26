@@ -171,9 +171,12 @@ function isMissing(v: unknown): boolean {
 export function validateSubmission(
   fields: FormField[],
   values: Record<string, unknown>,
-): { titleValue: string | null; lines: string[] } {
+): { titleValue: string | null; lines: string[]; answers: Record<string, string> } {
   let titleValue: string | null = null;
   const lines: string[] = [];
+  // Answers keyed by field id — what responses are read back from, so a
+  // renamed or duplicate label can never orphan or mis-file an answer.
+  const answers: Record<string, string> = {};
   for (const field of fields) {
     // M21: a field hidden by its condition is skipped entirely — not required,
     // and any stray submitted value for it is ignored.
@@ -252,6 +255,7 @@ export function validateSubmission(
       titleValue = display.trim();
     }
     lines.push(`${field.label}: ${display}`);
+    answers[field.id] = display;
   }
-  return { titleValue, lines };
+  return { titleValue, lines, answers };
 }

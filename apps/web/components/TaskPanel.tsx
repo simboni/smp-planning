@@ -36,6 +36,7 @@ import {
   type TaskType,
 } from "@/lib/api";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/lib/api";
+import { ListDestinationPicker } from "@/components/ListDestinationPicker";
 import { Icons } from "@/components/icons";
 import { colorFor, formatEstimate, toDateInputValue } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
@@ -51,7 +52,7 @@ import {
 import { Attachments } from "@/components/Attachments";
 import { TaskEmail } from "@/components/TaskEmail";
 import { TimeTracking } from "@/components/TimeTracking";
-import { saveEntityAsTemplate } from "@/lib/toast";
+import { saveEntityAsTemplate, showToast } from "@/lib/toast";
 import { useRealtime } from "@/lib/realtime";
 
 /* ------------------------------------------------------------------ *
@@ -193,6 +194,8 @@ export function TaskPanel({
   const [addingChecklist, setAddingChecklist] = useState(false);
 
   const me = getUser();
+  // "Move" — the task's List (and maybe Space) changes.
+  const [moving, setMoving] = useState(false);
 
   const reload = async (): Promise<void> => {
     try {
@@ -442,6 +445,33 @@ export function TaskPanel({
   );
 
   return (
+    <>
+    {moving && detail && (
+      <ListDestinationPicker
+        title="Move task"
+        subtitle={`“${detail.name}” keeps its comments, subtasks and history.`}
+        actionLabel="Move here"
+        currentListId={detail.breadcrumb?.list.id ?? null}
+        busy={busy}
+        onClose={() => setMoving(false)}
+        onPick={({ list, spaceName }) => {
+          setBusy(true);
+          tasksApi
+            .update(detail.id, { listId: list.id })
+            .then(() => {
+              setMoving(false);
+              showToast(`Moved to ${spaceName} › ${list.name}`);
+              onChanged();
+              onClose();
+            })
+            .catch((err) => {
+              setMoving(false);
+              setError(err instanceof ApiError ? err.message : "Couldn't move this task.");
+            })
+            .finally(() => setBusy(false));
+        }}
+      />
+    )}
     <div className="tp-scrim" onClick={onClose}>
       <aside
         className="tp-panel"
@@ -539,6 +569,16 @@ export function TaskPanel({
                   onClick={() => onOpenTask(detail.parentTaskId!)}
                 >
                   {Icons.subtask} Parent task
+                </button>
+              )}
+              {canEdit && !detail.parentTaskId && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm tp-move-btn"
+                  title="Move to another list"
+                  onClick={() => setMoving(true)}
+                >
+                  {Icons.list} Move
                 </button>
               )}
               {canEdit && (
@@ -1200,6 +1240,7 @@ export function TaskPanel({
         )}
       </aside>
     </div>
+    </>
   );
 }
 

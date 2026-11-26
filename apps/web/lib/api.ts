@@ -302,6 +302,12 @@ export interface SpaceTree extends Space {
   lists: List[];
 }
 
+export interface ArchivedItems {
+  spaces: { id: string; name: string; color: string | null; canRestore: boolean }[];
+  folders: { id: string; name: string; spaceId: string; spaceName: string; canRestore: boolean }[];
+  lists: { id: string; name: string; spaceId: string; spaceName: string; folderName: string | null; canRestore: boolean }[];
+}
+
 export interface HierarchyTree {
   spaces: SpaceTree[];
 }
@@ -1385,6 +1391,9 @@ export const commsApi = {
 export const hierarchyApi = {
   /** The whole tree in one shot — spaces → folders → lists. */
   getTree: () => api<HierarchyTree>("/hierarchy", { auth: "access" }),
+  /** Archived spaces, folders and lists you can see — for the Restore section. */
+  archived: () =>
+    api<ArchivedItems>("/hierarchy/archived", { auth: "access" }),
 
   listSpaces: () => api<{ spaces: Space[] }>("/spaces", { auth: "access" }),
   createSpace: (body: {
@@ -3710,6 +3719,8 @@ export interface SearchResults {
   goals: SearchNamedHit[];
   whiteboards: SearchNamedHit[];
   channels: SearchNamedHit[];
+  /** Your own notes whose text matches. */
+  notes: { id: string; title: string; snippet: string }[];
 }
 
 const EMPTY_SEARCH: SearchResults = {
@@ -3720,6 +3731,7 @@ const EMPTY_SEARCH: SearchResults = {
   goals: [],
   whiteboards: [],
   channels: [],
+  notes: [],
 };
 
 export const searchApi = {

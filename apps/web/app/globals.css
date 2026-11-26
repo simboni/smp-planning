@@ -9314,3 +9314,113 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
     box-shadow: 0 -6px 30px rgba(20, 20, 40, 0.18);
   }
 }
+
+/* ---- Notes: count on the 🗒 button, panel footer, Notes page ---- */
+.np-count {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  background: var(--brand); color: #fff; font-size: 0.68rem; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid var(--bg);
+}
+.np-all {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 10px; border-top: 1px solid var(--line-soft);
+  font-size: 0.82rem; font-weight: 650; color: var(--brand-700);
+}
+.np-all svg { width: 14px; height: 14px; }
+.np-all:hover { background: var(--card-2); text-decoration: none; }
+.np-retry {
+  border: 0; background: none; padding: 0; cursor: pointer; font: inherit;
+  font-weight: 700; color: var(--danger);
+}
+.np-note-error { border-color: var(--danger); }
+.np-flash { box-shadow: 0 0 0 3px var(--brand-soft-2); border-color: var(--brand); }
+.notes-filter { max-width: 420px; margin: 4px 0 18px; }
+.notes-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  align-items: start;
+}
+.notes-card { padding: 0; }
+.notes-card .np-note { margin: 0; border: 0; }
+.notes-card .np-area { min-height: 90px; }
+/* Home card */
+.notepad .notepad-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.notepad-recent { margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 8px; display: flex; flex-direction: column; }
+.notepad-recent-row {
+  display: flex; justify-content: space-between; gap: 10px; padding: 7px 6px;
+  border-radius: var(--r-sm); font-size: 0.84rem; color: var(--ink-2);
+}
+.notepad-recent-row:hover { background: var(--card-2); text-decoration: none; }
+.notepad-recent-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.notepad-all { margin-top: 4px; padding: 6px; font-size: 0.8rem; font-weight: 650; color: var(--brand-700); }
+
+/* ---- List destination picker (note → task, Move task, quick-add) ---- */
+/* Above the task panel (z 80) — the picker opens from inside it. */
+.modal-scrim.ldp-scrim { z-index: 90; }
+.ldp-search { margin-bottom: 12px; }
+.ldp-list { display: flex; flex-direction: column; gap: 2px; }
+.ldp-label {
+  margin: 6px 4px 6px; font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+}
+.ldp-folder {
+  display: flex; align-items: center; gap: 6px; margin: 10px 6px 4px;
+  font-size: 0.78rem; font-weight: 650; color: var(--muted);
+}
+.ldp-folder svg { width: 14px; height: 14px; }
+.ldp-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 10px 10px; border: 0; border-radius: var(--r-md);
+  background: transparent; text-align: left; cursor: pointer; font: inherit; color: var(--ink);
+}
+.ldp-row:hover:not(:disabled) { background: var(--card-2); }
+.ldp-row:disabled { cursor: default; opacity: 0.7; }
+.ldp-row.here { opacity: 1; background: var(--brand-soft); }
+.ldp-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin: 0 4px; }
+.ldp-sq {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.82rem;
+}
+.ldp-name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 0.92rem; font-weight: 600; }
+.ldp-path { font-size: 0.76rem; font-weight: 500; color: var(--muted); }
+.ldp-act { font-size: 0.78rem; font-weight: 700; color: var(--brand-700); white-space: nowrap; }
+.ldp-row.here .ldp-act { color: var(--muted); }
+.ldp-chev { color: var(--muted); display: inline-flex; }
+.ldp-chev svg { width: 16px; height: 16px; }
+.ldp-back {
+  display: inline-flex; align-items: center; gap: 4px; align-self: flex-start;
+  border: 0; background: none; cursor: pointer; font: inherit; font-size: 0.82rem;
+  font-weight: 650; color: var(--brand-700); padding: 4px 2px;
+}
+.ldp-back svg { width: 15px; height: 15px; }
+.ldp-new {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 10px;
+  border: 1px dashed var(--line); border-radius: var(--r-md); background: transparent;
+  cursor: pointer; font: inherit; font-size: 0.88rem; font-weight: 650; color: var(--brand-700);
+}
+.ldp-new:hover { border-color: var(--brand); background: var(--brand-soft); }
+.ldp-new svg { width: 16px; height: 16px; }
+.ldp-create {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 12px;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card-2);
+}
+.ldp-create-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.ldp-empty { padding: 10px 6px; font-size: 0.86rem; color: var(--muted); }
+.tp-move-btn { display: inline-flex; align-items: center; gap: 5px; }
+.tp-move-btn svg { width: 15px; height: 15px; }
+
+/* Everything page: archived items you can restore */
+.ev-archived { margin-top: 28px; }
+.ev-archived-toggle {
+  display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 0.9rem; font-weight: 650; color: var(--muted); padding: 6px 0;
+}
+.ev-archived-toggle svg { width: 16px; height: 16px; }
+.ev-archived-list { margin-top: 8px; padding: 6px 0; }
+.ev-archived-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; }
+.ev-archived-row + .ev-archived-row { border-top: 1px solid var(--line-soft); }
+.ev-archived-name { display: flex; flex-direction: column; font-weight: 600; min-width: 0; }
+.ev-archived-name .muted { font-size: 0.8rem; font-weight: 500; }
+.ev-archived-ro { font-size: 0.8rem; }

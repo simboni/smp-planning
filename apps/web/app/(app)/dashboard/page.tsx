@@ -11,9 +11,12 @@ import {
   type PublicUser,
   type TaskCard,
   type WorkspaceSummary,
+  notesApi,
+  type Note,
 } from "@/lib/api";
 import { Icons, type IconKey } from "@/components/icons";
 import { firstName, formatDueDate, timeAgo } from "@/lib/format";
+import { migrateLegacyHomeNote, noteTitle, notesChanged, onNotesChanged } from "@/lib/notes";
 
 /**
  * Onboarding checklist. `done` is derived from real workspace counts (see
@@ -589,42 +592,81 @@ function GuideBanner({
   );
 }
 
-/** A private, device-local scratchpad card. */
+/**
+ * Home notepad: quick capture into your notes (the same server-side notes as
+ * the 🗒 button and the Notes page), plus your three latest. It used to keep
+ * its text in this browser only, where nothing else could find it; anything
+ * still there is moved into a real note on first load.
+ */
 function NotepadCard() {
-  const KEY = "stackup.home.notepad";
-  const [text, setText] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [recent, setRecent] = useState<Note[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const load = () => {
+    notesApi
+      .list()
+      .then((r) => {
+        setRecent((r.notes ?? []).slice(0, 3));
+        setTotal((r.notes ?? []).length);
+      })
+      .catch(() => setRecent((prev) => prev ?? []));
+  };
 
   useEffect(() => {
-    try {
-      setText(window.localStorage.getItem(KEY) ?? "");
-    } catch {
-      /* ignore */
-    }
+    void migrateLegacyHomeNote().then(load);
+    return onNotesChanged(load);
   }, []);
 
-  const onChange = (v: string) => {
-    setText(v);
-    try {
-      window.localStorage.setItem(KEY, v);
-      setSaved(true);
-    } catch {
-      /* ignore */
-    }
+  const save = () => {
+    const text = draft.trim();
+    if (!text || saving) return;
+    setSaving(true);
+    setMsg("");
+    notesApi
+      .create({ content: text })
+      .then(() => {
+        setDraft("");
+        setMsg("Saved to your notes");
+        notesChanged();
+      })
+      .catch(() => setMsg("Couldn't save — your text is still here, try again."))
+      .finally(() => setSaving(false));
   };
 
   return (
     <div className="notepad">
       <textarea
         className="notepad-area"
-        value={text}
+        value={draft}
         placeholder="Jot down a quick note, a link, a reminder…"
-        onChange={(e) => onChange(e.target.value)}
-        rows={5}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
+        }}
+        rows={4}
       />
-      <div className="notepad-foot muted">
-        {saved ? "Saved on this device" : "Private to this device"}
+      <div className="notepad-foot">
+        <span className="muted">{msg || "Saved notes appear in Notes and the 🗒 button."}</span>
+        <button type="button" className="btn btn-soft btn-sm" onClick={save} disabled={!draft.trim() || saving}>
+          {saving ? <span className="spinner" /> : "Save note"}
+        </button>
       </div>
+      {recent && recent.length > 0 && (
+        <div className="notepad-recent">
+          {recent.map((n) => (
+            <Link key={n.id} href={`/notes?id=${n.id}`} className="notepad-recent-row">
+              <span className="notepad-recent-title">{noteTitle(n.content)}</span>
+              <span className="muted">{timeAgo(n.updatedAt)}</span>
+            </Link>
+          ))}
+          <Link href="/notes" className="notepad-all">
+            All notes ({total}) →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

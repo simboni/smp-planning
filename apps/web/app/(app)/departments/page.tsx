@@ -387,6 +387,11 @@ function ManageDepartmentModal({
     const clean = steps
       .map((s) => ({ ...s, title: s.title.trim() }))
       .filter((s) => s.title.length > 0);
+    const unpicked = clean.findIndex((s) => s.assigneeKind === "specific" && !s.assigneeUserId);
+    if (unpicked >= 0) {
+      setError(`Step ${unpicked + 1} (“${clean[unpicked].title}”) is set to a specific person — choose who first.`);
+      return;
+    }
     setSavingSteps(true);
     setError("");
     try {
@@ -1010,6 +1015,7 @@ function ManageDepartmentModal({
  * The HR page.
  * ------------------------------------------------------------------ */
 export default function DepartmentsPage() {
+  const { reload: reloadDeptTree } = useHierarchy();
   const [departments, setDepartments] = useState<Department[] | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [roster, setRoster] = useState<DepartmentRosterEntry[]>([]);
@@ -1188,6 +1194,9 @@ export default function DepartmentsPage() {
           onCreated={(d) => {
             setCreating(false);
             load();
+            // The department's new private Space (and its Onboarding list)
+            // must show in the sidebar now, not after a browser refresh.
+            void reloadDeptTree();
             setManagingId(d.id);
             showToast(`Department created: “${d.name}”`);
           }}

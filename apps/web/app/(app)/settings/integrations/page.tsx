@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ApiError,
   apiTokensApi,
   commsApi,
   getUser,
@@ -16,6 +17,7 @@ import {
   type WebhookSummary,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
+import { showToast } from "@/lib/toast";
 
 const EVENT_TYPES = [
   "*",
@@ -280,6 +282,9 @@ function ApiTokensCard() {
       setReveal(r.token);
       setName("");
       await load();
+    } catch (err) {
+      // Was swallowed: a refusal looked exactly like the button doing nothing.
+      showToast(err instanceof ApiError ? err.message : "Couldn't create the token.");
     } finally {
       setBusy(false);
     }
@@ -360,7 +365,7 @@ function ApiTokensCard() {
             </div>
             <button
               className="btn btn-ghost intg-danger"
-              onClick={() => apiTokensApi.revoke(t.id).then(load)}
+              onClick={() => apiTokensApi.revoke(t.id).then(load, (e) => showToast(e instanceof ApiError ? e.message : "Couldn't revoke the token."))}
               title="Revoke"
             >
               {Icons.trash}
@@ -389,13 +394,20 @@ function WebhooksCard() {
   }, []);
 
   const create = async () => {
-    if (!/^https?:\/\//i.test(url.trim())) return;
+    // The server only accepts https to a public host; say so up front instead
+    // of letting an http:// URL "add" silently and never appear.
+    if (!/^https:\/\//i.test(url.trim())) {
+      showToast("Webhook URLs must start with https://");
+      return;
+    }
     setBusy(true);
     try {
       const r = await webhooksApi.create(url.trim(), [event]);
       setSecret(r.secret);
       setUrl("");
       await load();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Couldn't add the webhook.");
     } finally {
       setBusy(false);
     }
@@ -488,7 +500,7 @@ function WebhooksCard() {
               </button>
               <button
                 className="btn btn-ghost intg-danger"
-                onClick={() => webhooksApi.remove(h.id).then(load)}
+                onClick={() => webhooksApi.remove(h.id).then(load, (e) => showToast(e instanceof ApiError ? e.message : "Couldn't delete the webhook."))}
                 title="Delete"
               >
                 {Icons.trash}

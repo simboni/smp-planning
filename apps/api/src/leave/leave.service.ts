@@ -429,8 +429,10 @@ export class LeaveService {
     const note =
       typeof body?.note === "string" ? body.note.trim().slice(0, 500) : "";
     await this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // Lock the row: two approvers deciding at once used to both succeed,
+      // the second overwriting the first with two audit entries for one request.
       const cur = await client.query(
-        `SELECT user_id, status FROM leave_requests WHERE id = $1`,
+        `SELECT user_id, status FROM leave_requests WHERE id = $1 FOR UPDATE`,
         [id],
       );
       if (!cur.rows[0]) throw new NotFoundException("Request not found");
@@ -448,12 +450,16 @@ export class LeaveService {
         );
       }
       const status: LeaveStatus = body.approve ? "approved" : "rejected";
-      await client.query(
+      const upd = await client.query(
         `UPDATE leave_requests
          SET status = $1, decided_by = $2, decided_at = now(), decision_note = $3
-         WHERE id = $4`,
+         WHERE id = $4 AND status = 'pending'
+         RETURNING id`,
         [status, userId, note, id],
       );
+      if (!upd.rows[0]) {
+        throw new ConflictException("Someone else decided this request first");
+      }
       await this.audit.record(client, {
         workspaceId,
         actorUserId: userId,
@@ -469,13 +475,19 @@ export class LeaveService {
   async cancel(workspaceId: string, userId: string, id: string): Promise<void> {
     await this.db.withWorkspace(workspaceId, userId, async (client) => {
       const res = await client.query(
+        // Pending can always be withdrawn; approved only while it hasn't
+        // started. (That rule lived in the client alone, so last month's
+        // approved leave could be cancelled against the API to win the days back.)
         `UPDATE leave_requests SET status = 'cancelled'
-         WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'approved')
+         WHERE id = $1 AND user_id = $2
+           AND (status = 'pending' OR (status = 'approved' AND start_date > current_date))
          RETURNING id`,
         [id, userId],
       );
       if (!res.rows[0]) {
-        throw new NotFoundException("No cancellable request found");
+        throw new BadRequestException(
+          "Only pending requests, or approved leave that hasn't started yet, can be cancelled",
+        );
       }
       await this.audit.record(client, {
         workspaceId,

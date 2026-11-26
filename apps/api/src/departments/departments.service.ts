@@ -248,7 +248,7 @@ export class DepartmentsService {
                 m.role, m.status, m.title
          FROM department_members dm
          JOIN users u ON u.id = dm.user_id
-         JOIN memberships m ON m.user_id = dm.user_id
+         JOIN memberships m ON m.user_id = dm.user_id AND m.workspace_id = dm.workspace_id
          WHERE dm.department_id = $1
          ORDER BY (dm.dept_role = 'head') DESC, dm.created_at`,
         [id],
@@ -314,6 +314,9 @@ export class DepartmentsService {
         throw e;
       }
       const id = res.rows[0].id as string;
+      // The lead is the head: on the roster too, so leave approval and the
+      // HR badge see them from the start.
+      if (leadUserId) await this.setHead(client, workspaceId, id, leadUserId);
 
       let spaceId: string | null = null;
       if (createSpace) {
@@ -386,6 +389,7 @@ export class DepartmentsService {
 
       const sets: string[] = [];
       const params: unknown[] = [id];
+      let newHead: string | null | undefined;
       if (body.name !== undefined) {
         params.push(requireName(body.name));
         sets.push(`name = $${params.length}`);
@@ -407,8 +411,7 @@ export class DepartmentsService {
           ? requireUuid(body.leadUserId, "leadUserId")
           : null;
         if (lead) await this.assertMember(client, lead, "leadUserId");
-        params.push(lead);
-        sets.push(`lead_user_id = $${params.length}`);
+        newHead = lead;
       }
       if (body.spaceId !== undefined) {
         const nextSpaceId = body.spaceId
@@ -444,13 +447,18 @@ export class DepartmentsService {
         params.push(nextSpaceId);
         sets.push(`space_id = $${params.length}`);
       }
-      if (sets.length === 0) throw new BadRequestException("Nothing to update");
+      if (sets.length === 0 && newHead === undefined) {
+        throw new BadRequestException("Nothing to update");
+      }
 
       try {
-        await client.query(
-          `UPDATE departments SET ${sets.join(", ")} WHERE id = $1`,
-          params,
-        );
+        if (sets.length > 0) {
+          await client.query(
+            `UPDATE departments SET ${sets.join(", ")} WHERE id = $1`,
+            params,
+          );
+        }
+        if (newHead !== undefined) await this.setHead(client, workspaceId, id, newHead);
       } catch (e) {
         if ((e as { code?: string }).code === "23505") {
           throw new ConflictException("A department with that name already exists");
@@ -538,6 +546,13 @@ export class DepartmentsService {
       if (kind !== "new_member" && kind !== "head" && kind !== "specific") {
         throw new BadRequestException(
           "assigneeKind must be 'new_member', 'head' or 'specific'",
+        );
+      }
+      // "Specific person" with nobody picked is the picker's default state;
+      // name the step instead of "assigneeUserId must be a uuid".
+      if (kind === "specific" && (typeof s.assigneeUserId !== "string" || !s.assigneeUserId)) {
+        throw new BadRequestException(
+          `Step ${i + 1} (“${title}”) is set to a specific person — choose who, or pick another assignee.`,
         );
       }
       const assigneeUserId =
@@ -794,6 +809,9 @@ export class DepartmentsService {
         if (!ins.rows[0]) {
           throw new ConflictException("Already in this department");
         }
+        if (deptRole === "head") {
+          await this.setHead(client, workspaceId, departmentId, targetUserId);
+        }
         if (title !== undefined) {
           await client.query(
             `UPDATE memberships SET title = $1 WHERE user_id = $2`,
@@ -817,7 +835,7 @@ export class DepartmentsService {
                   m.role, m.status, m.title
            FROM department_members dm
            JOIN users u ON u.id = dm.user_id
-           JOIN memberships m ON m.user_id = dm.user_id
+           JOIN memberships m ON m.user_id = dm.user_id AND m.workspace_id = dm.workspace_id
            WHERE dm.department_id = $1 AND dm.user_id = $2`,
           [departmentId, targetUserId],
         );
@@ -865,11 +883,17 @@ export class DepartmentsService {
         [departmentId, targetUserId],
       );
       if (!cur.rows[0]) throw new NotFoundException("Not in this department");
-      if (deptRole !== undefined) {
+      if (deptRole === "head") {
+        await this.setHead(client, workspaceId, departmentId, targetUserId);
+      } else if (deptRole === "member") {
         await client.query(
-          `UPDATE department_members SET dept_role = $1
-           WHERE department_id = $2 AND user_id = $3`,
-          [deptRole, departmentId, targetUserId],
+          `UPDATE department_members SET dept_role = 'member'
+           WHERE department_id = $1 AND user_id = $2`,
+          [departmentId, targetUserId],
+        );
+        await client.query(
+          `UPDATE departments SET lead_user_id = NULL WHERE id = $1 AND lead_user_id = $2`,
+          [departmentId, targetUserId],
         );
       }
       if (title !== undefined) {
@@ -890,6 +914,41 @@ export class DepartmentsService {
     this.publishChanged(workspaceId, departmentId);
   }
 
+  /**
+   * The single source of a department's head. The lead dropdown
+   * (`departments.lead_user_id`) and the roster's "Make head"
+   * (`department_members.dept_role`) used to be written independently and
+   * never reconciled — leave approval and the HR badge read the roster,
+   * onboarding's "Department head" step read the lead. A head set one way was
+   * invisible the other. Every write now goes through here: one head, on the
+   * roster as 'head', and named as the lead.
+   */
+  private async setHead(
+    client: PoolClient,
+    workspaceId: string,
+    departmentId: string,
+    headUserId: string | null,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE department_members SET dept_role = 'member'
+        WHERE department_id = $1 AND dept_role = 'head'
+          AND ($2::uuid IS NULL OR user_id <> $2::uuid)`,
+      [departmentId, headUserId],
+    );
+    if (headUserId) {
+      await client.query(
+        `INSERT INTO department_members (workspace_id, department_id, user_id, dept_role)
+         VALUES ($1, $2, $3, 'head')
+         ON CONFLICT (department_id, user_id) DO UPDATE SET dept_role = 'head'`,
+        [workspaceId, departmentId, headUserId],
+      );
+    }
+    await client.query(`UPDATE departments SET lead_user_id = $2 WHERE id = $1`, [
+      departmentId,
+      headUserId,
+    ]);
+  }
+
   async removeMember(
     workspaceId: string,
     actorUserId: string,
@@ -905,6 +964,11 @@ export class DepartmentsService {
         [departmentId, targetUserId],
       );
       if (!res.rows[0]) throw new NotFoundException("Not in this department");
+      // Removing the head leaves the department without one, everywhere.
+      await client.query(
+        `UPDATE departments SET lead_user_id = NULL WHERE id = $1 AND lead_user_id = $2`,
+        [departmentId, targetUserId],
+      );
       await this.audit.record(client, {
         workspaceId,
         actorUserId,

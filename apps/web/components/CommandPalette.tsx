@@ -49,6 +49,7 @@ const DESTINATIONS: { label: string; href: string; icon: IconKey; keywords?: str
   { label: "Settings", href: "/settings", icon: "settings", keywords: "workspace preferences" },
   { label: "Everything", href: "/everything", icon: "spaces", keywords: "spaces folders lists overview" },
   { label: "Docs", href: "/docs", icon: "docs", keywords: "wiki pages notes write document" },
+  { label: "Notes", href: "/notes", icon: "note", keywords: "notepad jot scratch quick notes memo" },
   { label: "Whiteboards", href: "/whiteboards", icon: "whiteboard", keywords: "canvas draw sticky notes shapes brainstorm visual board" },
   { label: "Forms", href: "/forms", icon: "clipboard", keywords: "form intake request survey submissions" },
   { label: "Timesheet", href: "/timesheet", icon: "clock", keywords: "time tracking hours week entries" },
@@ -285,6 +286,17 @@ export function CommandPalette({
           icon: "docs",
           title: d.icon ? `${d.icon}  ${d.name}` : d.name,
           run: () => nav(`/doc?id=${d.id}`),
+        })),
+      });
+    if (results.notes.length)
+      out.push({
+        title: "Notes",
+        items: results.notes.map((n) => ({
+          key: `note:${n.id}`,
+          icon: "note",
+          title: n.title,
+          subtitle: n.snippet,
+          run: () => nav(`/notes?id=${n.id}`),
         })),
       });
     if (results.goals.length)

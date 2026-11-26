@@ -230,10 +230,12 @@ describe("dashboards", () => {
       .set(auth(member.accessToken))
       .send({ title: "Readme", width: "half", position: 3, config: { text: "v2" } })
       .expect(200);
+    // Positions are the card's index in the dashboard (0..n-1): asking for
+    // 3 on a one-card dashboard lands at 0.
     expect(patchedCard.body.card).toMatchObject({
       title: "Readme",
       width: "half",
-      position: 3,
+      position: 0,
     });
     expect(await cardData(member.accessToken, card.id)).toEqual({ text: "v2" });
 
@@ -265,6 +267,26 @@ describe("dashboards", () => {
       .get(`/dashboards/${dash.id}`)
       .set(auth(owner.accessToken))
       .expect(404);
+  });
+
+  it("moving a card reorders the dashboard, and the order sticks", async () => {
+    const owner = await ownerWorkspace();
+    const dash = await makeDashboard(owner.accessToken, "Order");
+    const a = await makeCard(owner.accessToken, dash.id, { kind: "text", title: "A", config: { text: "a" } });
+    await makeCard(owner.accessToken, dash.id, { kind: "text", title: "B", config: { text: "b" } });
+    const c = await makeCard(owner.accessToken, dash.id, { kind: "text", title: "C", config: { text: "c" } });
+    const order = async () =>
+      (await http.get(`/dashboards/${dash.id}`).set(auth(owner.accessToken)).expect(200)).body.cards.map(
+        (x: { title: string }) => x.title,
+      );
+    expect(await order()).toEqual(["A", "B", "C"]);
+    // Move C up one (index 2 -> 1). Writing only C's position used to leave
+    // B and C both at 1, and the tie-break put C straight back.
+    await http.patch(`/cards/${c.id}`).set(auth(owner.accessToken)).send({ position: 1 }).expect(200);
+    expect(await order()).toEqual(["A", "C", "B"]);
+    // ...and past the end.
+    await http.patch(`/cards/${a.id}`).set(auth(owner.accessToken)).send({ position: 9 }).expect(200);
+    expect(await order()).toEqual(["C", "B", "A"]);
   });
 
   it("statusBreakdown counts non-archived tasks by status", async () => {

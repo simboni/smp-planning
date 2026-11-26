@@ -1041,8 +1041,17 @@ export class TasksService {
         params.push(body.statusId);
         // Entering a 'done' status completes the task; leaving one reopens it.
         // Being blocked never hard-rejects a done move (ClickUp only warns).
+        // Done -> another done status (Done -> Closed), or re-picking the same
+        // one, keeps the original completion time: overwriting it with now()
+        // re-counted old work in this week's trend and burndown.
         sets.push(`completed_at = $${i++}`);
-        params.push(type === "done" ? new Date() : null);
+        params.push(
+          type === "done"
+            ? existing.s_type === "done" && existing.completed_at
+              ? existing.completed_at
+              : new Date()
+            : null,
+        );
         auditData.statusId = body.statusId;
         auditData.statusChanged = existing.status_id !== body.statusId;
         becameDone = type === "done" && existing.s_type !== "done";

@@ -18,8 +18,10 @@
 import Link from "next/link";
 import {
   Suspense,
+  memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -27,6 +29,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ApiError,
+  filesApi,
   getUser,
   docsApi,
   permissionAtLeast,
@@ -415,6 +418,57 @@ function TreeNode({
  * ------------------------------------------------------------------ */
 type SaveState = "idle" | "saving" | "saved" | "error";
 
+/**
+ * The writing surface. React must never write its innerHTML after the first
+ * seed — that is the whole fix for "the doc keeps wiping what I typed".
+ *
+ * react-dom 19 diffs `dangerouslySetInnerHTML` by object identity on a div
+ * and then assigns innerHTML without comparing the string. The editor used
+ * to pass a fresh `{__html: page.content}` on every render, so ANY re-render
+ * (autosave finishing, a menu opening, a collaborator's event) reset the
+ * live text to the content of the last GET — and the next keystroke saved
+ * that reverted text, making the loss permanent.
+ *
+ * Here the DOM is seeded imperatively once per page/version (the parent's
+ * `key` remounts it on a page switch or a remote refresh) and is otherwise
+ * owned by the browser. No children, no innerHTML prop: nothing for React
+ * to reconcile.
+ */
+const DocEditable = memo(function DocEditable({
+  html,
+  canEdit,
+  editorRef,
+  onInput,
+  onBlur,
+}: {
+  html: string;
+  canEdit: boolean;
+  editorRef: React.MutableRefObject<HTMLDivElement | null>;
+  onInput: () => void;
+  onBlur: () => void;
+}) {
+  const local = useRef<HTMLDivElement | null>(null);
+  const seed = useRef(html);
+  useLayoutEffect(() => {
+    if (local.current) local.current.innerHTML = seed.current;
+  }, []);
+  return (
+    <div
+      ref={(el) => {
+        local.current = el;
+        editorRef.current = el;
+      }}
+      className={`doc-prose${canEdit ? "" : " readonly"}`}
+      contentEditable={canEdit}
+      suppressContentEditableWarning
+      spellCheck
+      data-placeholder="Start writing — or press / on your keyboard someday. For now, just write."
+      onInput={onInput}
+      onBlur={onBlur}
+    />
+  );
+});
+
 function DocView() {
   const search = useSearchParams();
   const router = useRouter();
@@ -447,11 +501,16 @@ function DocView() {
   const [saveState, setSaveState] = useState<SaveState>("idle");
 
   const editorRef = useRef<HTMLDivElement | null>(null);
-  const dirtyRef = useRef(false);
+  /**
+   * Unsaved text, per page: pageId -> html. Every save is bound to the page it
+   * was typed into. (The dirty flag and html mirror used to be component-wide
+   * while the selected page was not, so a retry after a network blip could
+   * PATCH page B with page A's text, or mark page A clean without saving it.)
+   */
+  const pendingRef = useRef(new Map<string, string>());
+  const isDirty = (): boolean => pendingRef.current.size > 0;
   /** A remote edit arrived while typing — apply it once the editor is idle. */
   const pendingRemoteRef = useRef(false);
-  /** Mirror of the live buffer — survives ref detach so the unmount flush works. */
-  const latestHtmlRef = useRef<string>("");
   const lastEditRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Monotonic save id — only the newest response may update UI state. */
@@ -525,43 +584,46 @@ function DocView() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    if (!dirtyRef.current || !pageIdRef.current) return;
-    // editorRef is already null during unmount cleanup — fall back to the
-    // mirror so navigating away never loses the last keystrokes.
-    const html = editorRef.current?.innerHTML ?? latestHtmlRef.current;
-    if (!html && !editorRef.current) return;
-    const id = pageIdRef.current;
-    dirtyRef.current = false;
+    // Take the freshest text for the open page straight from the editor.
+    const openId = pageIdRef.current;
+    if (openId && editorRef.current && pendingRef.current.has(openId)) {
+      pendingRef.current.set(openId, editorRef.current.innerHTML);
+    }
+    if (pendingRef.current.size === 0) return;
+    const batch = [...pendingRef.current];
+    pendingRef.current.clear();
     // Sequence saves: a slow request must never let an older payload land
     // after a newer one (that would silently resurrect stale text).
     const seq = ++saveSeqRef.current;
     setSaveState("saving");
-    docsApi
-      .updatePage(id, { content: html })
-      .then(() => {
-        if (seq !== saveSeqRef.current) return; // superseded by a newer save
+    Promise.allSettled(batch.map(([id, html]) => docsApi.updatePage(id, { content: html }))).then((results) => {
+      const failed = batch.filter((_, i) => results[i].status === "rejected");
+      // Put failures back — unless newer text for that page arrived meanwhile.
+      for (const [id, html] of failed) {
+        if (!pendingRef.current.has(id)) pendingRef.current.set(id, html);
+      }
+      if (seq !== saveSeqRef.current) return; // superseded by a newer save
+      if (failed.length === 0) {
         setSaveState("saved");
         setSaveError("");
         // A remote edit that arrived mid-typing can now be applied safely.
-        if (pendingRemoteRef.current && !dirtyRef.current) refetchOpenPageRef.current?.();
-      })
-      .catch((err) => {
-        if (seq !== saveSeqRef.current) return;
-        // Keep the text dirty so the next flush retries it, and SAY so —
-        // a silent failure is what makes writing look like it vanished.
-        dirtyRef.current = true;
-        setSaveState("error");
-        setSaveError(
-          err instanceof ApiError ? err.message : "Couldn't save — will retry.",
-        );
-        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = setTimeout(() => flushRef.current?.(), 4000);
-      });
+        if (pendingRemoteRef.current && !isDirty()) refetchOpenPageRef.current?.();
+        return;
+      }
+      // SAY so — a silent failure is what makes writing look like it vanished.
+      const firstFail = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      setSaveState("error");
+      setSaveError(
+        firstFail.reason instanceof ApiError ? firstFail.reason.message : "Couldn't save — will retry.",
+      );
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => flushRef.current?.(), 4000);
+    });
   }, []);
 
   const markDirty = useCallback((): void => {
-    dirtyRef.current = true;
-    if (editorRef.current) latestHtmlRef.current = editorRef.current.innerHTML;
+    const id = pageIdRef.current;
+    if (id && editorRef.current) pendingRef.current.set(id, editorRef.current.innerHTML);
     lastEditRef.current = Date.now();
     setSaveState("saving");
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -575,12 +637,16 @@ function DocView() {
   // persist — 'pagehide' fires where 'beforeunload' is unreliable on iOS.
   useEffect(() => {
     const save = (): void => flushNow();
-    window.addEventListener("pagehide", save);
-    document.addEventListener("visibilitychange", () => {
+    const onVisibility = (): void => {
       if (document.visibilityState === "hidden") save();
-    });
+    };
+    window.addEventListener("pagehide", save);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("pagehide", save);
+      // This listener used to be anonymous and never removed: one leaked
+      // handler per mount, firing setState on dead components.
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [flushNow]);
 
@@ -595,9 +661,9 @@ function DocView() {
    */
   const handleBlur = useCallback((): void => {
     flushNow();
-    if (pendingRemoteRef.current && !dirtyRef.current) {
+    if (pendingRemoteRef.current && !isDirty()) {
       window.setTimeout(() => {
-        if (!dirtyRef.current) refetchOpenPageRef.current?.();
+        if (!isDirty()) refetchOpenPageRef.current?.();
       }, 400);
     }
   }, [flushNow]);
@@ -654,7 +720,10 @@ function DocView() {
         setSelectedId(r.page.id);
         setRenamingId(r.page.id);
       })
-      .catch(() => undefined);
+      .catch((err) =>
+        // Was swallowed: on a 403 or a plan limit the "+" just looked dead.
+        window.alert(err instanceof ApiError ? err.message : "Couldn't add a page. Check your connection and try again."),
+      );
   };
 
   const renamePage = (id: string, newTitle: string): void => {
@@ -749,7 +818,7 @@ function DocView() {
         // Re-check on ARRIVAL: typing may have resumed while this was in
         // flight, and remounting now would wipe those keystrokes.
         const busyNow =
-          dirtyRef.current ||
+          isDirty() ||
           Date.now() - lastEditRef.current < 3000 ||
           (typeof document !== "undefined" &&
             editorRef.current !== null &&
@@ -793,7 +862,7 @@ function DocView() {
       // writing. The refresh is deferred to the next blur rather than lost.
       if (e.payload.pageId !== pageIdRef.current) return;
       const editorBusy =
-        dirtyRef.current ||
+        isDirty() ||
         Date.now() - lastEditRef.current < 3000 ||
         (typeof document !== "undefined" &&
           editorRef.current !== null &&
@@ -1149,7 +1218,39 @@ function DocView() {
         {canEdit && page && <Toolbar exec={exec} editorRef={editorRef} />}
 
         <div className="doc-scroll">
-          {pageError ? (
+          {doc?.fileId ? (
+            // An uploaded document has no pages: offer the file instead of
+            // sitting on the loading skeleton forever.
+            <div className="doc-page-pad">
+              <div className="empty-state doc-upload-state">
+                <span className="empty-ic">{Icons.paperclip ?? Icons.docs}</span>
+                <h3>{doc.name}</h3>
+                <p>This is an uploaded file{doc.fileMime ? ` (${doc.fileMime.split("/").pop()?.toUpperCase()})` : ""}, not a written doc.</p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    filesApi
+                      .blobUrl(doc.fileId!)
+                      .then((url) => {
+                        const m = (doc.fileMime ?? "").toLowerCase();
+                        if (m === "application/pdf" || m.startsWith("image/")) {
+                          window.open(url, "_blank", "noopener");
+                        } else {
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = doc.name;
+                          a.click();
+                        }
+                      })
+                      .catch(() => window.alert("Couldn't open the file."));
+                  }}
+                >
+                  Open file
+                </button>
+              </div>
+            </div>
+          ) : pageError ? (
             <div className="doc-page-pad">
               <div className="form-error">{pageError}</div>
             </div>
@@ -1176,21 +1277,12 @@ function DocView() {
                   }
                 }}
               />
-              {/*
-               * The buffer is seeded once per page/version via
-               * dangerouslySetInnerHTML (server-sanitized HTML) and then owned
-               * by the browser — React never reconciles the typing. The key
-               * remounts it on page switch or remote refetch.
-               */}
-              <div
+              {/* Seeded once per page/version, then owned by the browser — see DocEditable. */}
+              <DocEditable
                 key={`${page.id}:${contentVersion}`}
-                ref={editorRef}
-                className={`doc-prose${canEdit ? "" : " readonly"}`}
-                contentEditable={canEdit}
-                suppressContentEditableWarning
-                spellCheck
-                data-placeholder="Start writing — or press / on your keyboard someday. For now, just write."
-                dangerouslySetInnerHTML={{ __html: page.content || "" }}
+                html={page.content || ""}
+                canEdit={canEdit}
+                editorRef={editorRef}
                 onInput={markDirty}
                 onBlur={handleBlur}
               />

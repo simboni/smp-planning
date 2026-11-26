@@ -552,7 +552,7 @@ export class DocsService {
     docId: string,
     body: { title?: string; parentPageId?: string },
   ): Promise<Page> {
-    return this.db.withWorkspace(workspaceId, userId, async (client) => {
+    const page = await this.db.withWorkspace(workspaceId, userId, async (client) => {
       await this.requireDocEditable(client, userId, role, docId);
       const title = optionalName(body?.title, "title") ?? "Untitled";
       const parentPageId =
@@ -579,8 +579,16 @@ export class DocsService {
          RETURNING ${PAGE_COLUMNS}`,
         [workspaceId, docId, parentPageId, title, posRes.rows[0].n, userId],
       );
+      // A new page is a change to the doc: bump it so /docs sorts and counts
+      // right, and tell other open editors (their page tree was going stale).
+      await client.query(`UPDATE docs SET updated_at = now() WHERE id = $1`, [docId]);
       return this.toPage(res.rows[0]);
     });
+    this.events.publish(workspaceId, {
+      type: "doc.changed",
+      payload: { docId, pageId: page.id, actorUserId: userId },
+    });
+    return page;
   }
 
   async updatePage(
@@ -688,6 +696,13 @@ export class DocsService {
         throw new BadRequestException("Cannot delete a doc's last page");
       }
       await client.query(`DELETE FROM doc_pages WHERE id = $1`, [pageId]);
+      await client.query(`UPDATE docs SET updated_at = now() WHERE id = $1`, [page.docId]);
+      return page.docId;
+    }).then((docId) => {
+      this.events.publish(workspaceId, {
+        type: "doc.changed",
+        payload: { docId, pageId, actorUserId: userId },
+      });
     });
   }
 

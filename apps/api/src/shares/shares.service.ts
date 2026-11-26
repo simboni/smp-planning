@@ -106,7 +106,14 @@ export class SharesService {
            (workspace_id, entity_type, entity_id, token, permission, created_by)
          VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (workspace_id, entity_type, entity_id)
-           DO UPDATE SET permission = EXCLUDED.permission, revoked_at = NULL
+           -- A revoked link gets a NEW token: re-sharing used to resurrect the
+           -- old URL, so every copy the user thought they had killed started
+           -- working again. A live link keeps its token (re-sharing is then
+           -- just a permission change).
+           DO UPDATE SET permission = EXCLUDED.permission,
+                         token = CASE WHEN public_shares.revoked_at IS NOT NULL
+                                      THEN EXCLUDED.token ELSE public_shares.token END,
+                         revoked_at = NULL
          RETURNING id, entity_type, entity_id, token, permission, created_at`,
         [workspaceId, entityType, entityId, token, permission, userId],
       );

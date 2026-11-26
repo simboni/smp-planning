@@ -454,6 +454,22 @@ export class WorkspacesService {
         `DELETE FROM memberships WHERE workspace_id = $1 AND user_id = $2`,
         [workspaceId, targetUserId],
       );
+      // The org rows that point at the person go with them. They used to be
+      // left behind: a department card said "5 people" over 4 names, the
+      // stale row couldn't be deleted, and their approved leave still showed
+      // in "Who's away". (All tenant-scoped: RLS keeps this to this workspace.)
+      await client.query(`DELETE FROM department_members WHERE user_id = $1`, [targetUserId]);
+      await client.query(`UPDATE departments SET lead_user_id = NULL WHERE lead_user_id = $1`, [targetUserId]);
+      await client.query(`DELETE FROM team_members WHERE user_id = $1`, [targetUserId]);
+      await client.query(
+        `UPDATE leave_requests
+            SET status = 'cancelled',
+                decision_note = CASE WHEN decision_note = '' THEN 'Withdrawn: left the workspace'
+                                     ELSE decision_note END
+          WHERE user_id = $1
+            AND (status = 'pending' OR (status = 'approved' AND end_date >= current_date))`,
+        [targetUserId],
+      );
       await this.audit.record(client, {
         workspaceId,
         actorUserId,

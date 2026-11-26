@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   docsApi,
+  getWorkspace,
   hierarchyApi,
   permissionAtLeast,
   type Doc,
@@ -135,6 +136,8 @@ function InlineInput({
 
 export function HierarchyTree() {
   const { tree, loading, error, reload, setTree } = useHierarchy();
+  const wsRole = getWorkspace()?.role;
+  const isWsAdmin = wsRole === "owner" || wsRole === "admin";
   const pathname = usePathname();
   const router = useRouter();
   const search = useSearchParams();
@@ -395,7 +398,10 @@ export function HierarchyTree() {
 
   const reorderSpaces = (ids: string[]): void => {
     setTree((prev) => ids.map((id) => prev.find((s) => s.id === id)!).filter(Boolean));
-    void hierarchyApi.reorderSpaces(ids).catch(() => void reload());
+    void hierarchyApi.reorderSpaces(ids).catch((e) => {
+      showToast(e instanceof ApiError ? e.message : "Couldn't reorder spaces.");
+      void reload();
+    });
   };
   const reorderFolders = (spaceId: string, ids: string[]): void => {
     setTree((prev) =>
@@ -405,7 +411,10 @@ export function HierarchyTree() {
           : s,
       ),
     );
-    void hierarchyApi.reorderFolders(spaceId, ids).catch(() => void reload());
+    void hierarchyApi.reorderFolders(spaceId, ids).catch((e) => {
+      showToast(e instanceof ApiError ? e.message : "Couldn't reorder folders.");
+      void reload();
+    });
   };
   const reorderLists = (spaceId: string, folderId: string | null, ids: string[]): void => {
     setTree((prev) =>
@@ -424,7 +433,10 @@ export function HierarchyTree() {
         };
       }),
     );
-    void hierarchyApi.reorderLists(spaceId, folderId, ids).catch(() => void reload());
+    void hierarchyApi.reorderLists(spaceId, folderId, ids).catch((e) => {
+      showToast(e instanceof ApiError ? e.message : "Couldn't reorder lists.");
+      void reload();
+    });
   };
 
   /* -- native drag-and-drop ------------------------------------------ */
@@ -807,7 +819,10 @@ export function HierarchyTree() {
     const open = isOpen(space.id);
     const dot = space.color || colorFor(space.id);
     const active = activeSpaceId === space.id;
-    // Permission gating: edit+ may mutate structure; full may manage sharing.
+    // Permission gating, matching the server: edit+ may add folders/lists;
+    // rename, recolor, archive, delete, privacy and sharing need 'full';
+    // reordering spaces is owner/admin only. (Every action used to be offered
+    // on 'edit', so members met a string of 403 toasts.)
     const canEdit = permissionAtLeast(space.myPermission, "edit");
     const canManageSpace = space.myPermission === "full";
     const showMenu = canEdit || canManageSpace;
@@ -827,11 +842,13 @@ export function HierarchyTree() {
               dragOverKey === `space:${space.id}` ? " dragover" : ""
             }`}
             style={{ paddingLeft: 10 }}
-            {...dragProps(
-              { kind: "space", id: space.id, container: "spaces" },
-              { kind: "space", id: space.id, container: "spaces" },
-              { spaces: tree },
-            )}
+            {...(isWsAdmin
+              ? dragProps(
+                  { kind: "space", id: space.id, container: "spaces" },
+                  { kind: "space", id: space.id, container: "spaces" },
+                  { spaces: tree },
+                )
+              : {})}
           >
             {/* Clicking the space opens its overview page and expands it; the
                 caret alone toggles expand/collapse without navigating. */}
@@ -913,6 +930,10 @@ export function HierarchyTree() {
                     <button type="button" onClick={() => newDoc(space.id, `in ${space.name}`)}>
                       {Icons.book} New doc
                     </button>
+                  </>
+                )}
+                {canManageSpace && (
+                  <>
                     <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
                       {Icons.edit} Rename
                     </button>
@@ -926,7 +947,7 @@ export function HierarchyTree() {
                     {Icons.lock} {space.isPrivate ? "Make public" : "Make private"}
                   </button>
                 )}
-                {canEdit && (
+                {isWsAdmin && (
                   <>
                     <button
                       type="button"
@@ -940,6 +961,10 @@ export function HierarchyTree() {
                     >
                       {Icons.arrowDown} Move down
                     </button>
+                  </>
+                )}
+                {canManageSpace && (
+                  <>
                     <button type="button" onClick={() => doArchive("space", space.id)}>
                       {Icons.archive} Archive
                     </button>
@@ -950,7 +975,7 @@ export function HierarchyTree() {
                 )}
               </div>
             )}
-            {canEdit && colorFor_ === k && <ColorPopover kind="space" id={space.id} />}
+            {canManageSpace && colorFor_ === k && <ColorPopover kind="space" id={space.id} />}
           </div>
         )}
 

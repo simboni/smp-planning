@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { hierarchyApi, type SpaceTree } from "@/lib/api";
+import { ApiError, hierarchyApi, type ArchivedItems, type SpaceTree } from "@/lib/api";
+import { showToast } from "@/lib/toast";
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { Icons } from "@/components/icons";
 import { colorFor } from "@/lib/format";
@@ -17,20 +18,52 @@ export default function EverythingPage() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [archived, setArchived] = useState<ArchivedItems | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const loadArchived = useCallback((): void => {
+    hierarchyApi
+      .archived()
+      .then(setArchived)
+      .catch(() => setArchived(null));
+  }, []);
+  useEffect(loadArchived, [loadArchived]);
 
   const createSpace = async (): Promise<void> => {
     const n = name.trim();
     if (!n || busy) return;
     setBusy(true);
+    setCreateError("");
     try {
       await hierarchyApi.createSpace({ name: n });
       setName("");
       setCreating(false);
       await reload();
+    } catch (err) {
+      // Used to have no catch at all: a refusal was an unhandled rejection
+      // and the button simply looked like it did nothing.
+      setCreateError(err instanceof ApiError ? err.message : "Couldn't create the space. Try again.");
     } finally {
       setBusy(false);
     }
   };
+
+  const restore = async (kind: "space" | "folder" | "list", id: string, label: string): Promise<void> => {
+    try {
+      if (kind === "space") await hierarchyApi.updateSpace(id, { archived: false });
+      else if (kind === "folder") await hierarchyApi.updateFolder(id, { archived: false });
+      else await hierarchyApi.updateList(id, { archived: false });
+      showToast(`Restored “${label}”`);
+      await reload();
+      loadArchived();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Couldn't restore it.");
+    }
+  };
+  const archivedCount = archived
+    ? archived.spaces.length + archived.folders.length + archived.lists.length
+    : 0;
 
   return (
     <div className="page">
@@ -60,9 +93,10 @@ export default function EverythingPage() {
           <button className="btn btn-primary btn-sm" onClick={() => void createSpace()} disabled={busy}>
             Create
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setCreating(false); setName(""); }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setCreating(false); setName(""); setCreateError(""); }}>
             Cancel
           </button>
+          {createError && <div className="form-error" style={{ flexBasis: "100%" }}>{createError}</div>}
         </div>
       )}
 
@@ -121,6 +155,40 @@ export default function EverythingPage() {
               </Link>
             );
           })}
+        </div>
+      )}
+
+      {archivedCount > 0 && (
+        <div className="ev-archived">
+          <button type="button" className="ev-archived-toggle" onClick={() => setShowArchived((v) => !v)}>
+            {Icons.archive} Archived ({archivedCount}) <span className={`tree-caret${showArchived ? " open" : ""}`}>{Icons.chevronRight}</span>
+          </button>
+          {showArchived && archived && (
+            <div className="card ev-archived-list">
+              {[
+                ...archived.spaces.map((x) => ({ kind: "space" as const, id: x.id, name: x.name, where: "Space", can: x.canRestore })),
+                ...archived.folders.map((x) => ({ kind: "folder" as const, id: x.id, name: x.name, where: `Folder in ${x.spaceName}`, can: x.canRestore })),
+                ...archived.lists.map((x) => ({
+                  kind: "list" as const, id: x.id, name: x.name,
+                  where: `List in ${x.spaceName}${x.folderName ? ` › ${x.folderName}` : ""}`, can: x.canRestore,
+                })),
+              ].map((x) => (
+                <div key={`${x.kind}:${x.id}`} className="ev-archived-row">
+                  <span className="ev-archived-name">
+                    {x.name}
+                    <span className="muted">{x.where}</span>
+                  </span>
+                  {x.can ? (
+                    <button type="button" className="btn btn-soft btn-sm" onClick={() => void restore(x.kind, x.id, x.name)}>
+                      Restore
+                    </button>
+                  ) : (
+                    <span className="muted ev-archived-ro">Ask an admin to restore</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

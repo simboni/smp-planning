@@ -21,8 +21,8 @@ import {
 import { TeamsService } from "./teams.service";
 
 /**
- * Teams (user groups). Every route is workspace-scoped. Reads are open to any
- * member; team management (create / rename / delete / membership) requires
+ * Teams (user groups). Every route is workspace-scoped. Reads need the
+ * member role (guests are refused); team management (create / rename / delete / membership) requires
  * @Roles('admin') — i.e. owner or admin (meet-or-exceed).
  */
 @Controller("teams")
@@ -30,12 +30,18 @@ import { TeamsService } from "./teams.service";
 export class TeamsController {
   constructor(private readonly teams: TeamsService) {}
 
+  // Members and up: rosters carry names and emails, and guests (external
+  // collaborators) have no business enumerating them.
   @Get()
+  @UseGuards(RolesGuard)
+  @Roles("member")
   async list(@Req() req: AuthedRequest) {
     return { teams: await this.teams.list(req.workspaceId!, req.userId!) };
   }
 
   @Get(":id")
+  @UseGuards(RolesGuard)
+  @Roles("member")
   async detail(
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,

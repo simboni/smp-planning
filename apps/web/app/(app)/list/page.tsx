@@ -56,7 +56,8 @@ interface ListMeta {
   folder: { id: string; name: string } | null;
 }
 
-const KINDS: ViewKind[] = ["list", "board", "calendar", "table", "gantt"];
+// Every tab the List page offers — "timeline" was missing, so it was never remembered.
+const KINDS: ViewKind[] = ["list", "board", "calendar", "table", "gantt", "timeline"];
 const DEFAULT_CONFIG: ViewConfig = { filters: {}, sort: null, groupBy: "status" };
 
 /* localStorage helpers (guarded for the static export). */

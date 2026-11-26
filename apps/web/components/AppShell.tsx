@@ -120,6 +120,7 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Create & Share",
     items: [
       { href: "/docs", label: "Docs", icon: "docs" },
+      { href: "/notes", label: "Notes", icon: "note" },
       { href: "/whiteboards", label: "Whiteboards", icon: "whiteboard" },
       { href: "/forms", label: "Forms", icon: "clipboard" },
       { href: "/templates", label: "Templates", icon: "copy" },
@@ -139,6 +140,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const [user, setUserState] = useState<PublicUser | null>(null);
   const [workspace, setWorkspaceState] = useState<WorkspaceSummary | null>(null);
+  // Guests can't open the Organization pages (People, Departments, HR, Leave
+  // all refuse them), so don't offer the section.
+  const visibleSections =
+    workspace?.role === "guest"
+      ? NAV_SECTIONS.filter((s) => s.title !== "Organization")
+      : NAV_SECTIONS;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -564,7 +571,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav>
-          {NAV_SECTIONS.map((section) => (
+          {visibleSections.map((section) => (
             <div key={section.title} className="nav-section">
               <div className="nav-title">{section.title}</div>
               {section.items.map((item) => {
@@ -895,7 +902,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             <div className="app-sheet-list">
-              {NAV_SECTIONS.map((section) => {
+              {visibleSections.map((section) => {
                 // Pinned tabs live in the bottom bar; Settings has its own
                 // dedicated entry below alongside theme/sign-out.
                 const items = section.items.filter(

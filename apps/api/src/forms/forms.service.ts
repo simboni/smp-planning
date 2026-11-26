@@ -178,10 +178,11 @@ export class FormsService {
         `SELECT f.id, f.name, f.list_id, f.active, f.public_token,
                 jsonb_array_length(f.fields)::int AS field_count, f.updated_at,
                 l.name AS list_name, l.space_id,
-                (SELECT count(*) FROM tasks t
-                   WHERE t.list_id = f.list_id
-                     AND t.parent_task_id IS NULL
-                     AND coalesce(t.description, '') <> '')::int AS response_count
+                -- Real submissions only. Counting every described task in the
+                -- list let manual and automation-made tasks inflate it.
+                (SELECT count(*) FROM form_responses fr
+                   JOIN tasks t ON t.id = fr.task_id
+                   WHERE fr.form_id = f.id)::int AS response_count
          FROM forms f JOIN lists l ON l.id = f.list_id
          ORDER BY f.created_at DESC, f.id`,
       );
@@ -281,13 +282,15 @@ export class FormsService {
   }
 
   /**
-   * Reconstruct a form's responses from the tasks it created. Each public
-   * submission becomes one task in the form's list whose description is the
-   * "Label: value" lines produced at submit time; we parse those back into
-   * per-field answers. This needs no extra storage — the tasks ARE the
-   * responses — so it works against existing data with no migration. A task
-   * counts as a response only when at least one of its lines matches a current
-   * field label (excludes blank, manually-added tasks).
+   * A form's responses. Each public submission is one task in the form's list
+   * plus one form_responses row holding the answers by field id (0046).
+   *
+   * They used to be read back by matching "Label: value" lines in the task
+   * description against the CURRENT labels — so renaming a field orphaned
+   * every earlier answer, two fields sharing a label collided, and a textarea
+   * answer containing "Email: …" was mis-filed. Submissions from before 0046
+   * are marked legacy and still read that way; there is nothing better to
+   * read them from.
    */
   async listResponses(
     workspaceId: string,
@@ -305,22 +308,26 @@ export class FormsService {
         row.space_id as string,
       );
       const fields = (row.fields as FormField[]) ?? [];
+      // One row per submission (form_responses). Answers are keyed by field
+      // id; rows marked legacy predate that and are read back from the task
+      // description, as before.
       const tasks = await client.query(
         `SELECT t.id, t.name, t.description, t.created_at,
-                s.name AS status_name, s.color AS status_color
-           FROM tasks t
+                s.name AS status_name, s.color AS status_color,
+                fr.answers, fr.legacy
+           FROM form_responses fr
+           JOIN tasks t ON t.id = fr.task_id
            LEFT JOIN statuses s ON s.id = t.status_id
-          WHERE t.list_id = $1 AND t.parent_task_id IS NULL
+          WHERE fr.form_id = $1
           ORDER BY t.created_at DESC, t.id`,
-        [row.list_id as string],
+        [row.id as string],
       );
       const responses: FormResponse[] = [];
       for (const t of tasks.rows) {
-        const parsed = parseResponseLines(
-          (t.description as string) ?? "",
-          fields,
-        );
-        if (!parsed.matched) continue; // not a form submission
+        const parsed = (t.legacy as boolean)
+          ? parseResponseLines((t.description as string) ?? "", fields)
+          : { matched: true, values: (t.answers as Record<string, string>) ?? {} };
+        if (!parsed.matched) continue;
         responses.push({
           taskId: t.id as string,
           title: t.name as string,
@@ -567,16 +574,19 @@ export class FormsService {
         throw new NotFoundException("Form not found");
       }
       const fields = (row.fields as FormField[]) ?? [];
-      const { titleValue, lines } = validateSubmission(
+      const { titleValue, lines, answers } = validateSubmission(
         fields,
         values as Record<string, unknown>,
       );
       const title = titleValue ?? `${row.name as string} submission`;
       const description = lines.join("\n");
-      await client.query(`SELECT submit_form_task($1, $2, $3)`, [
+      // The description keeps the readable "Label: value" copy on the task;
+      // the answers are stored by field id in form_responses (0046).
+      await client.query(`SELECT submit_form_task($1, $2, $3, $4::jsonb)`, [
         token,
         title,
         description,
+        JSON.stringify(answers),
       ]);
     });
   }

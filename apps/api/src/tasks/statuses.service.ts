@@ -190,6 +190,14 @@ export class StatusesService {
          RETURNING id, name, color, type, position`,
         params,
       );
+      if (body?.type !== undefined) {
+        // Retyping a status changes whether its tasks are complete.
+        await client.query(
+          `UPDATE tasks SET completed_at = CASE WHEN $2 = 'done' THEN COALESCE(completed_at, now()) ELSE NULL END
+            WHERE status_id = $1`,
+          [id, res.rows[0].type],
+        );
+      }
       return toStatus(res.rows[0]);
     });
   }
@@ -215,9 +223,12 @@ export class StatusesService {
       }
       // Move any tasks using this status to the space's first remaining one.
       const fallback = all.find((s) => s.id !== id)!;
+      // ...and make their completion follow the status they land in.
       await client.query(
-        `UPDATE tasks SET status_id = $1 WHERE status_id = $2`,
-        [fallback.id, id],
+        `UPDATE tasks SET status_id = $1,
+                completed_at = CASE WHEN $3 = 'done' THEN COALESCE(completed_at, now()) ELSE NULL END
+          WHERE status_id = $2`,
+        [fallback.id, id, fallback.type],
       );
       await client.query(`DELETE FROM statuses WHERE id = $1`, [id]);
     });

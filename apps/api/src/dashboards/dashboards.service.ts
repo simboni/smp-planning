@@ -457,8 +457,6 @@ export class DashboardsService {
               "position must be a non-negative integer",
             );
           }
-          sets.push(`position = $${i++}`);
-          params.push(body.position);
         }
         if (sets.length > 0) {
           params.push(cardId);
@@ -466,6 +464,29 @@ export class DashboardsService {
             `UPDATE dashboard_cards SET ${sets.join(", ")} WHERE id = $${i}`,
             params,
           );
+        }
+        if (body?.position !== undefined) {
+          // Move = take the card out of the current order, put it back at the
+          // target index, and renumber the whole dashboard 0..n-1. Writing
+          // only the moved card's position left two cards sharing a number,
+          // and the created_at tie-break put the card straight back.
+          const order = await client.query(
+            `SELECT id FROM dashboard_cards WHERE dashboard_id = $1
+              ORDER BY position, created_at, id`,
+            [card.dashboardId],
+          );
+          const ids = order.rows
+            .map((r) => r.id as string)
+            .filter((x) => x !== cardId);
+          ids.splice(Math.min(body.position, ids.length), 0, cardId);
+          await client.query(
+            `UPDATE dashboard_cards c SET position = o.ord - 1
+               FROM unnest($1::uuid[]) WITH ORDINALITY AS o(id, ord)
+              WHERE c.id = o.id`,
+            [ids],
+          );
+        }
+        if (sets.length > 0 || body?.position !== undefined) {
           await client.query(
             `UPDATE dashboards SET updated_at = now() WHERE id = $1`,
             [card.dashboardId],

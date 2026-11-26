@@ -153,6 +153,46 @@ function configOptionIds(config: Record<string, unknown>): Set<string> {
   return new Set(options.map((o) => o.id));
 }
 
+/**
+ * After a dropdown/labels field's options change, drop stored values that
+ * point at options which no longer exist. Without this, deleting one option
+ * of a labels field bricked the field on every task that had it: the client
+ * rebuilds its payload from the stored array, re-sends the dead id, and every
+ * change is rejected.
+ */
+async function pruneDeadOptions(
+  client: PoolClient,
+  fieldId: string,
+  type: string,
+  config: Record<string, unknown>,
+): Promise<void> {
+  const live = Array.isArray(config.options)
+    ? (config.options as FieldOption[]).map((o) => o.id)
+    : [];
+  if (type === "labels") {
+    await client.query(
+      `UPDATE custom_field_values
+          SET value = jsonb_build_object('optionIds', COALESCE(
+                (SELECT jsonb_agg(x) FROM jsonb_array_elements(value->'optionIds') x
+                  WHERE x #>> '{}' = ANY($2::text[])), '[]'::jsonb)),
+              updated_at = now()
+        WHERE field_id = $1`,
+      [fieldId, live],
+    );
+    await client.query(
+      `DELETE FROM custom_field_values
+        WHERE field_id = $1 AND jsonb_array_length(COALESCE(value->'optionIds', '[]'::jsonb)) = 0`,
+      [fieldId],
+    );
+  } else {
+    await client.query(
+      `DELETE FROM custom_field_values
+        WHERE field_id = $1 AND NOT (value->>'optionId' = ANY($2::text[]))`,
+      [fieldId, live],
+    );
+  }
+}
+
 /** Validate + normalize a value payload against the field's type & config. */
 export function normalizeValue(
   type: FieldType,
@@ -383,6 +423,9 @@ export class FieldsService {
            RETURNING id, name, type, config, position`,
           params,
         );
+        if (body?.config !== undefined && (field.type === "labels" || field.type === "dropdown")) {
+          await pruneDeadOptions(client, id, field.type, res.rows[0].config as Record<string, unknown>);
+        }
         return toField(res.rows[0]);
       } catch (err) {
         if ((err as { code?: string }).code === "23505") {

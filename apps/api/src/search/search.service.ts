@@ -17,6 +17,19 @@ export interface SearchResults {
   goals: { id: string; name: string }[];
   whiteboards: { id: string; name: string }[];
   channels: { id: string; name: string }[];
+  /** The caller's own notes whose text matches (notes are private). */
+  notes: { id: string; title: string; snippet: string }[];
+}
+
+/** A note as a search hit: its first line, plus the text around the match. */
+function noteHit(id: string, content: string, q: string): { id: string; title: string; snippet: string } {
+  const text = content.trim();
+  const title = (text.split("\n")[0] ?? "").trim().slice(0, 80) || "Untitled note";
+  const flat = text.replace(/\s+/g, " ");
+  const at = flat.toLowerCase().indexOf(q.trim().toLowerCase());
+  const from = Math.max(0, at - 30);
+  const snippet = (from > 0 ? "…" : "") + flat.slice(from, from + 90) + (flat.length > from + 90 ? "…" : "");
+  return { id, title, snippet };
 }
 
 /** An empty grouped result (used for a blank query, before any DB work). */
@@ -29,6 +42,7 @@ function emptyResults(): SearchResults {
     goals: [],
     whiteboards: [],
     channels: [],
+    notes: [],
   };
 }
 
@@ -156,6 +170,15 @@ export class SearchService {
         [like, userId, lim],
       );
 
+      // Notes: only the caller's own, matched on their text.
+      const notes = await client.query(
+        `SELECT id, content FROM notes
+          WHERE user_id = $1 AND content ILIKE $2
+          ORDER BY updated_at DESC
+          LIMIT $3`,
+        [userId, like, lim],
+      );
+
       return {
         results: {
           tasks: tasks.rows.map((r) => ({
@@ -193,6 +216,7 @@ export class SearchService {
             id: r.id as string,
             name: r.name as string,
           })),
+          notes: notes.rows.map((r) => noteHit(r.id as string, r.content as string, term)),
         },
       };
     });
