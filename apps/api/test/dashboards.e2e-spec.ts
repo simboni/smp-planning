@@ -230,10 +230,14 @@ describe("dashboards", () => {
       .set(auth(member.accessToken))
       .send({ title: "Readme", width: "half", position: 3, config: { text: "v2" } })
       .expect(200);
+    // Positions are NORMALIZED to a contiguous 0..n-1 run, so a request for a
+    // slot past the end lands on the last one (here: the only card, so 0).
+    // Storing the raw integer is what used to leave two cards sharing a
+    // position, which made "Move up"/"Move down" snap straight back.
     expect(patchedCard.body.card).toMatchObject({
       title: "Readme",
       width: "half",
-      position: 3,
+      position: 0,
     });
     expect(await cardData(member.accessToken, card.id)).toEqual({ text: "v2" });
 
@@ -467,5 +471,63 @@ describe("dashboards", () => {
     });
     const scopedData = await cardData(member.accessToken, scoped.id);
     expect(scopedData.slices).toHaveLength(0);
+  });
+
+  it("reordering a card renumbers its siblings so the new order persists", async () => {
+    const owner = await ownerWorkspace("M10 order");
+    const dash = await makeDashboard(owner.accessToken, "Ordered");
+    const a = await makeCard(owner.accessToken, dash.id, {
+      kind: "text",
+      title: "A",
+      config: { text: "a" },
+    });
+    const b = await makeCard(owner.accessToken, dash.id, {
+      kind: "text",
+      title: "B",
+      config: { text: "b" },
+    });
+    const c = await makeCard(owner.accessToken, dash.id, {
+      kind: "text",
+      title: "C",
+      config: { text: "c" },
+    });
+
+    const titles = async (): Promise<string[]> => {
+      const res = await http
+        .get(`/dashboards/${dash.id}`)
+        .set(auth(owner.accessToken))
+        .expect(200);
+      return res.body.cards.map((card: { title: string }) => card.title);
+    };
+    expect(await titles()).toEqual(["A", "B", "C"]);
+
+    // Move C to the front. Writing position=0 on C alone would leave A and C
+    // both at 0, and the read's created_at tie-break would put A first again
+    // — the card appeared to move and snapped back.
+    await http
+      .patch(`/cards/${c.id}`)
+      .set(auth(owner.accessToken))
+      .send({ position: 0 })
+      .expect(200);
+    expect(await titles()).toEqual(["C", "A", "B"]);
+
+    // And moving down works symmetrically.
+    await http
+      .patch(`/cards/${a.id}`)
+      .set(auth(owner.accessToken))
+      .send({ position: 2 })
+      .expect(200);
+    expect(await titles()).toEqual(["C", "B", "A"]);
+
+    // Positions stay a contiguous 0..n-1 run, which is what the read order
+    // relies on.
+    const res = await http
+      .get(`/dashboards/${dash.id}`)
+      .set(auth(owner.accessToken))
+      .expect(200);
+    expect(
+      res.body.cards.map((card: { position: number }) => card.position),
+    ).toEqual([0, 1, 2]);
+    expect(b.id).toBeTruthy();
   });
 });

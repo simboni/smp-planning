@@ -48,7 +48,8 @@ const DESTINATIONS: { label: string; href: string; icon: IconKey; keywords?: str
   { label: "Leave", href: "/leave", icon: "calendar", keywords: "time off holiday vacation sick annual approvals balance" },
   { label: "Settings", href: "/settings", icon: "settings", keywords: "workspace preferences" },
   { label: "Everything", href: "/everything", icon: "spaces", keywords: "spaces folders lists overview" },
-  { label: "Docs", href: "/docs", icon: "docs", keywords: "wiki pages notes write document" },
+  { label: "Docs", href: "/docs", icon: "docs", keywords: "wiki pages write document" },
+  { label: "Notes", href: "/notes", icon: "note", keywords: "notepad scratchpad jot quick note reminder" },
   { label: "Whiteboards", href: "/whiteboards", icon: "whiteboard", keywords: "canvas draw sticky notes shapes brainstorm visual board" },
   { label: "Forms", href: "/forms", icon: "clipboard", keywords: "form intake request survey submissions" },
   { label: "Timesheet", href: "/timesheet", icon: "clock", keywords: "time tracking hours week entries" },
@@ -295,6 +296,18 @@ export function CommandPalette({
           icon: "goals",
           title: g.name,
           run: () => nav(`/goal?id=${g.id}`),
+        })),
+      });
+    if (results.notes.length)
+      out.push({
+        title: "Notes",
+        items: results.notes.map((n) => ({
+          key: `note:${n.id}`,
+          icon: "note",
+          title: n.snippet,
+          subtitle: "Your notepad",
+          // The Notes page highlights the note named in the hash.
+          run: () => nav(`/notes#${n.id}`),
         })),
       });
     if (results.whiteboards.length)

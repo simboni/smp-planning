@@ -17,6 +17,8 @@ export interface SearchResults {
   goals: { id: string; name: string }[];
   whiteboards: { id: string; name: string }[];
   channels: { id: string; name: string }[];
+  /** The caller's OWN notepad notes (never anyone else's). */
+  notes: { id: string; snippet: string; updatedAt: string }[];
 }
 
 /** An empty grouped result (used for a blank query, before any DB work). */
@@ -29,7 +31,21 @@ function emptyResults(): SearchResults {
     goals: [],
     whiteboards: [],
     channels: [],
+    notes: [],
   };
+}
+
+/**
+ * A one-line preview of a note for a search hit: first non-empty line,
+ * trimmed and capped so a long note doesn't blow up the result row.
+ */
+function noteSnippet(content: string): string {
+  const line = content
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  const text = line ?? "";
+  return text.length > 120 ? `${text.slice(0, 117)}…` : text || "Empty note";
 }
 
 /**
@@ -145,6 +161,17 @@ export class SearchService {
         [visible, like, lim],
       );
 
+      // Notepad notes: STRICTLY the caller's own rows (notes are personal —
+      // the same user_id = $2 confinement the /notes endpoints use), so search
+      // never leaks another member's scratchpad.
+      const notes = await client.query(
+        `SELECT id, content, updated_at FROM notes
+          WHERE user_id = $2 AND content ILIKE $1
+          ORDER BY updated_at DESC
+          LIMIT $3`,
+        [like, userId, lim],
+      );
+
       // Channels the caller actually belongs to (never DMs).
       const channels = await client.query(
         `SELECT c.id, c.name
@@ -192,6 +219,11 @@ export class SearchService {
           channels: channels.rows.map((r) => ({
             id: r.id as string,
             name: r.name as string,
+          })),
+          notes: notes.rows.map((r) => ({
+            id: r.id as string,
+            snippet: noteSnippet((r.content as string) ?? ""),
+            updatedAt: (r.updated_at as Date).toISOString(),
           })),
         },
       };

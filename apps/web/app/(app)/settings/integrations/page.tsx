@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ApiError,
   apiTokensApi,
   commsApi,
   getUser,
@@ -16,6 +17,7 @@ import {
   type WebhookSummary,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
+import { showToast } from "@/lib/toast";
 
 const EVENT_TYPES = [
   "*",
@@ -280,6 +282,12 @@ function ApiTokensCard() {
       setReveal(r.token);
       setName("");
       await load();
+    } catch (err) {
+      // Was swallowed by a bare try/finally: a rejected generate left the
+      // form as-is with no message, so it looked like nothing happened.
+      showToast(
+        err instanceof ApiError ? err.message : "Couldn't generate that token.",
+      );
     } finally {
       setBusy(false);
     }
@@ -396,6 +404,13 @@ function WebhooksCard() {
       setSecret(r.secret);
       setUrl("");
       await load();
+    } catch (err) {
+      // The client check above accepts http://, but the server rejects
+      // non-https and private hosts. Without this the user clicked "Add",
+      // saw nothing, and reasonably concluded the webhook existed.
+      showToast(
+        err instanceof ApiError ? err.message : "Couldn't add that webhook.",
+      );
     } finally {
       setBusy(false);
     }
@@ -488,7 +503,18 @@ function WebhooksCard() {
               </button>
               <button
                 className="btn btn-ghost intg-danger"
-                onClick={() => webhooksApi.remove(h.id).then(load)}
+                onClick={() =>
+                  webhooksApi
+                    .remove(h.id)
+                    .then(load)
+                    .catch((err) =>
+                      showToast(
+                        err instanceof ApiError
+                          ? err.message
+                          : "Couldn't delete that webhook.",
+                      ),
+                    )
+                }
                 title="Delete"
               >
                 {Icons.trash}

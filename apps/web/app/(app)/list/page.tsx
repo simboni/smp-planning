@@ -56,7 +56,17 @@ interface ListMeta {
   folder: { id: string; name: string } | null;
 }
 
-const KINDS: ViewKind[] = ["list", "board", "calendar", "table", "gantt"];
+// Must list every kind ViewTabs offers, or the restored tab fails this
+// allowlist and silently resets to List — which is why Timeline was never
+// remembered for a list.
+const KINDS: ViewKind[] = [
+  "list",
+  "board",
+  "calendar",
+  "table",
+  "gantt",
+  "timeline",
+];
 const DEFAULT_CONFIG: ViewConfig = { filters: {}, sort: null, groupBy: "status" };
 
 /* localStorage helpers (guarded for the static export). */

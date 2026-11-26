@@ -120,6 +120,7 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Create & Share",
     items: [
       { href: "/docs", label: "Docs", icon: "docs" },
+      { href: "/notes", label: "Notes", icon: "note" },
       { href: "/whiteboards", label: "Whiteboards", icon: "whiteboard" },
       { href: "/forms", label: "Forms", icon: "clipboard" },
       { href: "/templates", label: "Templates", icon: "copy" },

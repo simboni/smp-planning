@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getUser,
   getWorkspace,
   homeApi,
+  notesApi,
   type HomeData,
   type HomeOverview,
+  type Note,
   type PublicUser,
   type TaskCard,
   type WorkspaceSummary,
@@ -237,8 +239,8 @@ const CARD_CATALOG: CardDef[] = [
   {
     id: "notepad",
     title: "Notepad",
-    icon: "docs",
-    desc: "A private scratchpad that stays on this device.",
+    icon: "note",
+    desc: "A private scratchpad, synced to your account.",
     body: () => <NotepadCard />,
   },
 ];
@@ -589,41 +591,174 @@ function GuideBanner({
   );
 }
 
-/** A private, device-local scratchpad card. */
+/**
+ * The Home scratchpad card.
+ *
+ * It used to write to localStorage under `stackup.home.notepad`, which meant
+ * anything typed here never reached the server: it couldn't be found from the
+ * 🗒 panel, the Notes page or search, and it vanished with the browser's site
+ * data or on another device. It now reads and writes the SAME `notes` the rest
+ * of the app uses (newest note first), and on first load it migrates whatever
+ * the old device-local key still holds into a real note so nothing is lost.
+ */
 function NotepadCard() {
-  const KEY = "stackup.home.notepad";
+  const LEGACY_KEY = "stackup.home.notepad";
+  const [note, setNote] = useState<Note | null>(null);
   const [text, setText] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [others, setOthers] = useState(0);
+  const [state, setState] = useState<"loading" | "idle" | "saving" | "saved" | "error">(
+    "loading",
+  );
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedRef = useRef("");
+  const seqRef = useRef(0);
+  const creatingRef = useRef(false);
+  /** Latest text, readable from an async callback without a stale closure. */
+  const textRef = useRef("");
+  textRef.current = text;
 
+  // Load the newest note, migrating any legacy device-local text first.
   useEffect(() => {
-    try {
-      setText(window.localStorage.getItem(KEY) ?? "");
-    } catch {
-      /* ignore */
-    }
+    let live = true;
+    const legacy = (() => {
+      try {
+        return window.localStorage.getItem(LEGACY_KEY) ?? "";
+      } catch {
+        return "";
+      }
+    })();
+
+    const start = async (): Promise<void> => {
+      try {
+        if (legacy.trim()) {
+          // Promote it to a real note, then retire the key. Done before the
+          // list call so the migrated note shows up straight away.
+          await notesApi.create({ content: legacy });
+          try {
+            window.localStorage.removeItem(LEGACY_KEY);
+          } catch {
+            /* ignore */
+          }
+        }
+        const r = await notesApi.list();
+        if (!live) return;
+        const list = r.notes ?? [];
+        const first = list[0] ?? null;
+        setNote(first);
+        setText(first?.content ?? "");
+        savedRef.current = first?.content ?? "";
+        setOthers(Math.max(0, list.length - 1));
+        setState("idle");
+      } catch {
+        if (live) setState("error");
+      }
+    };
+    void start();
+    return () => {
+      live = false;
+    };
   }, []);
 
-  const onChange = (v: string) => {
-    setText(v);
-    try {
-      window.localStorage.setItem(KEY, v);
-      setSaved(true);
-    } catch {
-      /* ignore */
+  const save = (value: string): void => {
+    if (value === savedRef.current) return;
+    // Bail BEFORE touching the sequence: bumping it first would invalidate
+    // the in-flight create's own callback, so `note` would never be set and
+    // the next save would create a SECOND note — splitting one note in two on
+    // a slow connection. The create's completion re-runs the latest text.
+    if (!note && creatingRef.current) return;
+    const seq = ++seqRef.current;
+    setState("saving");
+    const done = (content: string, created?: Note): void => {
+      if (seq !== seqRef.current) return;
+      savedRef.current = content;
+      if (created) setNote(created);
+      setState("saved");
+    };
+    if (note) {
+      notesApi
+        .update(note.id, { content: value })
+        .then(() => done(value))
+        .catch(() => seq === seqRef.current && setState("error"));
+      return;
     }
+    // No note yet — the first keystroke creates one.
+    creatingRef.current = true;
+    notesApi
+      .create({ content: value })
+      .then((r) => {
+        done(value, r.note);
+        // Anything typed while the create was in flight still needs saving.
+        const latest = textRef.current;
+        if (latest !== value) {
+          notesApi
+            .update(r.note.id, { content: latest })
+            .then(() => {
+              savedRef.current = latest;
+              setState("saved");
+            })
+            .catch(() => setState("error"));
+        }
+      })
+      .catch(() => seq === seqRef.current && setState("error"))
+      .finally(() => {
+        creatingRef.current = false;
+      });
   };
+
+  const onChange = (v: string): void => {
+    setText(v);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      save(v);
+    }, 700);
+  };
+
+  const flush = (): void => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    save(text);
+  };
+
+  // Don't lose the tail of a sentence when the card unmounts.
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   return (
     <div className="notepad">
       <textarea
         className="notepad-area"
         value={text}
-        placeholder="Jot down a quick note, a link, a reminder…"
+        disabled={state === "loading"}
+        placeholder={
+          state === "loading"
+            ? "Loading your notes…"
+            : "Jot down a quick note, a link, a reminder…"
+        }
         onChange={(e) => onChange(e.target.value)}
+        onBlur={flush}
         rows={5}
       />
       <div className="notepad-foot muted">
-        {saved ? "Saved on this device" : "Private to this device"}
+        <span>
+          {state === "saving"
+            ? "Saving…"
+            : state === "error"
+              ? "Couldn't save — check your connection"
+              : state === "saved"
+                ? "Saved to your account"
+                : others > 0
+                  ? `Synced to your account · ${others} more ${others === 1 ? "note" : "notes"}`
+                  : "Synced to your account"}
+        </span>
+        <Link href="/notes" className="notepad-all">
+          All notes →
+        </Link>
       </div>
     </div>
   );

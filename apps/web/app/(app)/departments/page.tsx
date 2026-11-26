@@ -1010,6 +1010,11 @@ function ManageDepartmentModal({
  * The HR page.
  * ------------------------------------------------------------------ */
 export default function DepartmentsPage() {
+  // The create flow can make a Space ("its own private space" is checked by
+  // default), and the sidebar tree is only fetched once on mount — without a
+  // reload the new Space (and the Onboarding list inside it) was missing
+  // until a full browser refresh, so the option looked like it did nothing.
+  const { reload: reloadTree } = useHierarchy();
   const [departments, setDepartments] = useState<Department[] | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [roster, setRoster] = useState<DepartmentRosterEntry[]>([]);
@@ -1188,6 +1193,7 @@ export default function DepartmentsPage() {
           onCreated={(d) => {
             setCreating(false);
             load();
+            void reloadTree();
             setManagingId(d.id);
             showToast(`Department created: “${d.name}”`);
           }}

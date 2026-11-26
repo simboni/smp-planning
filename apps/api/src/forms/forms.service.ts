@@ -178,10 +178,20 @@ export class FormsService {
         `SELECT f.id, f.name, f.list_id, f.active, f.public_token,
                 jsonb_array_length(f.fields)::int AS field_count, f.updated_at,
                 l.name AS list_name, l.space_id,
-                (SELECT count(*) FROM tasks t
-                   WHERE t.list_id = f.list_id
-                     AND t.parent_task_id IS NULL
-                     AND coalesce(t.description, '') <> '')::int AS response_count
+                -- Real submissions, plus pre-0044 ones that only exist as a
+                -- task with a description. Counting EVERY described task in
+                -- the list (the old rule) meant manually created and
+                -- automation-created tasks inflated the number, so a form
+                -- could claim "14 responses" while the table showed 3.
+                ((SELECT count(*) FROM form_responses fr
+                    WHERE fr.form_id = f.id)
+                 + (SELECT count(*) FROM tasks t
+                      WHERE t.list_id = f.list_id
+                        AND t.parent_task_id IS NULL
+                        AND coalesce(t.description, '') <> ''
+                        AND NOT EXISTS (
+                          SELECT 1 FROM form_responses fr2
+                           WHERE fr2.task_id = t.id)))::int AS response_count
          FROM forms f JOIN lists l ON l.id = f.list_id
          ORDER BY f.created_at DESC, f.id`,
       );
@@ -307,27 +317,40 @@ export class FormsService {
       const fields = (row.fields as FormField[]) ?? [];
       const tasks = await client.query(
         `SELECT t.id, t.name, t.description, t.created_at,
-                s.name AS status_name, s.color AS status_color
+                s.name AS status_name, s.color AS status_color,
+                fr.answers
            FROM tasks t
            LEFT JOIN statuses s ON s.id = t.status_id
+           LEFT JOIN form_responses fr
+                  ON fr.task_id = t.id AND fr.form_id = $2
           WHERE t.list_id = $1 AND t.parent_task_id IS NULL
           ORDER BY t.created_at DESC, t.id`,
-        [row.list_id as string],
+        [row.list_id as string, id],
       );
       const responses: FormResponse[] = [];
       for (const t of tasks.rows) {
-        const parsed = parseResponseLines(
-          (t.description as string) ?? "",
-          fields,
-        );
-        if (!parsed.matched) continue; // not a form submission
+        // Structured answers (keyed by field id) are authoritative. Only fall
+        // back to parsing the description for submissions taken before 0044,
+        // which have no form_responses row.
+        const stored = t.answers as Record<string, string> | null;
+        let values: Record<string, string>;
+        if (stored && typeof stored === "object") {
+          values = stored;
+        } else {
+          const parsed = parseResponseLines(
+            (t.description as string) ?? "",
+            fields,
+          );
+          if (!parsed.matched) continue; // a manually created task
+          values = parsed.values;
+        }
         responses.push({
           taskId: t.id as string,
           title: t.name as string,
           createdAt: iso(t.created_at),
           statusName: (t.status_name as string) ?? null,
           statusColor: (t.status_color as string) ?? null,
-          values: parsed.values,
+          values,
         });
       }
       return {
@@ -567,16 +590,20 @@ export class FormsService {
         throw new NotFoundException("Form not found");
       }
       const fields = (row.fields as FormField[]) ?? [];
-      const { titleValue, lines } = validateSubmission(
+      const { titleValue, lines, answers } = validateSubmission(
         fields,
         values as Record<string, unknown>,
       );
       const title = titleValue ?? `${row.name as string} submission`;
       const description = lines.join("\n");
-      await client.query(`SELECT submit_form_task($1, $2, $3)`, [
+      // The 4-argument overload also records the answers by field id in
+      // form_responses (0044), so the Responses table no longer depends on
+      // label text. The task + description are written exactly as before.
+      await client.query(`SELECT submit_form_task($1, $2, $3, $4::jsonb)`, [
         token,
         title,
         description,
+        JSON.stringify(answers),
       ]);
     });
   }

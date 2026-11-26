@@ -30,12 +30,20 @@ import { TeamsService } from "./teams.service";
 export class TeamsController {
   constructor(private readonly teams: TeamsService) {}
 
+  // "Open to any MEMBER" has to be stated, or a guest passes: the class
+  // mounts no RolesGuard, so without this a guest could enumerate every
+  // team's full roster (names and emails). Every sibling org surface
+  // (departments, leave, goals) already requires member.
   @Get()
+  @UseGuards(RolesGuard)
+  @Roles("member")
   async list(@Req() req: AuthedRequest) {
     return { teams: await this.teams.list(req.workspaceId!, req.userId!) };
   }
 
   @Get(":id")
+  @UseGuards(RolesGuard)
+  @Roles("member")
   async detail(
     @Req() req: AuthedRequest,
     @Param("id", ParseUUIDPipe) id: string,

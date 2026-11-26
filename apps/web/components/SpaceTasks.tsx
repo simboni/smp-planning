@@ -27,6 +27,7 @@ import {
   type ViewKind,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
+import { showToast } from "@/lib/toast";
 import { FilterBar } from "@/components/views/FilterBar";
 import { ListView } from "@/components/views/ListView";
 import { BoardView } from "@/components/views/BoardView";
@@ -52,11 +53,14 @@ export function SpaceTasks({
   spaceId,
   lists,
   canEdit,
+  canComment = canEdit,
 }: {
   spaceId: string;
   /** Every list in the space (incl. those inside folders) — for grouping. */
   lists: { id: string; name: string }[];
   canEdit: boolean;
+  /** 'comment' permission — lower than edit, and enough to comment. */
+  canComment?: boolean;
 }) {
   const [tasks, setTasks] = useState<TaskCard[] | null>(null);
   const [statuses, setStatuses] = useState<Status[]>([]);
@@ -157,6 +161,41 @@ export function SpaceTasks({
 
   const noop = (): void => undefined;
 
+  /**
+   * Quick-add from a SPACE view.
+   *
+   * Every view's "+" affordance used to be wired to `noop` here while still
+   * being rendered, so on a space page Table's "New task", Calendar's
+   * click-a-day and the per-status "Add task" rows accepted a name, cleared
+   * the input and created nothing at all — no task, no error. A space spans
+   * many lists, so a task still needs a destination: the first list is used,
+   * and when the space has none the user is told rather than ignored.
+   */
+  const quickAddTarget = lists[0]?.id ?? "";
+  const quickAdd = (
+    name: string,
+    extra: { statusId?: string; dueDate?: string } = {},
+  ): void => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (!quickAddTarget) {
+      showToast("Add a List to this Space first — a task has to live in one.");
+      return;
+    }
+    tasksApi
+      .create(quickAddTarget, { name: trimmed, ...extra })
+      .then(() => {
+        loadTasks();
+        const where = listNames.get(quickAddTarget);
+        showToast(where ? `Added to ${where}` : "Task created");
+      })
+      .catch((err) =>
+        showToast(
+          err instanceof ApiError ? err.message : "Couldn't create the task.",
+        ),
+      );
+  };
+
   return (
     <div className="sp-tasks">
       <div className="sp-tasks-head">
@@ -222,7 +261,7 @@ export function SpaceTasks({
             setTasks((prev) => (prev ?? []).filter((t) => t.id !== task.id));
             tasksApi.remove(task.id).catch(() => loadTasks());
           }}
-          onQuickAdd={noop}
+          onQuickAdd={(statusId, name) => quickAdd(name, { statusId })}
           addSignal={0}
           filtersActive={filtersActive}
         />
@@ -231,15 +270,33 @@ export function SpaceTasks({
           {...viewProps}
           groupBy={config.groupBy ?? "status"}
           listNames={listNames}
-          onQuickAdd={noop}
-          onMoveTask={(taskId, statusId) => {
+          onQuickAdd={(statusId, name) => quickAdd(name, { statusId })}
+          onMoveTask={(taskId, statusId, orderedIds) => {
             setTasks((prev) =>
               prev
                 ? prev.map((t) => (t.id === taskId ? { ...t, statusId } : t))
                 : prev,
             );
-            tasksApi
-              .update(taskId, { statusId })
+            const moved = (tasks ?? []).find((t) => t.id === taskId);
+            const changedStatus = moved?.statusId !== statusId;
+            // The third argument was being ignored, so dragging a card to a
+            // new position WITHIN a column changed nothing and snapped back.
+            // Reorder is list-scoped while a space column can hold cards from
+            // several lists, so send each list its own subset in the dropped
+            // relative order.
+            const byList = new Map<string, string[]>();
+            for (const tid of orderedIds) {
+              const t = (tasks ?? []).find((x) => x.id === tid);
+              const listId = tid === taskId ? (moved?.listId ?? "") : (t?.listId ?? "");
+              if (!listId) continue;
+              byList.set(listId, [...(byList.get(listId) ?? []), tid]);
+            }
+            const work: Promise<unknown>[] = [];
+            if (changedStatus) work.push(tasksApi.update(taskId, { statusId }));
+            for (const [listId, ids] of byList) {
+              work.push(tasksApi.reorder(listId, statusId, ids));
+            }
+            Promise.all(work)
               .then(() => loadTasks())
               .catch(() => loadTasks());
           }}
@@ -249,7 +306,7 @@ export function SpaceTasks({
       ) : kind === "calendar" ? (
         <CalendarView
           {...viewProps}
-          onQuickAddDate={noop}
+          onQuickAddDate={(dueDate, name) => quickAdd(name, { dueDate })}
           onSetDueDate={(task, due) =>
             updateTask(task, { dueDate: due }, { dueDate: due })
           }
@@ -277,7 +334,7 @@ export function SpaceTasks({
               .then(() => loadTasks())
               .catch(() => loadTasks());
           }}
-          onQuickAdd={noop}
+          onQuickAdd={(statusId, name) => quickAdd(name, { statusId })}
         />
       ) : kind === "gantt" ? (
         <GanttView
@@ -296,7 +353,9 @@ export function SpaceTasks({
           statuses={statuses}
           members={members}
           canEdit={canEdit}
-          canComment={canEdit}
+          // 'comment' permission is enough to comment — gating this on
+          // canEdit ('edit') was stricter than the server, which allows it.
+          canComment={canComment}
           onClose={() => setSelectedTask(null)}
           onChanged={loadTasks}
           onOpenTask={(tid) => setSelectedTask(tid)}

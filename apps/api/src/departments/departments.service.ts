@@ -248,7 +248,12 @@ export class DepartmentsService {
                 m.role, m.status, m.title
          FROM department_members dm
          JOIN users u ON u.id = dm.user_id
-         JOIN memberships m ON m.user_id = dm.user_id
+         -- The membership_read policy also admits the ACTING user's rows in
+         -- other workspaces, so this join needs its own workspace predicate:
+         -- without it an admin who belongs to two workspaces appeared twice
+         -- on the roster, one row carrying the other workspace's role/title.
+         JOIN memberships m
+           ON m.user_id = dm.user_id AND m.workspace_id = dm.workspace_id
          WHERE dm.department_id = $1
          ORDER BY (dm.dept_role = 'head') DESC, dm.created_at`,
         [id],
@@ -314,6 +319,12 @@ export class DepartmentsService {
         throw e;
       }
       const id = res.rows[0].id as string;
+
+      // A named head is a roster member — otherwise a brand-new department
+      // read "Head: Jane · 0 people" and Jane couldn't approve its leave.
+      if (leadUserId) {
+        await this.syncHeadRoster(client, workspaceId, id, leadUserId, null);
+      }
 
       let spaceId: string | null = null;
       if (createSpace) {
@@ -409,6 +420,11 @@ export class DepartmentsService {
         if (lead) await this.assertMember(client, lead, "leadUserId");
         params.push(lead);
         sets.push(`lead_user_id = $${params.length}`);
+        // Keep the ROSTER in step — see syncHeadRoster. Without this the
+        // "Department head" dropdown produced a head who wasn't on the roster,
+        // couldn't approve their team's leave (leave reads dept_role, not
+        // lead_user_id) and showed no Head badge in HR.
+        await this.syncHeadRoster(client, workspaceId, id, lead, cur.lead_user_id as string | null);
       }
       if (body.spaceId !== undefined) {
         const nextSpaceId = body.spaceId
@@ -538,6 +554,15 @@ export class DepartmentsService {
       if (kind !== "new_member" && kind !== "head" && kind !== "specific") {
         throw new BadRequestException(
           "assigneeKind must be 'new_member', 'head' or 'specific'",
+        );
+      }
+      // 'specific' with nobody chosen yet is the picker's DEFAULT state, so
+      // rejecting it threw away every other edit in the panel and surfaced
+      // the raw "assigneeUserId must be a uuid". Say which step needs a
+      // person instead, and name it.
+      if (kind === "specific" && !s.assigneeUserId) {
+        throw new BadRequestException(
+          `Pick a person for the step “${title}” (or change who it's assigned to)`,
         );
       }
       const assigneeUserId =
@@ -817,7 +842,9 @@ export class DepartmentsService {
                   m.role, m.status, m.title
            FROM department_members dm
            JOIN users u ON u.id = dm.user_id
-           JOIN memberships m ON m.user_id = dm.user_id
+           -- Workspace-scoped on purpose; see the roster query above.
+           JOIN memberships m
+             ON m.user_id = dm.user_id AND m.workspace_id = dm.workspace_id
            WHERE dm.department_id = $1 AND dm.user_id = $2`,
           [departmentId, targetUserId],
         );
@@ -843,6 +870,49 @@ export class DepartmentsService {
     );
     this.publishChanged(workspaceId, departmentId);
     return { member: out, onboarding };
+  }
+
+  /**
+   * Make `lead` the department's head on the ROSTER too, and demote whoever
+   * held it before.
+   *
+   * A department has one notion of "head" exposed two ways: the
+   * `departments.lead_user_id` dropdown, and the per-row "Make head" button
+   * writing `department_members.dept_role`. They used to be written
+   * independently and never reconciled, so each half of the app read a
+   * different answer: leave approval and the HR badge read `dept_role`, while
+   * onboarding's "Department head" assignee read `lead_user_id`. Setting the
+   * head one way left the other stale. Both writes now funnel through here (or
+   * through updateMember, which writes lead_user_id back).
+   */
+  private async syncHeadRoster(
+    client: {
+      query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+    },
+    workspaceId: string,
+    departmentId: string,
+    lead: string | null,
+    previousLead: string | null,
+  ): Promise<void> {
+    // Demote the previous head's roster row (if they're still on the roster
+    // and aren't the new head).
+    if (previousLead && previousLead !== lead) {
+      await client.query(
+        `UPDATE department_members SET dept_role = 'member'
+          WHERE department_id = $1 AND user_id = $2 AND dept_role = 'head'`,
+        [departmentId, previousLead],
+      );
+    }
+    if (!lead) return;
+    // The new head joins the roster if they weren't on it, and is marked head.
+    await client.query(
+      `INSERT INTO department_members
+         (workspace_id, department_id, user_id, dept_role)
+       VALUES ($1, $2, $3, 'head')
+       ON CONFLICT (department_id, user_id)
+       DO UPDATE SET dept_role = 'head'`,
+      [workspaceId, departmentId, lead],
+    );
   }
 
   async updateMember(
@@ -871,6 +941,35 @@ export class DepartmentsService {
            WHERE department_id = $2 AND user_id = $3`,
           [deptRole, departmentId, targetUserId],
         );
+        // Mirror onto departments.lead_user_id so the card, the onboarding
+        // "Department head" assignee and leave approval all agree (see
+        // syncHeadRoster). Promoting demotes the previous head's roster row.
+        if (deptRole === "head") {
+          const prev = await client.query(
+            `SELECT lead_user_id FROM departments WHERE id = $1`,
+            [departmentId],
+          );
+          const previousLead =
+            (prev.rows[0]?.lead_user_id as string | null) ?? null;
+          if (previousLead && previousLead !== targetUserId) {
+            await client.query(
+              `UPDATE department_members SET dept_role = 'member'
+                WHERE department_id = $1 AND user_id = $2`,
+              [departmentId, previousLead],
+            );
+          }
+          await client.query(
+            `UPDATE departments SET lead_user_id = $1 WHERE id = $2`,
+            [targetUserId, departmentId],
+          );
+        } else {
+          // Demoted — if they were the named head, the department has none.
+          await client.query(
+            `UPDATE departments SET lead_user_id = NULL
+              WHERE id = $1 AND lead_user_id = $2`,
+            [departmentId, targetUserId],
+          );
+        }
       }
       if (title !== undefined) {
         await client.query(
@@ -905,6 +1004,13 @@ export class DepartmentsService {
         [departmentId, targetUserId],
       );
       if (!res.rows[0]) throw new NotFoundException("Not in this department");
+      // Taking the head off the roster must clear the named head too, or the
+      // card keeps reading "Head: Jane" for someone no longer in it.
+      await client.query(
+        `UPDATE departments SET lead_user_id = NULL
+          WHERE id = $1 AND lead_user_id = $2`,
+        [departmentId, targetUserId],
+      );
       await this.audit.record(client, {
         workspaceId,
         actorUserId,

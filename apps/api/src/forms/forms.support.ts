@@ -171,9 +171,20 @@ function isMissing(v: unknown): boolean {
 export function validateSubmission(
   fields: FormField[],
   values: Record<string, unknown>,
-): { titleValue: string | null; lines: string[] } {
+): {
+  titleValue: string | null;
+  lines: string[];
+  /**
+   * The same answers keyed by FIELD ID, which is what gets persisted. The
+   * "Label: value" lines remain for the task description people read, but
+   * they are no longer the storage format — a renamed label used to orphan
+   * every earlier answer for that field.
+   */
+  answers: Record<string, string>;
+} {
   let titleValue: string | null = null;
   const lines: string[] = [];
+  const answers: Record<string, string> = {};
   for (const field of fields) {
     // M21: a field hidden by its condition is skipped entirely — not required,
     // and any stray submitted value for it is ignored.
@@ -252,6 +263,7 @@ export function validateSubmission(
       titleValue = display.trim();
     }
     lines.push(`${field.label}: ${display}`);
+    answers[field.id] = display;
   }
-  return { titleValue, lines };
+  return { titleValue, lines, answers };
 }

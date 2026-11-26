@@ -242,6 +242,14 @@ export function normalizeValue(
       const ids = configOptionIds(config);
       const out: string[] = [];
       for (const id of v.optionIds as string[]) {
+        // Unknown ids are rejected — garbage in a payload should not be
+        // silently accepted. What used to BRICK the field was stale ids in
+        // already-STORED values: removing an option from the config left the
+        // dead id on every task that had it, the client rebuilt its payload
+        // from that stored array, and so every click re-sent the dead id and
+        // 400'd, with no way to add or remove any label. That is fixed at the
+        // source instead — `update` now prunes stored values when an option
+        // goes away (and 0044 cleans up rows that predate the fix).
         if (!ids.has(id)) {
           throw new BadRequestException(
             "value.optionIds must all be options on this field",
@@ -383,6 +391,42 @@ export class FieldsService {
            RETURNING id, name, type, config, position`,
           params,
         );
+        // Removing an option from a dropdown/labels field used to leave every
+        // stored value referencing the dead id, which is what bricked the
+        // field on affected tasks. Prune them here so the data matches the
+        // definition: a dropdown value pointing at a gone option is cleared,
+        // and a labels array simply loses that entry.
+        if (body?.config !== undefined) {
+          const type = field.type as FieldType;
+          if (type === "dropdown" || type === "labels") {
+            const live = [...configOptionIds(toField(res.rows[0]).config)];
+            if (type === "dropdown") {
+              await client.query(
+                `DELETE FROM custom_field_values
+                  WHERE field_id = $1
+                    AND NOT (value->>'optionId' = ANY($2::text[]))`,
+                [id, live],
+              );
+            } else {
+              await client.query(
+                `UPDATE custom_field_values
+                    SET value = jsonb_build_object(
+                          'optionIds',
+                          COALESCE(
+                            (SELECT jsonb_agg(x)
+                               FROM jsonb_array_elements_text(value->'optionIds') AS t(x)
+                              WHERE x = ANY($2::text[])),
+                            '[]'::jsonb))
+                  WHERE field_id = $1
+                    AND EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements_text(value->'optionIds') AS t(x)
+                       WHERE NOT (x = ANY($2::text[])))`,
+                [id, live],
+              );
+            }
+          }
+        }
         return toField(res.rows[0]);
       } catch (err) {
         if ((err as { code?: string }).code === "23505") {

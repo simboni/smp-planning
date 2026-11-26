@@ -24,7 +24,7 @@ import { ShareDialog } from "@/components/ShareDialog";
 import { ClickAppsModal } from "@/components/ClickAppsModal";
 import { SpaceTasks } from "@/components/SpaceTasks";
 import { FavoriteStar } from "@/components/FavoriteStar";
-import { saveEntityAsTemplate } from "@/lib/toast";
+import { saveEntityAsTemplate, showToast } from "@/lib/toast";
 import {
   actionSummary,
   AutomationBuilder,
@@ -656,8 +656,16 @@ function SpaceView() {
       setAdding(null);
       load();
       void reload();
-    } catch {
-      /* keep the input open so the user can retry */
+    } catch (err) {
+      // Say what went wrong — swallowing it made a rejected create (403 from
+      // requireSpaceEdit, a revoked createSpaces capability, a network error)
+      // look exactly like the button doing nothing. The input stays open so
+      // the name isn't lost.
+      showToast(
+        err instanceof ApiError
+          ? err.message
+          : `Couldn't create that ${adding === "folder" ? "folder" : "list"}.`,
+      );
     } finally {
       setBusy(false);
     }
@@ -813,6 +821,7 @@ function SpaceView() {
           name: l.name,
         }))}
         canEdit={canEdit}
+        canComment={permissionAtLeast(space.myPermission, "comment")}
       />
 
       {/* Folders */}

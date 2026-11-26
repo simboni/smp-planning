@@ -20,6 +20,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  getWorkspace,
   hierarchyApi,
   permissionAtLeast,
   type FolderWithLists,
@@ -137,6 +138,9 @@ export function HierarchyTree() {
   const search = useSearchParams();
   const activeListId = pathname === "/list" ? search.get("id") : null;
   const activeSpaceId = pathname === "/space" ? search.get("id") : null;
+  /** Space ORDER is a workspace-level setting: owner/admin only server-side. */
+  const wsRole = getWorkspace()?.role;
+  const isWorkspaceAdmin = wsRole === "owner" || wsRole === "admin";
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState<CreateCtx | null>(null);
@@ -305,7 +309,14 @@ export function HierarchyTree() {
 
   const reorderSpaces = (ids: string[]): void => {
     setTree((prev) => ids.map((id) => prev.find((s) => s.id === id)!).filter(Boolean));
-    void hierarchyApi.reorderSpaces(ids).catch(() => void reload());
+    void hierarchyApi.reorderSpaces(ids).catch((err) => {
+      // Was a silent revert: the order snapped back with no explanation
+      // (space reordering is owner/admin only on the server).
+      void reload();
+      showToast(
+        err instanceof ApiError ? err.message : "Couldn't reorder your Spaces.",
+      );
+    });
   };
   const reorderFolders = (spaceId: string, ids: string[]): void => {
     setTree((prev) =>
@@ -708,11 +719,13 @@ export function HierarchyTree() {
               dragOverKey === `space:${space.id}` ? " dragover" : ""
             }`}
             style={{ paddingLeft: 10 }}
-            {...dragProps(
-              { kind: "space", id: space.id, container: "spaces" },
-              { kind: "space", id: space.id, container: "spaces" },
-              { spaces: tree },
-            )}
+            {...(isWorkspaceAdmin
+              ? dragProps(
+                  { kind: "space", id: space.id, container: "spaces" },
+                  { kind: "space", id: space.id, container: "spaces" },
+                  { spaces: tree },
+                )
+              : {})}
           >
             {/* Clicking the space opens its overview page and expands it; the
                 caret alone toggles expand/collapse without navigating. */}
@@ -794,6 +807,17 @@ export function HierarchyTree() {
                     <button type="button" onClick={() => newDoc(space.id, `in ${space.name}`)}>
                       {Icons.book} New doc
                     </button>
+                  </>
+                )}
+                {/*
+                 * Rename / color / archive / delete require 'full' on the
+                 * server (requireSpaceManage), and reordering is owner/admin
+                 * only. They used to be shown to anyone with 'edit' — the
+                 * default on a public space — so a plain member saw six
+                 * actions and four of them answered with a 403 toast.
+                 */}
+                {canManageSpace && (
+                  <>
                     <button type="button" onClick={() => { setMenu(null); setRenaming(k); }}>
                       {Icons.edit} Rename
                     </button>
@@ -807,7 +831,7 @@ export function HierarchyTree() {
                     {Icons.lock} {space.isPrivate ? "Make public" : "Make private"}
                   </button>
                 )}
-                {canEdit && (
+                {isWorkspaceAdmin && (
                   <>
                     <button
                       type="button"
@@ -821,6 +845,10 @@ export function HierarchyTree() {
                     >
                       {Icons.arrowDown} Move down
                     </button>
+                  </>
+                )}
+                {canManageSpace && (
+                  <>
                     <button type="button" onClick={() => doArchive("space", space.id)}>
                       {Icons.archive} Archive
                     </button>

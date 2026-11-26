@@ -20,6 +20,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -29,6 +30,7 @@ import {
   ApiError,
   getUser,
   docsApi,
+  filesApi,
   permissionAtLeast,
   type Doc,
   type DocPage,
@@ -39,7 +41,7 @@ import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
 import { FavoriteStar } from "@/components/FavoriteStar";
 import { PublicShareButton } from "@/components/PublicShareButton";
-import { saveEntityAsTemplate } from "@/lib/toast";
+import { saveEntityAsTemplate, showToast } from "@/lib/toast";
 import { DOC_EMOJI } from "@/lib/format";
 
 /* ------------------------------------------------------------------ *
@@ -414,6 +416,74 @@ function TreeNode({
  * ------------------------------------------------------------------ */
 type SaveState = "idle" | "saving" | "saved" | "error";
 
+/**
+ * The contentEditable writing surface.
+ *
+ * This MUST NOT use `dangerouslySetInnerHTML`. React 19 changed how that prop
+ * is diffed: `updateProperties` gates the write on `nextProp !== lastProp` — a
+ * REFERENCE compare of the `{__html}` object — and then assigns
+ * `domElement.innerHTML` with no comparison of the string itself. React 18
+ * compared the html strings, so a re-render was free. Under React 19, a fresh
+ * `{__html: …}` literal is a new reference on every render, so every single
+ * re-render of this page wiped the live editable DOM and reseeded it with the
+ * content from the last GET.
+ *
+ * That is what made writing disappear: ~800ms after you stopped typing,
+ * autosave's own `setSaveState("saved")` re-rendered the page, the editor
+ * reverted to the text it held when the page opened, and the NEXT keystroke
+ * saved that reverted DOM — making the loss permanent on the server. Typing in
+ * the title, a collaborator's event, opening a menu, or the sidebar all did the
+ * same. No remount or refetch was involved, which is why guarding those paths
+ * didn't help.
+ *
+ * So: the DOM is seeded IMPERATIVELY, once per `seedKey` (page id + content
+ * version), and is thereafter owned by the browser. React only ever touches
+ * this node's attributes, never its children.
+ */
+function DocEditable({
+  seedKey,
+  html,
+  canEdit,
+  editorRef,
+  onInput,
+  onBlur,
+}: {
+  /** Changes only when a reseed is actually intended (page switch / refetch). */
+  seedKey: string;
+  html: string;
+  canEdit: boolean;
+  editorRef: React.MutableRefObject<HTMLDivElement | null>;
+  onInput: () => void;
+  onBlur: () => void;
+}) {
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+  // Read the latest html without making it a dependency — a re-render that
+  // carries the same seedKey must not touch the DOM.
+  const htmlRef = useRef(html);
+  htmlRef.current = html;
+
+  useLayoutEffect(() => {
+    const el = nodeRef.current;
+    if (el) el.innerHTML = htmlRef.current;
+  }, [seedKey]);
+
+  return (
+    <div
+      ref={(n) => {
+        nodeRef.current = n;
+        editorRef.current = n;
+      }}
+      className={`doc-prose${canEdit ? "" : " readonly"}`}
+      contentEditable={canEdit}
+      suppressContentEditableWarning
+      spellCheck
+      data-placeholder="Start writing — or press / on your keyboard someday. For now, just write."
+      onInput={onInput}
+      onBlur={onBlur}
+    />
+  );
+}
+
 function DocView() {
   const search = useSearchParams();
   const router = useRouter();
@@ -447,10 +517,18 @@ function DocView() {
 
   const editorRef = useRef<HTMLDivElement | null>(null);
   const dirtyRef = useRef(false);
+  /**
+   * WHICH page the dirty buffer belongs to. The dirty flag, the html mirror
+   * and the retry timer are all component-wide while the selected page is not,
+   * so an unscoped retry could fire after a page switch and PATCH page B's row
+   * with page A's text (or mark page A clean without ever saving it). Every
+   * save is now tied to the page it was typed into.
+   */
+  const dirtyPageRef = useRef<string | null>(null);
   /** A remote edit arrived while typing — apply it once the editor is idle. */
   const pendingRemoteRef = useRef(false);
   /** Mirror of the live buffer — survives ref detach so the unmount flush works. */
-  const latestHtmlRef = useRef<string>("");
+  const latestHtmlRef = useRef<{ pageId: string; html: string } | null>(null);
   const lastEditRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Monotonic save id — only the newest response may update UI state. */
@@ -524,13 +602,21 @@ function DocView() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    if (!dirtyRef.current || !pageIdRef.current) return;
-    // editorRef is already null during unmount cleanup — fall back to the
-    // mirror so navigating away never loses the last keystrokes.
-    const html = editorRef.current?.innerHTML ?? latestHtmlRef.current;
-    if (!html && !editorRef.current) return;
-    const id = pageIdRef.current;
+    if (!dirtyRef.current) return;
+    // Save the page the text was typed INTO, not whichever page is open now.
+    const id = dirtyPageRef.current;
+    if (!id) return;
+    // The live DOM counts only while that same page is still mounted;
+    // otherwise fall back to the mirror (editorRef is already null during
+    // unmount cleanup, so this is what makes navigating away safe).
+    const mirror = latestHtmlRef.current;
+    const live =
+      pageIdRef.current === id ? (editorRef.current?.innerHTML ?? null) : null;
+    const html =
+      live ?? (mirror && mirror.pageId === id ? mirror.html : null);
+    if (html === null) return;
     dirtyRef.current = false;
+    dirtyPageRef.current = null;
     // Sequence saves: a slow request must never let an older payload land
     // after a newer one (that would silently resurrect stale text).
     const seq = ++saveSeqRef.current;
@@ -548,7 +634,9 @@ function DocView() {
         if (seq !== saveSeqRef.current) return;
         // Keep the text dirty so the next flush retries it, and SAY so —
         // a silent failure is what makes writing look like it vanished.
+        // Restore the page binding too, so the retry targets the right row.
         dirtyRef.current = true;
+        dirtyPageRef.current = id;
         setSaveState("error");
         setSaveError(
           err instanceof ApiError ? err.message : "Couldn't save — will retry.",
@@ -559,8 +647,13 @@ function DocView() {
   }, []);
 
   const markDirty = useCallback((): void => {
+    const id = pageIdRef.current;
+    if (!id) return;
     dirtyRef.current = true;
-    if (editorRef.current) latestHtmlRef.current = editorRef.current.innerHTML;
+    dirtyPageRef.current = id;
+    if (editorRef.current) {
+      latestHtmlRef.current = { pageId: id, html: editorRef.current.innerHTML };
+    }
     lastEditRef.current = Date.now();
     setSaveState("saving");
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -574,12 +667,17 @@ function DocView() {
   // persist — 'pagehide' fires where 'beforeunload' is unreliable on iOS.
   useEffect(() => {
     const save = (): void => flushNow();
-    window.addEventListener("pagehide", save);
-    document.addEventListener("visibilitychange", () => {
+    // Named so it can actually be removed — an anonymous handler here leaked
+    // one listener per mount, each holding a dead instance's refs and firing
+    // setState on it every time the app was backgrounded.
+    const onHidden = (): void => {
       if (document.visibilityState === "hidden") save();
-    });
+    };
+    window.addEventListener("pagehide", save);
+    document.addEventListener("visibilitychange", onHidden);
     return () => {
       window.removeEventListener("pagehide", save);
+      document.removeEventListener("visibilitychange", onHidden);
     };
   }, [flushNow]);
 
@@ -626,6 +724,26 @@ function DocView() {
     setSelectedId(id);
   };
 
+  /** Open an uploaded document's file (PDF/image inline, anything else saved). */
+  const openUploadedDoc = async (): Promise<void> => {
+    if (!doc?.fileId) return;
+    try {
+      const url = await filesApi.blobUrl(doc.fileId);
+      const mime = (doc.fileMime ?? "").toLowerCase();
+      if (mime === "application/pdf" || mime.startsWith("image/")) {
+        window.open(url, "_blank", "noopener");
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = doc.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      }
+    } catch {
+      showToast("Couldn't open the document.");
+    }
+  };
+
   /* ---- tree mutations ---- */
   const addPage = (parentPageId: string | null): void => {
     if (!docId) return;
@@ -653,7 +771,13 @@ function DocView() {
         setSelectedId(r.page.id);
         setRenamingId(r.page.id);
       })
-      .catch(() => undefined);
+      .catch((err) =>
+        // Was swallowed, so a rejected create (403, plan limit, validation)
+        // made the "+" button look dead.
+        showToast(
+          err instanceof ApiError ? err.message : "Couldn't add that page.",
+        ),
+      );
   };
 
   const renamePage = (id: string, newTitle: string): void => {
@@ -1119,6 +1243,31 @@ function DocView() {
             <div className="doc-page-pad">
               <div className="form-error">{pageError}</div>
             </div>
+          ) : doc?.fileId && pages.length === 0 ? (
+            /*
+             * An UPLOADED document (PDF/Word/…) has no doc_pages, so the
+             * editor had nothing to select and sat on the loading skeleton
+             * forever — which is what any /doc?id= link to an upload hit,
+             * including every command-palette result for one.
+             */
+            <div className="doc-page-pad doc-upload-view">
+              <span className="doc-upload-ic" aria-hidden="true">
+                {doc.icon || "📎"}
+              </span>
+              <h2>{doc.name}</h2>
+              <p className="muted">
+                This is an uploaded document, so there's nothing to edit here —
+                open it to read it.
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void openUploadedDoc()}
+              >
+                {Icons.docs}
+                Open document
+              </button>
+            </div>
           ) : !page ? (
             <div className="doc-page-pad">
               <span className="skel" style={{ width: 320, height: 38, marginBottom: 22 }} />
@@ -1142,21 +1291,11 @@ function DocView() {
                   }
                 }}
               />
-              {/*
-               * The buffer is seeded once per page/version via
-               * dangerouslySetInnerHTML (server-sanitized HTML) and then owned
-               * by the browser — React never reconciles the typing. The key
-               * remounts it on page switch or remote refetch.
-               */}
-              <div
-                key={`${page.id}:${contentVersion}`}
-                ref={editorRef}
-                className={`doc-prose${canEdit ? "" : " readonly"}`}
-                contentEditable={canEdit}
-                suppressContentEditableWarning
-                spellCheck
-                data-placeholder="Start writing — or press / on your keyboard someday. For now, just write."
-                dangerouslySetInnerHTML={{ __html: page.content || "" }}
+              <DocEditable
+                seedKey={`${page.id}:${contentVersion}`}
+                html={page.content || ""}
+                canEdit={canEdit}
+                editorRef={editorRef}
                 onInput={markDirty}
                 onBlur={handleBlur}
               />

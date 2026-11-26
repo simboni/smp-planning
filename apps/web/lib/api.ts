@@ -1371,6 +1371,17 @@ export const hierarchyApi = {
   getTree: () => api<HierarchyTree>("/hierarchy", { auth: "access" }),
 
   listSpaces: () => api<{ spaces: Space[] }>("/spaces", { auth: "access" }),
+
+  /**
+   * Everything archived, so it can be found and restored. Archiving used to
+   * hide content with no way back — restore by PATCHing `{ archived: false }`.
+   */
+  archived: () =>
+    api<{
+      spaces: Space[];
+      folders: (Folder & { spaceName: string })[];
+      lists: (List & { spaceName: string; folderName: string | null })[];
+    }>("/hierarchy/archived", { auth: "access" }),
   createSpace: (body: {
     name: string;
     color?: string;
@@ -3673,6 +3684,12 @@ export interface SearchNamedHit {
   name: string;
   icon?: string | null;
 }
+/** A notepad-note hit — notes have no title, so a first-line snippet stands in. */
+export interface SearchNoteHit {
+  id: string;
+  snippet: string;
+  updatedAt: string;
+}
 
 /** The grouped payload of `GET /search`. Any group may be empty. */
 export interface SearchResults {
@@ -3683,6 +3700,7 @@ export interface SearchResults {
   goals: SearchNamedHit[];
   whiteboards: SearchNamedHit[];
   channels: SearchNamedHit[];
+  notes: SearchNoteHit[];
 }
 
 const EMPTY_SEARCH: SearchResults = {
@@ -3693,6 +3711,7 @@ const EMPTY_SEARCH: SearchResults = {
   goals: [],
   whiteboards: [],
   channels: [],
+  notes: [],
 };
 
 export const searchApi = {

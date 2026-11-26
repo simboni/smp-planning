@@ -49,6 +49,16 @@ export class HierarchyController {
     };
   }
 
+  /** Archived spaces/folders/lists, so they can be found and restored. */
+  @Get("hierarchy/archived")
+  async archived(@Req() req: AuthedRequest) {
+    return this.hierarchy.listArchived(
+      req.workspaceId!,
+      req.userId!,
+      req.role!,
+    );
+  }
+
   @Get("spaces/:id")
   async spaceDetail(
     @Req() req: AuthedRequest,

@@ -525,7 +525,20 @@ export class DocsService {
          RETURNING ${PAGE_COLUMNS}`,
         [workspaceId, docId, parentPageId, title, posRes.rows[0].n, userId],
       );
-      return this.toPage(res.rows[0]);
+      // Keep the doc's own timestamp moving so /docs sorts and counts right.
+      await client.query(
+        `UPDATE docs SET updated_at = now() WHERE id = $1`,
+        [docId],
+      );
+      const page = this.toPage(res.rows[0]);
+      // Only updatePage used to publish, so a collaborator ADDING a page was
+      // invisible in other open editors until a full reload (and /docs kept a
+      // stale pageCount). actorUserId lets the author ignore its own echo.
+      this.events.publish(workspaceId, {
+        type: "doc.changed",
+        payload: { docId, pageId: page.id, actorUserId: userId },
+      });
+      return page;
     });
   }
 
@@ -634,6 +647,15 @@ export class DocsService {
         throw new BadRequestException("Cannot delete a doc's last page");
       }
       await client.query(`DELETE FROM doc_pages WHERE id = $1`, [pageId]);
+      await client.query(
+        `UPDATE docs SET updated_at = now() WHERE id = $1`,
+        [page.docId],
+      );
+      // Same reason as createPage: a deletion has to reach other open editors.
+      this.events.publish(workspaceId, {
+        type: "doc.changed",
+        payload: { docId: page.docId, actorUserId: userId },
+      });
     });
   }
 

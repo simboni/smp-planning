@@ -11,13 +11,19 @@
  *
  * Open/closed state persists in localStorage (`stackup.notepad.open`),
  * guarded for the static export's server render.
+ *
+ * Notes themselves are NOT local: they're rows in `notes` (per user, per
+ * workspace) served by /notes, so the same notes appear here, on the /notes
+ * page, in the Home "Notepad" card and in search. The closed button carries a
+ * count so notes aren't invisible once the panel is shut.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { notesApi, tasksApi, permissionAtLeast, type Note } from "@/lib/api";
-import { useHierarchy } from "@/components/HierarchyProvider";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { notesApi, tasksApi, type Note } from "@/lib/api";
+import { ListDestinationPicker } from "@/components/ListDestinationPicker";
+import { NoteEditor } from "@/components/NoteEditor";
 import { Icons } from "@/components/icons";
-import { timeAgo } from "@/lib/format";
 
 const OPEN_KEY = "stackup.notepad.open";
 
@@ -36,101 +42,17 @@ function writeOpen(open: boolean): void {
   }
 }
 
-/** One note row: autosizing textarea + debounce autosave + actions. */
-function NoteRow({
-  note,
-  onDelete,
-  onToTask,
-}: {
-  note: Note;
-  onDelete: (id: string) => void;
-  onToTask: (note: Note) => void;
-}) {
-  const [text, setText] = useState(note.content);
-  const areaRef = useRef<HTMLTextAreaElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestRef = useRef(note.content);
-
-  // Autosize to content.
-  const resize = (): void => {
-    const el = areaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
-  };
-  useEffect(resize, [text]);
-
-  const queueSave = (value: string): void => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      if (value === latestRef.current) return;
-      latestRef.current = value;
-      notesApi.update(note.id, { content: value }).catch(() => undefined);
-    }, 700);
-  };
-
-  // Flush the pending save on unmount (panel close / navigation).
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      const value = areaRef.current?.value;
-      if (value !== undefined && value !== latestRef.current) {
-        notesApi.update(note.id, { content: value }).catch(() => undefined);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <div className="np-note">
-      <textarea
-        ref={areaRef}
-        className="np-area"
-        placeholder="Jot something down…"
-        value={text}
-        rows={1}
-        onChange={(e) => {
-          setText(e.target.value);
-          queueSave(e.target.value);
-        }}
-      />
-      <div className="np-note-foot">
-        <span className="np-time">{timeAgo(note.updatedAt)}</span>
-        <span className="np-note-actions">
-          <button
-            type="button"
-            className="np-mini"
-            title="Turn into a task"
-            onClick={() => onToTask({ ...note, content: text })}
-          >
-            → task
-          </button>
-          <button
-            type="button"
-            className="icon-btn np-del"
-            aria-label="Delete note"
-            onClick={() => onDelete(note.id)}
-          >
-            {Icons.trash}
-          </button>
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export function Notepad() {
-  const { tree } = useHierarchy();
   const [open, setOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
+  /** Count shown on the closed button, so notes aren't invisible. */
+  const [count, setCount] = useState<number | null>(null);
 
-  // The "→ task" picker: which note it's for + the chosen space.
+  // The "→ task" picker: which note it's for.
   const [picking, setPicking] = useState<Note | null>(null);
-  const [pickSpace, setPickSpace] = useState<string>("");
 
   // Hydrate the persisted open state client-side only.
   useEffect(() => {
@@ -143,9 +65,28 @@ export function Notepad() {
     if (!open) return;
     notesApi
       .list()
-      .then((r) => setNotes(r.notes ?? []))
+      .then((r) => {
+        setNotes(r.notes ?? []);
+        setCount((r.notes ?? []).length);
+      })
       .catch(() => setNotes([]));
   }, [open]);
+
+  // While closed, still learn the count once so the button can advertise that
+  // something is in there (the old UI gave no hint at all).
+  useEffect(() => {
+    if (!hydrated || open || count !== null) return;
+    let live = true;
+    notesApi
+      .list()
+      .then((r) => {
+        if (live) setCount((r.notes ?? []).length);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [hydrated, open, count]);
 
   const toggle = (): void => {
     setOpen((v) => {
@@ -164,27 +105,25 @@ export function Notepad() {
     setBusy(true);
     notesApi
       .create({ content: "" })
-      .then((r) => setNotes((prev) => [r.note, ...(prev ?? [])]))
+      .then((r) => {
+        setNotes((prev) => [r.note, ...(prev ?? [])]);
+        setCount((c) => (c ?? 0) + 1);
+      })
       .catch(() => showToast("Couldn't create a note."))
       .finally(() => setBusy(false));
   };
 
   const deleteNote = (id: string): void => {
+    const snapshot = notes;
     setNotes((prev) => (prev ?? []).filter((n) => n.id !== id));
-    notesApi.remove(id).catch(() => undefined);
+    setCount((c) => Math.max(0, (c ?? 1) - 1));
+    notesApi.remove(id).catch(() => {
+      // Put it back rather than pretending the delete worked.
+      setNotes(snapshot);
+      setCount(snapshot ? snapshot.length : null);
+      showToast("Couldn't delete that note.");
+    });
   };
-
-  // Spaces the user can create tasks in, each with a flattened list set.
-  const targets = tree
-    .filter((s) => permissionAtLeast(s.myPermission, "edit"))
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      lists: [...s.lists, ...s.folders.flatMap((f) => f.lists)].filter(
-        (l) => !l.archived,
-      ),
-    }))
-    .filter((s) => s.lists.length > 0);
 
   const convert = (note: Note, listId: string): void => {
     const raw = note.content.trim();
@@ -197,7 +136,6 @@ export function Notepad() {
       .then(() => {
         deleteNote(note.id);
         setPicking(null);
-        setPickSpace("");
         showToast(`Task created: “${name.slice(0, 40)}${name.length > 40 ? "…" : ""}”`);
       })
       .catch(() => showToast("Couldn't create the task."))
@@ -225,6 +163,19 @@ export function Notepad() {
                 {Icons.plus}
                 New note
               </button>
+              {/* The way out of the panel: notes also live on their own page. */}
+              <Link
+                href="/notes"
+                className="icon-btn"
+                aria-label="Open the Notes page"
+                title="Open all notes"
+                onClick={() => {
+                  setOpen(false);
+                  writeOpen(false);
+                }}
+              >
+                {Icons.arrowRight}
+              </Link>
               <button
                 type="button"
                 className="icon-btn"
@@ -253,83 +204,24 @@ export function Notepad() {
               </div>
             ) : (
               notes.map((n) => (
-                <NoteRow
+                <NoteEditor
                   key={n.id}
                   note={n}
                   onDelete={deleteNote}
-                  onToTask={(note) => {
-                    setPicking(note);
-                    setPickSpace("");
-                  }}
+                  onToTask={(note) => setPicking(note)}
                 />
               ))
             )}
           </div>
 
           {picking && (
-            <div className="np-picker">
-              <div className="np-picker-head">
-                <span>Create task from note</span>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  aria-label="Cancel"
-                  onClick={() => {
-                    setPicking(null);
-                    setPickSpace("");
-                  }}
-                >
-                  {Icons.close}
-                </button>
-              </div>
-              {targets.length === 0 ? (
-                <div className="np-picker-empty">
-                  No lists you can add tasks to yet. Create a Space and a List
-                  first.
-                </div>
-              ) : !pickSpace ? (
-                <div className="np-picker-scroll">
-                  <div className="np-picker-label">Pick a Space</div>
-                  {targets.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className="np-pick-row"
-                      onClick={() => setPickSpace(s.id)}
-                    >
-                      <span className="np-pick-ic">{Icons.spaces}</span>
-                      <span className="np-pick-name">{s.name}</span>
-                      <span className="np-pick-arrow">{Icons.chevronRight}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="np-picker-scroll">
-                  <button
-                    type="button"
-                    className="np-pick-back"
-                    onClick={() => setPickSpace("")}
-                  >
-                    {Icons.chevronLeft}
-                    Spaces
-                  </button>
-                  <div className="np-picker-label">Pick a List</div>
-                  {(targets.find((s) => s.id === pickSpace)?.lists ?? []).map((l) => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      className="np-pick-row"
-                      disabled={busy}
-                      onClick={() => picking && convert(picking, l.id)}
-                    >
-                      <span className="np-pick-ic">{Icons.list}</span>
-                      <span className="np-pick-name">{l.name}</span>
-                      <span className="np-pick-arrow">{Icons.plus}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ListDestinationPicker
+              title="Create task from note"
+              confirmLabel="Create the task here"
+              busy={busy}
+              onCancel={() => setPicking(null)}
+              onPick={(listId) => convert(picking, listId)}
+            />
           )}
         </div>
       )}
@@ -338,10 +230,19 @@ export function Notepad() {
         type="button"
         className={`notepad-fab${open ? " on" : ""}`}
         aria-label={open ? "Close notepad" : "Open notepad"}
-        title="Notepad"
+        title={
+          count && count > 0
+            ? `Notepad — ${count} ${count === 1 ? "note" : "notes"}`
+            : "Notepad"
+        }
         onClick={toggle}
       >
         <span aria-hidden="true">🗒</span>
+        {!open && count !== null && count > 0 && (
+          <span className="notepad-fab-count" aria-hidden="true">
+            {count > 99 ? "99+" : count}
+          </span>
+        )}
       </button>
 
       {toast && <div className="np-toast">{toast}</div>}

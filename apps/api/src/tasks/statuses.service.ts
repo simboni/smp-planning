@@ -190,6 +190,22 @@ export class StatusesService {
          RETURNING id, name, color, type, position`,
         params,
       );
+      // Retyping a status has to bring its tasks' completed_at along, or the
+      // two disagree: flipping a status TO done left its tasks completed with
+      // no timestamp (so they never showed in completion reports), and
+      // flipping one AWAY from done left a stale timestamp on tasks the board
+      // now shows as open.
+      if (body?.type !== undefined) {
+        const nowDone = validStatusType(body.type) === "done";
+        await client.query(
+          nowDone
+            ? `UPDATE tasks SET completed_at = COALESCE(completed_at, now())
+                WHERE status_id = $1 AND completed_at IS NULL`
+            : `UPDATE tasks SET completed_at = NULL
+                WHERE status_id = $1 AND completed_at IS NOT NULL`,
+          [id],
+        );
+      }
       return toStatus(res.rows[0]);
     });
   }
@@ -213,10 +229,18 @@ export class StatusesService {
       if (all.length <= 1) {
         throw new BadRequestException("A space must keep at least one status");
       }
-      // Move any tasks using this status to the space's first remaining one.
+      // Move any tasks using this status to the space's first remaining one,
+      // reconciling completed_at with the fallback's type — otherwise deleting
+      // a "Done" status left its tasks open on the board but still carrying a
+      // completion timestamp (and counted as completed by every report).
       const fallback = all.find((s) => s.id !== id)!;
       await client.query(
-        `UPDATE tasks SET status_id = $1 WHERE status_id = $2`,
+        fallback.type === "done"
+          ? `UPDATE tasks
+                SET status_id = $1, completed_at = COALESCE(completed_at, now())
+              WHERE status_id = $2`
+          : `UPDATE tasks SET status_id = $1, completed_at = NULL
+              WHERE status_id = $2`,
         [fallback.id, id],
       );
       await client.query(`DELETE FROM statuses WHERE id = $1`, [id]);

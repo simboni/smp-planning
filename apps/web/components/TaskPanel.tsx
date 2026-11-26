@@ -41,6 +41,7 @@ import { colorFor, formatEstimate, toDateInputValue } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
 import { AvatarStack, DueChip, MilestoneMark, PriorityFlag, StatusCircle, TagChip, TypeIcon } from "@/components/TaskBits";
 import { FieldManager } from "@/components/FieldManager";
+import { ListDestinationPicker } from "@/components/ListDestinationPicker";
 import { PublicShareButton } from "@/components/PublicShareButton";
 import { CommentsActivity } from "@/components/CommentsActivity";
 import {
@@ -51,7 +52,7 @@ import {
 import { Attachments } from "@/components/Attachments";
 import { TaskEmail } from "@/components/TaskEmail";
 import { TimeTracking } from "@/components/TimeTracking";
-import { saveEntityAsTemplate } from "@/lib/toast";
+import { saveEntityAsTemplate, showToast } from "@/lib/toast";
 import { useRealtime } from "@/lib/realtime";
 
 /* ------------------------------------------------------------------ *
@@ -178,6 +179,8 @@ export function TaskPanel({
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  /** The "move to another List" picker is open. */
+  const [moving, setMoving] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [managingFields, setManagingFields] = useState(false);
@@ -385,6 +388,40 @@ export function TaskPanel({
       });
   };
 
+  /**
+   * Move the task to another List — in any Space, including one created on
+   * the spot.
+   *
+   * The API has supported this all along (`PATCH /tasks/:id { listId }`,
+   * which re-homes status, type, tags and field values when the list is in a
+   * different space), but nothing in the app ever sent it: there was no
+   * "move" control anywhere, so a task filed in the wrong list had to be
+   * deleted and retyped.
+   */
+  const moveToList = (listId: string): void => {
+    if (!detail || busy) return;
+    if (listId === detail.listId) {
+      setMoving(false);
+      return;
+    }
+    setBusy(true);
+    tasksApi
+      .update(detail.id, { listId })
+      .then(() => {
+        setMoving(false);
+        setBusy(false);
+        void reload();
+        onChanged();
+        showToast("Task moved.");
+      })
+      .catch((err) => {
+        setError(
+          err instanceof ApiError ? err.message : "Couldn't move this task.",
+        );
+        setBusy(false);
+      });
+  };
+
   /* -- checklist mutations ------------------------------------------- */
   const addChecklist = (name: string): void => {
     setAddingChecklist(false);
@@ -550,6 +587,17 @@ export function TaskPanel({
                   onClick={() => void saveEntityAsTemplate("task", detail.id, `${detail.name} template`)}
                 >
                   {Icons.copy}
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title="Move to another List"
+                  aria-label="Move task to another List"
+                  onClick={() => setMoving(true)}
+                >
+                  {Icons.arrowRight}
                 </button>
               )}
               {canEdit && (
@@ -1197,6 +1245,26 @@ export function TaskPanel({
               onChanged();
             }}
           />
+        )}
+
+        {moving && detail && (
+          <div className="modal-scrim" onClick={() => setMoving(false)}>
+            <div
+              className="modal notes-pick-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Move task"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ListDestinationPicker
+                title={`Move “${detail.name.slice(0, 32)}${detail.name.length > 32 ? "…" : ""}”`}
+                confirmLabel="Move here"
+                busy={busy}
+                onCancel={() => setMoving(false)}
+                onPick={moveToList}
+              />
+            </div>
+          </div>
         )}
       </aside>
     </div>

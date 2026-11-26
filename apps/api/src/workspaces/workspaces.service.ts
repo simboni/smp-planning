@@ -437,6 +437,31 @@ export class WorkspacesService {
       if (cur.rows[0].role === "owner") {
         throw new BadRequestException("The workspace owner can't be removed");
       }
+      // Drop the org rows that key off users(id) rather than memberships, or
+      // the person becomes an unfixable ghost: the department card counts a
+      // roster row the roster list (which joins memberships) won't render, so
+      // it reads "5 people" next to 4 names and the stale row can't be
+      // removed through the UI. Their team rows and pending leave would
+      // likewise linger — approved leave kept showing in "Who's away".
+      await client.query(
+        `DELETE FROM department_members WHERE workspace_id = $1 AND user_id = $2`,
+        [workspaceId, targetUserId],
+      );
+      await client.query(
+        `UPDATE departments SET lead_user_id = NULL
+          WHERE workspace_id = $1 AND lead_user_id = $2`,
+        [workspaceId, targetUserId],
+      );
+      await client.query(
+        `DELETE FROM team_members WHERE workspace_id = $1 AND user_id = $2`,
+        [workspaceId, targetUserId],
+      );
+      // Pending requests are withdrawn; decided ones stay as a record.
+      await client.query(
+        `DELETE FROM leave_requests
+          WHERE workspace_id = $1 AND user_id = $2 AND status = 'pending'`,
+        [workspaceId, targetUserId],
+      );
       await client.query(
         `DELETE FROM memberships WHERE workspace_id = $1 AND user_id = $2`,
         [workspaceId, targetUserId],

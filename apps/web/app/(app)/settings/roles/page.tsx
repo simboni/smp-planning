@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  ApiError,
   BASE_ROLE_CAPABILITIES,
   CAPABILITIES,
   CAPABILITY_LABELS,
@@ -14,6 +15,7 @@ import {
   type WorkspaceRole,
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
+import { showToast } from "@/lib/toast";
 
 /** Effective (baseline + overrides) capability set for display. */
 function effective(role: CustomRole): Record<Capability, boolean> {
@@ -147,9 +149,17 @@ export default function RolesPage() {
                     <button
                       className="btn btn-ghost btn-sm danger"
                       onClick={async () => {
-                        await governanceApi.deleteRole(r.id);
-                        loadRoles();
-                        loadMembers();
+                        try {
+                          await governanceApi.deleteRole(r.id);
+                          loadRoles();
+                          loadMembers();
+                        } catch (err) {
+                          showToast(
+                            err instanceof ApiError
+                              ? err.message
+                              : "Couldn't delete that role.",
+                          );
+                        }
                       }}
                     >
                       Delete
@@ -315,8 +325,17 @@ function MembersCard({
   );
 
   const assign = async (userId: string, value: string) => {
-    await governanceApi.assignRole(userId, value || null);
-    onAssign();
+    try {
+      await governanceApi.assignRole(userId, value || null);
+      onAssign();
+    } catch (err) {
+      // Unhandled before: on a non-Business plan the 403 rejected silently,
+      // onAssign never ran, and the controlled <select> just snapped back —
+      // indistinguishable from the click not registering.
+      showToast(
+        err instanceof ApiError ? err.message : "Couldn't assign that role.",
+      );
+    }
   };
 
   return (

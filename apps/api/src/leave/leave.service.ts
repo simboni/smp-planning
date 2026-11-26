@@ -429,8 +429,12 @@ export class LeaveService {
     const note =
       typeof body?.note === "string" ? body.note.trim().slice(0, 500) : "";
     await this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // FOR UPDATE: two approvers deciding at once both used to succeed, the
+      // second silently overwriting the first and producing two audit entries
+      // for one request. The row lock plus the status guard on the UPDATE
+      // makes the first decision stand.
       const cur = await client.query(
-        `SELECT user_id, status FROM leave_requests WHERE id = $1`,
+        `SELECT user_id, status FROM leave_requests WHERE id = $1 FOR UPDATE`,
         [id],
       );
       if (!cur.rows[0]) throw new NotFoundException("Request not found");
@@ -448,12 +452,16 @@ export class LeaveService {
         );
       }
       const status: LeaveStatus = body.approve ? "approved" : "rejected";
-      await client.query(
+      const done = await client.query(
         `UPDATE leave_requests
          SET status = $1, decided_by = $2, decided_at = now(), decision_note = $3
-         WHERE id = $4`,
+         WHERE id = $4 AND status = 'pending'
+         RETURNING id`,
         [status, userId, note, id],
       );
+      if (!done.rows[0]) {
+        throw new BadRequestException("This request was just decided");
+      }
       await this.audit.record(client, {
         workspaceId,
         actorUserId: userId,
@@ -468,14 +476,23 @@ export class LeaveService {
 
   async cancel(workspaceId: string, userId: string, id: string): Promise<void> {
     await this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // Approved leave can only be cancelled while it's still in the FUTURE —
+      // the "future-dated only" rule lived in the client alone, so a member
+      // could cancel last month's approved leave straight against the API and
+      // win the days back (balances count only approved requests). A pending
+      // request can always be withdrawn.
       const res = await client.query(
         `UPDATE leave_requests SET status = 'cancelled'
-         WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'approved')
+         WHERE id = $1 AND user_id = $2
+           AND (status = 'pending'
+                OR (status = 'approved' AND start_date > CURRENT_DATE))
          RETURNING id`,
         [id, userId],
       );
       if (!res.rows[0]) {
-        throw new NotFoundException("No cancellable request found");
+        throw new NotFoundException(
+          "No cancellable request found — leave that has already started can't be cancelled",
+        );
       }
       await this.audit.record(client, {
         workspaceId,

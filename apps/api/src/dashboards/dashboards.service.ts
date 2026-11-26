@@ -432,6 +432,7 @@ export class DashboardsService {
         const { card, dashboard } = await this.cardWithDashboard(client, cardId);
         this.requireDashboardEdit(dashboard, userId, role);
 
+        // Field updates first (everything except position).
         const sets: string[] = [];
         const params: unknown[] = [];
         let i = 1;
@@ -457,15 +458,52 @@ export class DashboardsService {
               "position must be a non-negative integer",
             );
           }
-          sets.push(`position = $${i++}`);
-          params.push(body.position);
         }
+        let changed = false;
         if (sets.length > 0) {
           params.push(cardId);
           await client.query(
             `UPDATE dashboard_cards SET ${sets.join(", ")} WHERE id = $${i}`,
             params,
           );
+          changed = true;
+        }
+
+        // Reordering must RENUMBER the siblings, not just stamp a number on
+        // the moved card. Cards are created at MAX(position)+1 so positions
+        // are contiguous; writing `position = target` alone left two cards
+        // sharing a value, and `getDashboard`'s `ORDER BY position,
+        // created_at, id` then broke the tie by created_at — restoring the
+        // original order, which is why "Move up"/"Move down" visibly moved a
+        // card and snapped it straight back.
+        if (body?.position !== undefined && body.position !== card.position) {
+          const movingUp = body.position < card.position;
+          await client.query(
+            `WITH ordered AS (
+               SELECT id,
+                      ROW_NUMBER() OVER (
+                        ORDER BY
+                          CASE WHEN id = $1 THEN $2::numeric
+                               ELSE position::numeric END,
+                          -- Tie-break against the card now occupying the
+                          -- target slot: land before it when moving up,
+                          -- after it when moving down.
+                          CASE WHEN id = $1 THEN $3::int ELSE 1 END,
+                          position, created_at, id
+                      ) - 1 AS pos
+                 FROM dashboard_cards
+                WHERE dashboard_id = $4
+             )
+             UPDATE dashboard_cards c
+                SET position = o.pos
+               FROM ordered o
+              WHERE c.id = o.id AND c.position <> o.pos`,
+            [cardId, body.position, movingUp ? 0 : 2, card.dashboardId],
+          );
+          changed = true;
+        }
+
+        if (changed) {
           await client.query(
             `UPDATE dashboards SET updated_at = now() WHERE id = $1`,
             [card.dashboardId],
