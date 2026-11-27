@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getUser,
   getWorkspace,
@@ -15,6 +15,7 @@ import {
   type Note,
 } from "@/lib/api";
 import { Icons, type IconKey } from "@/components/icons";
+import { useRealtime } from "@/lib/realtime";
 import { firstName, formatDueDate, timeAgo } from "@/lib/format";
 import { migrateLegacyHomeNote, noteTitle, notesChanged, onNotesChanged } from "@/lib/notes";
 
@@ -292,6 +293,32 @@ export default function DashboardPage() {
     homeApi.overview().then(setOverview).catch(() => setOverview(null));
     homeApi.get().then(setHome).catch(() => setHome(null));
   }, []);
+
+  // Keep the widgets current (M1): a task completed elsewhere — or in the
+  // drawer on this page — used to linger in "Needs your attention" until a
+  // full reload. Refetch (debounced) on task events and on returning to the tab.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshHome = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      homeApi.overview().then(setOverview).catch(() => undefined);
+      homeApi.get().then(setHome).catch(() => undefined);
+    }, 500);
+  }, []);
+  useRealtime((ev) => {
+    if (ev.type === "task.changed" || ev.type === "time.changed") refreshHome();
+  }, [refreshHome]);
+  useEffect(() => {
+    const onVisible = (): void => {
+      if (document.visibilityState === "visible") refreshHome();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    };
+  }, [refreshHome]);
 
   // Persist the layout whenever the user reshapes it.
   const persist = (next: string[]) => {

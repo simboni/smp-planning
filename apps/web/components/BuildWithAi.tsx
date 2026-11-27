@@ -669,8 +669,11 @@ export function BuildWithAi({
           <div className="aib-body">
             {source === "heuristic" && (
               <div className="aib-summary" style={{ marginBottom: 10 }}>
-                <span className="aib-badge" title="AI key not configured — showing matching items only.">
-                  Search only
+                <span className="aib-badge" title="No AI model is connected to this StackUp server.">
+                  Basic mode
+                </span>{" "}
+                <span className="muted" style={{ fontSize: "0.8rem" }}>
+                  No AI model connected — this summary is built straight from your workspace data.
                 </span>
               </div>
             )}
@@ -1311,6 +1314,14 @@ function TargetCard({
                   {Icons.close}
                 </button>
               </div>
+
+              {t.subtasks && t.subtasks.length > 0 && (
+                <ul className="aib-subtasks" aria-label="Subtasks">
+                  {t.subtasks.map((st, si) => (
+                    <li key={si}>{st.name}</li>
+                  ))}
+                </ul>
+              )}
 
               {/* Row 2: everything you can set — wraps instead of clipping */}
               <div className="aib-task-meta">

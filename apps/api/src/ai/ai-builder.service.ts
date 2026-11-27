@@ -60,6 +60,8 @@ export interface PlanTask {
   assigneeIds?: string[];
   /** Repeat rule — the task re-spawns when completed. */
   recurrence?: PlanRecurrence;
+  /** Steps created as subtasks of this task (not as top-level siblings). */
+  subtasks?: { name: string }[];
 }
 
 export interface PlanDoc {
@@ -345,6 +347,14 @@ export class AiBuilderService {
           result.tasks.push({ id: task.id, name: task.name, listId });
           result.counts.tasks++;
           totalTasks++;
+          // Steps nest under their task (M4) instead of cluttering the list.
+          for (const st of pt.subtasks ?? []) {
+            try {
+              await this.tasks.createSubtask(workspaceId, userId, role, task.id, { name: st.name });
+            } catch {
+              /* a failed step doesn't undo the task */
+            }
+          }
         } catch {
           /* skip one bad task */
         }
@@ -693,7 +703,18 @@ function normalizeTask(v: unknown, memberIds: Set<string>): PlanTask | null {
     ...(dueDate !== undefined ? { dueDate } : {}),
     assigneeIds: assigneeIds && assigneeIds.length ? assigneeIds : undefined,
     recurrence: normalizeRecurrence(o.recurrence),
+    subtasks: normalizeSubtasks(o.subtasks),
   };
+}
+
+function normalizeSubtasks(v: unknown): { name: string }[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v
+    .map((x) => (typeof x === "string" ? str(x) : x && typeof x === "object" ? str((x as Record<string, unknown>).name) : undefined))
+    .filter((x): x is string => !!x)
+    .slice(0, 20)
+    .map((name) => ({ name: name.slice(0, 500) }));
+  return out.length ? out : undefined;
 }
 
 const RECUR_FREQS = new Set(["daily", "weekly", "monthly"]);
@@ -900,7 +921,7 @@ function heuristicPlan(brief: string, ctx: BuilderContext): BuildPlan {
   // Else match an existing space by name → a new list inside it.
   for (const s of ctx.spaces) {
     if (s.name.length >= 3 && lower.includes(s.name.toLowerCase())) {
-      const listName = titleCase(clean.split(/[.,\n]/)[0].slice(0, 40)) || "Tasks";
+      const listName = titleCase(wordTrim(clean.split(/[.,\n]/)[0], 40)) || "Tasks";
       return {
         summary: `A new “${listName}” list in your “${s.name}” space.`,
         targets: [
@@ -916,7 +937,7 @@ function heuristicPlan(brief: string, ctx: BuilderContext): BuildPlan {
   }
   // Otherwise propose a new space + list, and ask the user to confirm the
   // destination since we couldn't infer one.
-  const spaceName = titleCase(clean.split(/[.,\n]/)[0].slice(0, 40)) || "New space";
+  const spaceName = titleCase(wordTrim(clean.split(/[.,\n]/)[0], 40)) || "New space";
   return {
     summary: `A new “${spaceName}” space with a starter list.`,
     targets: [
@@ -934,14 +955,38 @@ function heuristicPlan(brief: string, ctx: BuilderContext): BuildPlan {
   };
 }
 
+/**
+ * Without an AI model, plan ONE task named after the brief, with the usual
+ * planning steps as its subtasks (M4) — they used to land as four generic
+ * top-level tasks, repeated every time Copilot was used.
+ */
 function heuristicTasks(brief: string): PlanTask[] {
-  const noun = brief.split(/[.\n]/)[0].slice(0, 50) || "the project";
+  const title = wordTrim(brief.split(/[.\n]/)[0], 90);
+  const name = title ? title.charAt(0).toUpperCase() + title.slice(1) : "Plan the project";
   return [
-    { name: `Define scope and goals for ${noun}` },
-    { name: "Identify owners and key dates" },
-    { name: "Break the work into milestones" },
-    { name: "Kick off and track progress" },
+    {
+      name,
+      subtasks: [
+        { name: "Define the scope and goals" },
+        { name: "Agree owners and key dates" },
+        { name: "Break the work into milestones" },
+        { name: "Kick off and track progress" },
+      ],
+    },
   ];
+}
+
+/**
+ * Shorten text to at most `max` characters on a word boundary, adding "…"
+ * only when something was cut — never ends mid-word (M3).
+ */
+function wordTrim(text: string, max: number): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max + 1);
+  const space = cut.lastIndexOf(" ");
+  const head = (space > max * 0.5 ? cut.slice(0, space) : t.slice(0, max)).replace(/[\s,;:–-]+$/, "");
+  return `${head}…`;
 }
 
 function titleCase(s: string): string {
@@ -1063,7 +1108,7 @@ function formPrompt(brief: string): string {
 }
 
 function heuristicForm(brief: string): FormPlan {
-  const topic = titleCase(brief.replace(/\s+/g, " ").trim().slice(0, 40)) || "Feedback";
+  const topic = titleCase(wordTrim(brief, 40)) || "Feedback";
   return {
     name: `${topic} form`,
     description: "A quick form — your answers help us improve.",

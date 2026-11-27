@@ -9477,3 +9477,8 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
    Space without an icon shows its first letter instead of one shared icon. */
 .ev-list-more { color: var(--muted); font-weight: 600; }
 .ev-initial { font-weight: 800; font-size: 1.05rem; line-height: 1; color: #fff; }
+
+/* Audit M4: Copilot's preview shows planned steps nested under their task. */
+.aib-subtasks { margin: 2px 0 6px 22px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.aib-subtasks li { font-size: 0.8rem; color: var(--muted); }
+.aib-subtasks li::before { content: "↳ "; }
