@@ -45,6 +45,7 @@ import { PublicShareButton } from "@/components/PublicShareButton";
 import { saveEntityAsTemplate } from "@/lib/toast";
 import { DOC_EMOJI } from "@/lib/format";
 import { docPlace, docsChanged } from "@/lib/docs";
+import { usePageTitle } from "@/lib/title";
 
 /* ------------------------------------------------------------------ *
  * Page tree (client-side, from the flat meta list).
@@ -476,6 +477,7 @@ function DocView() {
   const { tree } = useHierarchy();
 
   const [doc, setDoc] = useState<Doc | null>(null);
+  usePageTitle(doc?.name);
   const [pages, setPages] = useState<DocPageMeta[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);

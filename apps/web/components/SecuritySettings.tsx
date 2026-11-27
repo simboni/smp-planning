@@ -231,10 +231,11 @@ function SessionsCard() {
       .then((r) => setSessions(r.sessions))
       .catch(() => setSessions([]));
 
-  // Load lazily the first time the card is expanded.
+  // Load up front so the header shows how many devices are signed in, even
+  // while the list itself stays collapsed.
   useEffect(() => {
-    if (open && sessions === null) load();
-  }, [open, sessions]);
+    if (sessions === null) load();
+  }, [sessions]);
 
   const revoke = async (id: string) => {
     setRevoking(id);
@@ -260,7 +261,10 @@ function SessionsCard() {
           <span className="intg-ic">{Icons.globe}</span> Active sessions
           {count !== null && <span className="sec-count">{count}</span>}
         </h3>
-        <span className={`sec-chevron${open ? " open" : ""}`}>{Icons.chevronDown}</span>
+        <span className="sec-collapse-label">
+          {open ? "Hide" : count ? `Show ${count === 1 ? "device" : "devices"}` : "Show"}
+          <span className={`sec-chevron${open ? " open" : ""}`}>{Icons.chevronDown}</span>
+        </span>
       </button>
 
       {open && (
@@ -272,7 +276,9 @@ function SessionsCard() {
           <div className="intg-list">
             {sessions === null && <div className="skel" style={{ height: 40 }} />}
             {sessions?.length === 0 && (
-              <div className="intg-empty">No active sessions.</div>
+              <div className="intg-empty">
+                No other signed-in devices found. Sessions appear here after you sign in.
+              </div>
             )}
             {sessions?.map((s) => (
               <div key={s.id} className="intg-row">

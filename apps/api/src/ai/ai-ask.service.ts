@@ -188,9 +188,9 @@ function buildPrompt(
 ): string {
   const c = snapshot.counts;
   const header =
-    `Workspace state: ${c.openTasks} open task(s), ${c.overdue} overdue, ` +
-    `${c.completedThisWeek} completed in the last 7 days, ${c.members} member(s) ` +
-    `across ${c.spaces} space(s).`;
+    `Workspace state: ${plural(c.openTasks, "open task")}, ${c.overdue} overdue, ` +
+    `${c.completedThisWeek} completed in the last 7 days, ${plural(c.members, "member")} ` +
+    `across ${plural(c.spaces, "space")}.`;
 
   const taskLines = [...taskById.values()].map((t) => t.line);
   const otherLines = sources
@@ -226,21 +226,29 @@ function heuristicAnswer(question: string, snapshot: WorkspaceSnapshot): string 
   if (c.openTasks === 0 && c.completedThisWeek === 0 && snapshot.tasks.length === 0) {
     return "There's no task activity to report yet. Once you add tasks, I can summarize progress here.";
   }
+  // Short bulleted sections with real plurals (L14), not one run-on paragraph.
   const lines = [
-    `Here's where the workspace stands: ${c.openTasks} open task(s), ${c.overdue} overdue, and ${c.completedThisWeek} completed in the last 7 days.`,
+    "Here's where the workspace stands:",
+    `- ${plural(c.openTasks, "open task")}`,
+    `- ${c.overdue} overdue`,
+    `- ${c.completedThisWeek} completed in the last 7 days`,
   ];
   const overdue = snapshot.tasks.filter((t) => t.overdue).slice(0, 5);
   if (overdue.length) {
-    lines.push(
-      "Overdue: " +
-        overdue
-          .map((t) => `${t.name}${t.assignees[0] ? ` (${t.assignees[0].name})` : ""}`)
-          .join(", "),
-    );
+    lines.push("", "Overdue:");
+    for (const t of overdue) {
+      lines.push(`- ${t.name}${t.assignees[0] ? ` (${t.assignees[0].name})` : ""}`);
+    }
   }
   const doneWeek = snapshot.tasks.filter((t) => t.completedRecently).slice(0, 5);
   if (doneWeek.length) {
-    lines.push("Completed this week: " + doneWeek.map((t) => t.name).join(", "));
+    lines.push("", "Completed this week:");
+    for (const t of doneWeek) lines.push(`- ${t.name}`);
   }
   return lines.join("\n");
+}
+
+/** "1 open task", "23 open tasks". */
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }

@@ -38,6 +38,7 @@ import {
   toDateInputValue,
 } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
+import { usePageTitle } from "@/lib/title";
 
 const TARGET_TYPE_META: Record<TargetType, { label: string; hint: string }> = {
   number: { label: "Number", hint: "Track a metric from a start value to a target." },
@@ -626,6 +627,7 @@ function GoalView() {
   const goalId = useSearchParams().get("id") ?? "";
 
   const [goal, setGoal] = useState<GoalDetail | null>(null);
+  usePageTitle(goal?.name);
   const [members, setMembers] = useState<Member[]>([]);
   const [error, setError] = useState("");
   const [nameDraft, setNameDraft] = useState("");

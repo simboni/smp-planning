@@ -2035,6 +2035,8 @@ export interface TaskComment {
 
 export type ActivityKind =
   | "created"
+  | "subtask_added"
+  | "checklist_added"
   | "status"
   | "priority"
   | "dates"
@@ -4116,6 +4118,8 @@ export interface AiPlanTask {
   dueDate?: string | null;
   assigneeIds?: string[];
   recurrence?: { freq: "daily" | "weekly" | "monthly"; interval: number; mode: "on_complete" };
+  /** Steps that become subtasks of this task. */
+  subtasks?: { name: string }[];
 }
 export interface AiPlanDoc {
   name: string;

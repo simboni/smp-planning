@@ -224,9 +224,8 @@ function EmailCard() {
         <div>
           <div className="setting-label">Provider</div>
           <div className="setting-hint">
-            Outbound task emails route through this provider. Configure a relay
-            via the <span className="mono">EMAIL_PROVIDER</span> /{" "}
-            <span className="mono">EMAIL_RELAY_URL</span> environment variables.
+            Outbound task emails are sent through this provider. Your StackUp
+            administrator sets it up on the server.
           </div>
         </div>
         <span style={{ fontWeight: 600 }}>{label}</span>
@@ -565,7 +564,7 @@ function ImportExportCard() {
     if (!listId || !csv.trim()) return;
     try {
       const r = await importExportApi.importCsv(listId, csv);
-      setMsg(`Imported ${r.tasks} task(s) from CSV.`);
+      setMsg(`Imported ${r.tasks} ${r.tasks === 1 ? "task" : "tasks"} from CSV.`);
       setCsv("");
     } catch (e) {
       setMsg((e as Error).message);
@@ -576,7 +575,7 @@ function ImportExportCard() {
     try {
       const parsed = JSON.parse(board);
       const r = await importExportApi.importBoard(source, parsed);
-      setMsg(`Imported ${r.tasks} task(s) into ${r.lists} list(s).`);
+      setMsg(`Imported ${r.tasks} ${r.tasks === 1 ? "task" : "tasks"} into ${r.lists} ${r.lists === 1 ? "list" : "lists"}.`);
       setBoard("");
     } catch (e) {
       setMsg(

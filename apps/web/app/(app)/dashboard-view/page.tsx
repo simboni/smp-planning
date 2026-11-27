@@ -61,6 +61,7 @@ import {
   timeAgo,
 } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
+import { usePageTitle } from "@/lib/title";
 
 /* ------------------------------------------------------------------ *
  * Card kind catalogue.
@@ -1052,6 +1053,7 @@ function DashboardView() {
   const router = useRouter();
 
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
+  usePageTitle(dashboard?.name);
   const [cards, setCards] = useState<DashboardCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

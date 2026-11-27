@@ -540,9 +540,9 @@ select.input { cursor: pointer; appearance: none;
   color: #fff; font-weight: 800; font-size: 1.05rem;
   flex-shrink: 0;
 }
-.ws-card-body { flex: 1; min-width: 0; }
-.ws-card-name { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
-.ws-card-meta { font-size: 0.82rem; color: var(--muted); margin-top: 1px; }
+.ws-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ws-card-name { display: block; font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-card-meta { display: block; font-size: 0.82rem; color: var(--muted); }
 .ws-card-arrow { color: var(--muted); flex-shrink: 0; }
 .ws-card:hover .ws-card-arrow { color: var(--brand); }
 
@@ -9435,3 +9435,53 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .ev-archived-name { display: flex; flex-direction: column; font-weight: 600; min-width: 0; }
 .ev-archived-name .muted { font-size: 0.8rem; font-weight: 500; }
 .ev-archived-ro { font-size: 0.8rem; }
+
+/* Audit M5: say what the collapsed sessions card holds. */
+.sec-collapse-label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+
+/* Audit M7: a running timer's chip must not widen the top bar (that added a
+   sideways scrollbar and nudged the task drawer). It shrinks instead. */
+.timer-chip { flex-shrink: 1; min-width: 0; }
+.timer-chip-name { min-width: 0; flex-shrink: 1; }
+.topbar-search { min-width: 0; flex-shrink: 1; }
+@media (max-width: 1400px) { .timer-chip-name { max-width: 90px; } }
+
+/* Audit L6: scrolling past the end of the task drawer doesn't scroll the page behind it. */
+.tp-body, .tp-panel { overscroll-behavior: contain; }
+
+/* Audit L5: comments read top to bottom — avatar at left, then the name/time
+   line, the comment on its own line, then Reply / Edit / Delete. */
+.cm-item { display: flex; align-items: flex-start; gap: 10px; }
+.cm-item > .cm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; flex-wrap: nowrap; gap: 3px; }
+.cm-item > .cm-main > .cm-body { margin-top: 0; }
+
+/* Audit L8: the "or" before "Build with Copilot" is its own divider line
+   ("—— or ——"), so the button can't cover it. */
+.copilot-opt-row { flex-direction: column; align-items: stretch; gap: 8px; }
+.copilot-opt-row .copilot-opt { flex: none; width: 100%; }
+.copilot-opt-or {
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0; white-space: nowrap; position: relative; z-index: 1;
+}
+.copilot-opt-or::before, .copilot-opt-or::after {
+  content: ""; flex: 1; height: 1px; background: var(--line);
+}
+
+/* Audit L9: on phones, leave room at the end of every page so the floating
+   notes button never covers the last row of cards. */
+@media (max-width: 900px) {
+  .shell-main > main { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Audit L11: "+N more" when a Space has more lists than the card shows; a
+   Space without an icon shows its first letter instead of one shared icon. */
+.ev-list-more { color: var(--muted); font-weight: 600; }
+.ev-initial { font-weight: 800; font-size: 1.05rem; line-height: 1; color: #fff; }
+
+/* Audit M4: Copilot's preview shows planned steps nested under their task. */
+.aib-subtasks { margin: 2px 0 6px 22px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.aib-subtasks li { font-size: 0.8rem; color: var(--muted); }
+.aib-subtasks li::before { content: "↳ "; }
+
+/* Audit L2: Space page section tabs (Tasks / Lists / Sprints / Automations). */
+.sp-sections { margin: 4px 0 14px; }

@@ -174,7 +174,7 @@ export function TimeTracking({
     <section className="tp-section tt-section">
       <div className="tp-section-head">
         <h3 className="tp-section-title">
-          {Icons.timer} Time Tracking
+          Time Tracking
           {shown.length > 0 && <span className="tp-count-badge">{shown.length}</span>}
         </h3>
         {canTrack && !adding && (

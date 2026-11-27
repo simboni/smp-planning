@@ -49,6 +49,7 @@ import { TimelineView } from "@/components/views/TimelineView";
 import { FavoriteStar } from "@/components/FavoriteStar";
 import { PublicShareButton } from "@/components/PublicShareButton";
 import { saveEntityAsTemplate, showToast } from "@/lib/toast";
+import { usePageTitle } from "@/lib/title";
 
 interface ListMeta {
   list: List;
@@ -90,6 +91,7 @@ function ListShell() {
   const { tree } = useHierarchy();
 
   const [meta, setMeta] = useState<ListMeta | null>(null);
+  usePageTitle(meta?.list.name);
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [tasks, setTasks] = useState<TaskCard[] | null>(null);
   const [members, setMembers] = useState<Member[]>([]);

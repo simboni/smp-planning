@@ -243,15 +243,18 @@ function heuristicTaskSummary(data: {
   return lines.join("\n");
 }
 
-function heuristicSubtasks(brief: string): string[] {
-  const base = brief.replace(/\s+/g, " ").trim() || "the task";
-  const noun = base.split(/[.\n]/)[0].slice(0, 60);
+/**
+ * Fallback steps when no AI model is connected. They become subtasks of the
+ * task, so they don't repeat its name — that used to paste in a fixed-length
+ * slice of the title, cut mid-word ("…about CIVORA on mond", M3).
+ */
+function heuristicSubtasks(_brief: string): string[] {
   return [
-    `Define scope and acceptance criteria for ${noun}`,
-    `Break down the work and identify dependencies`,
-    `Implement the core of ${noun}`,
-    `Review and test the result`,
-    `Document and hand off`,
+    "Define the scope and acceptance criteria",
+    "Break down the work and identify dependencies",
+    "Do the core work",
+    "Review and test the result",
+    "Document and hand off",
   ];
 }
 
