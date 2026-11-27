@@ -43,3 +43,14 @@ Setting a paid plan by hand (until billing): on the server,
 | L14 | Copilot answer one run-on paragraph with "task(s)" | Bulleted sections, real plurals, and "Basic mode — no AI model connected" label |
 
 Existing Spaces keep their colours (change them from the Space menu). Tests: `apps/api/test/audit-medium-low.e2e-spec.ts` (5). Full API suite 39 suites / 287 tests.
+
+## Security quick wins
+
+| Item | Fix |
+|---|---|
+| No HSTS | `Strict-Transport-Security: max-age=31536000; includeSubDomains` on HTTPS and all production responses (browsers ignore it over plain HTTP); local dev is never pinned. Headers live in `apps/api/src/common/security-headers.ts` |
+| `X-Powered-By: Express` exposed | Disabled |
+| `/robots.txt` 404 | Added: keeps the private app out of search results, leaves `/s` and `/f` public links reachable for link previews |
+| `/signup`, `/forgot-password` 404 | Redirect to `/login?mode=signup` / `?mode=forgot`, which open the matching tab |
+
+Tests: `apps/api/test/security-headers.e2e-spec.ts` (2). Full API suite 40 suites / 289 tests.

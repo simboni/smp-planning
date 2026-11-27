@@ -33,6 +33,11 @@ const FEATURES: { icon: keyof typeof Icons; label: string; desc: string }[] = [
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
+  // /login?mode=signup|forgot (also where /signup and /forgot-password land).
+  useEffect(() => {
+    const m = new URLSearchParams(window.location.search).get("mode");
+    if (m === "signup" || m === "forgot") setMode(m);
+  }, []);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

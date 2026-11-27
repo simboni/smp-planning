@@ -10,6 +10,7 @@ import { autoMigrate } from "./db/migrator";
 import { SharesService } from "./shares/shares.service";
 import { FormsService } from "./forms/forms.service";
 import { PageNotFoundFilter } from "./common/page-not-found.filter";
+import { securityHeaders } from "./common/security-headers";
 
 /** Escape a string for safe inclusion in an HTML attribute. */
 function htmlAttr(s: string): string {
@@ -123,36 +124,10 @@ async function bootstrap(): Promise<void> {
     : ["http://localhost:3001"];
   app.enableCors({ origin: origins });
 
-  // Baseline security headers on every response. The Content-Security-Policy
-  // is the key defense-in-depth against XSS: even if a script were injected,
-  // `connect-src 'self'` blocks exfiltration of the localStorage bearer tokens
-  // to an attacker host, `object-src 'none'` kills plugin vectors, and
-  // `base-uri 'self'` blocks <base> hijacking. 'unsafe-inline' is required for
-  // Next.js's inline bootstrap and the theme/native marker scripts; the
-  // server-side HTML sanitizer (docs.support.ts) is what actually strips
-  // injected markup, with CSP as the backstop. Same-origin deploy, so 'self'
-  // covers the API, the SSE stream, and file downloads; extra API origins can
-  // be allow-listed via WEB_ORIGINS for split deploys.
-  const connectSrc = ["'self'", ...origins].join(" ");
-  const csp = [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "object-src 'none'",
-    "frame-ancestors 'none'",
-    "img-src 'self' data: blob:",
-    "font-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline'",
-    `connect-src ${connectSrc}`,
-    "form-action 'self' https://accounts.google.com",
-  ].join("; ");
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("Referrer-Policy", "no-referrer");
-    res.setHeader("Content-Security-Policy", csp);
-    next();
-  });
+  // Security headers (CSP, HSTS on HTTPS, …) — see common/security-headers.ts.
+  // Express also stops announcing itself (X-Powered-By).
+  app.getHttpAdapter().getInstance().disable("x-powered-by");
+  app.use(securityHeaders(origins));
 
   // Single-origin deploy: serve the static web export from this process (one
   // URL, no CORS). The web page routes and the API resource routes share names
@@ -180,6 +155,13 @@ async function bootstrap(): Promise<void> {
       // An asset path (has an extension) that wasn't found above is a real 404.
       if (extname(req.path)) return next();
       const p = req.path.replace(/\/+$/, "") || "/index";
+
+      // Familiar addresses (audit, security): /signup and /forgot-password
+      // open the matching tab of the login page instead of a 404.
+      if (p === "/signup" || p === "/forgot-password") {
+        res.redirect(302, `/login?mode=${p === "/signup" ? "signup" : "forgot"}`);
+        return;
+      }
 
       // Social-preview cards: public share (/s?t=<token>) and public form
       // (/f?token=<token>) links must unfurl into a rich card in chat apps.

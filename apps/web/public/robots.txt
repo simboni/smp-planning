@@ -1,0 +1,9 @@
+# StackUp is a private workspace app: keep it out of search results.
+# Public share (/s) and form (/f) links stay reachable so chat apps can
+# show link previews.
+User-agent: *
+Allow: /login
+Allow: /s
+Allow: /f
+Allow: /og-share.png
+Disallow: /
