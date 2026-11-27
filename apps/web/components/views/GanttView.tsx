@@ -10,7 +10,8 @@
  * future work (Module 6+).
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TimeScaleBar, dayWidth, useZoom } from "@/components/views/TimeScale";
 import type { TaskCard } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { colorFor } from "@/lib/format";
@@ -44,6 +45,8 @@ function parseDay(iso: string | null): Date | null {
 }
 
 export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttViewProps) {
+  const [zoom, setZoom] = useZoom("gantt");
+  const dayW = dayWidth(zoom, DAY_W);
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
 
@@ -90,14 +93,40 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
   // Open on today (L1): the range starts weeks earlier, so without this the
   // chart opened on an old date with today — and its line — off-screen.
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scrolledToToday = useRef(false);
+  const scrollToDay = useCallback(
+    (idx: number, smooth = false) => {
+      const el = scrollRef.current;
+      if (!el || idx < 0) return;
+      el.scrollTo({ left: Math.max(0, idx * dayW - el.clientWidth * 0.3), behavior: smooth ? "smooth" : "auto" });
+    },
+    [dayW],
+  );
+  // On open, and whenever the zoom changes, put today in view.
+  useEffect(() => {
+    scrollToDay(todayIdx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayW]);
+  const chartW = totalDays * dayW;
+
+  // What's in view, for the "bar is off-screen" hints on each row.
+  const [view, setView] = useState({ left: 0, width: 0 });
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || scrolledToToday.current || todayIdx < 0) return;
-    scrolledToToday.current = true;
-    el.scrollLeft = Math.max(0, todayIdx * DAY_W - el.clientWidth * 0.3);
-  }, [todayIdx]);
-  const chartW = totalDays * DAY_W;
+    if (!el) return;
+    let raf = 0;
+    const read = (): void => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setView({ left: el.scrollLeft, width: el.clientWidth }));
+    };
+    read();
+    el.addEventListener("scroll", read, { passive: true });
+    window.addEventListener("resize", read);
+    return () => {
+      cancelAnimationFrame(raf);
+      el.removeEventListener("scroll", read);
+      window.removeEventListener("resize", read);
+    };
+  }, []);
 
   const startDrag = (
     e: React.PointerEvent<HTMLElement>,
@@ -117,7 +146,7 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
     const st = dragRef.current;
     if (!st) return;
     const px = e.clientX - st.startX;
-    const delta = Math.round(px / DAY_W);
+    const delta = Math.round(px / dayW);
     const moved = st.moved || Math.abs(px) > 4;
     if (delta !== st.delta || moved !== st.moved) {
       const next = { ...st, delta, moved };
@@ -155,6 +184,7 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
 
   return (
     <div className="gantt">
+      <TimeScaleBar zoom={zoom} onZoom={setZoom} onToday={() => scrollToDay(todayIdx, true)} />
       <div className="gantt-main">
         {/* left rail */}
         <div className="gantt-rail">
@@ -181,11 +211,14 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
 
         {/* timeline */}
         <div className="gantt-scroll" ref={scrollRef}>
-          <div className="gantt-chart" style={{ width: chartW }}>
+          <div
+            className={`gantt-chart zoom-${zoom}`}
+            style={{ width: chartW, ["--day-w" as string]: `${dayW}px` } as React.CSSProperties}
+          >
             <div className="gantt-months">
               {months.map((m, i) => (
-                <span key={i} className="gantt-month" style={{ width: m.days * DAY_W }}>
-                  {m.days >= 3 ? m.label : ""}
+                <span key={i} className="gantt-month" style={{ width: m.days * dayW }}>
+                  {m.days * dayW >= 56 ? m.label : ""}
                 </span>
               ))}
             </div>
@@ -197,7 +230,8 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
                     key={i}
                     className={`gantt-day${i % 7 >= 5 ? " weekend" : ""}${i === todayIdx ? " today" : ""}`}
                   >
-                    {d.getDate()}
+                    {/* Weeks zoom: label Mondays only, so numbers don't collide. */}
+                    {zoom === "days" || i % 7 === 0 ? d.getDate() : ""}
                   </span>
                 );
               })}
@@ -209,7 +243,7 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
             >
               {/* today line */}
               {todayIdx >= 0 && todayIdx < totalDays && (
-                <span className="gantt-today-line" style={{ left: todayIdx * DAY_W + DAY_W / 2 }} />
+                <span className="gantt-today-line" style={{ left: todayIdx * dayW + dayW / 2 }} />
               )}
 
               {scheduled.map((t, row) => {
@@ -242,7 +276,7 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
                     <span
                       key={t.id}
                       className={`gantt-milestone${isDragging ? " dragging" : ""}`}
-                      style={{ left: mIdx * DAY_W + DAY_W / 2, top: row * ROW_H + ROW_H / 2 }}
+                      style={{ left: mIdx * dayW + dayW / 2, top: row * ROW_H + ROW_H / 2 }}
                       title={t.name}
                       onPointerDown={(e) => startDrag(e, t, "move")}
                       onPointerMove={moveDrag}
@@ -256,13 +290,42 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
                   );
                 }
 
+                const barLeft = startIdx * dayW + 2;
+                const barW = Math.max((endIdx - startIdx + 1) * dayW - 4, dayW - 4);
+                // Too short for its name: show the name just outside the bar.
+                const short = barW < Math.min(160, t.name.length * 6.5 + 18);
+                // Bar entirely off-screen: a small button on that edge jumps to it.
+                const hint =
+                  view.width > 0 && !isDragging
+                    ? barLeft + barW < view.left
+                      ? "left"
+                      : barLeft > view.left + view.width
+                        ? "right"
+                        : null
+                    : null;
+                const hintLabel = `${MONTHS[from.getMonth()]} ${from.getDate()}`;
                 return (
+                  <div key={t.id} style={{ display: "contents" }}>
+                  {hint && (
+                    <button
+                      type="button"
+                      className={`gantt-offscreen ${hint}`}
+                      style={{
+                        top: row * ROW_H + 9,
+                        left: hint === "left" ? view.left + 6 : undefined,
+                        right: hint === "right" ? chartW - (view.left + view.width) + 6 : undefined,
+                      }}
+                      title={`Scroll to “${t.name}”`}
+                      onClick={() => scrollToDay(startIdx, true)}
+                    >
+                      {hint === "left" ? `‹ ${hintLabel}` : `${hintLabel} ›`}
+                    </button>
+                  )}
                   <div
-                    key={t.id}
-                    className={`gantt-bar${isDragging ? " dragging" : ""}${t.status.type === "done" ? " done" : ""}`}
+                    className={`gantt-bar${isDragging ? " dragging" : ""}${t.status.type === "done" ? " done" : ""}${short ? " short" : ""}`}
                     style={{
-                      left: startIdx * DAY_W + 2,
-                      width: Math.max((endIdx - startIdx + 1) * DAY_W - 4, DAY_W - 4),
+                      left: barLeft,
+                      width: barW,
                       top: row * ROW_H + 7,
                       background: `color-mix(in srgb, ${color} 42%, var(--card))`,
                       borderColor: `color-mix(in srgb, ${color} 85%, transparent)`,
@@ -294,6 +357,7 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
                         onPointerUp={() => endDrag(t)}
                       />
                     )}
+                  </div>
                   </div>
                 );
               })}

@@ -2827,7 +2827,7 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
 }
 .gantt-days { display: flex; height: 28px; background: var(--card-2); border-bottom: 1px solid var(--line); }
 .gantt-day {
-  width: 28px; flex-shrink: 0; text-align: center;
+  width: var(--day-w, 28px); flex-shrink: 0; text-align: center;
   font-size: 0.66rem; font-weight: 600; color: var(--muted);
   padding-top: 6px; box-sizing: border-box;
 }
@@ -2838,10 +2838,10 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   background:
     repeating-linear-gradient(
       to right,
-      transparent 0 140px,
-      color-mix(in srgb, var(--ink) 3.5%, transparent) 140px 196px
+      transparent 0 calc(var(--day-w, 28px) * 5),
+      color-mix(in srgb, var(--ink) 3.5%, transparent) calc(var(--day-w, 28px) * 5) calc(var(--day-w, 28px) * 7)
     ),
-    repeating-linear-gradient(to right, var(--line-soft) 0 1px, transparent 1px 28px);
+    repeating-linear-gradient(to right, var(--line-soft) 0 1px, transparent 1px var(--day-w, 28px));
 }
 .gantt-today-line {
   position: absolute; top: 0; bottom: 0; width: 2px;
@@ -9545,3 +9545,37 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .tp-section.is-empty .tp-empty.tp-empty-pad { display: none; }
 .tp-section.is-empty .tp-section-head { margin-bottom: 4px; }
 .tp-section.is-empty .tp-section-title { opacity: 0.8; }
+
+/* ---- Gantt & Timeline: Today / zoom toolbar, short bars, off-screen hints ---- */
+.ts-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }
+.ts-seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--card); }
+.ts-seg-btn {
+  appearance: none; border: 0; background: none; cursor: pointer; font: inherit;
+  font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 5px 12px;
+}
+.ts-seg-btn + .ts-seg-btn { border-left: 1px solid var(--line); }
+.ts-seg-btn.active { background: var(--brand-soft); color: var(--brand-700); }
+/* Weeks zoom: Monday labels sit at the start of their week. */
+.gantt-chart.zoom-weeks .gantt-day { text-align: left; padding-left: 2px; overflow: visible; white-space: nowrap; }
+/* A bar too short for its name shows the name just outside, to the right. */
+.gantt-bar.short .gantt-bar-name {
+  position: absolute; left: calc(100% + 6px); max-width: 220px; padding: 0;
+  overflow: hidden; text-overflow: ellipsis; color: var(--ink-2) !important; font-weight: 600;
+  pointer-events: none;
+}
+/* Row whose bar is off-screen: a small chip on that edge scrolls to it. */
+.gantt-offscreen {
+  position: absolute; z-index: 3; height: 22px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+  color: var(--ink-2); font: inherit; font-size: 0.72rem; font-weight: 650;
+  cursor: pointer; box-shadow: var(--shadow-1, 0 1px 2px rgba(0,0,0,.06));
+}
+.gantt-offscreen:hover { border-color: var(--brand); color: var(--brand-700); }
+@media (max-width: 640px) {
+  /* Slim Timeline rail: names get the room, the count steps aside. */
+  .tl-rail-count { display: none; }
+  .tl-rail { gap: 6px; padding-left: 8px; padding-right: 6px; }
+  .gantt-rail { width: 120px; }
+  .gantt-rail-row { padding-left: 8px; padding-right: 6px; }
+  .ts-bar { justify-content: space-between; }
+}

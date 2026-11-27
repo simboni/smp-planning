@@ -9,7 +9,8 @@
  * the task. A task with several assignees appears in each of their lanes.
  */
 
-import { useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { TimeScaleBar, dayWidth, useNarrow, useZoom } from "@/components/views/TimeScale";
 import type { TaskCard, TaskUser } from "@/lib/api";
 import { Avatar } from "@/components/Avatar";
 import { addDays, atMidnight, diffDays, startOfWeekMonday } from "@/lib/viewUtils";
@@ -43,6 +44,10 @@ function span(t: TaskCard): { start: Date; end: Date } | null {
 const UNASSIGNED = "__unassigned__";
 
 export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps) {
+  const [zoom, setZoom] = useZoom("timeline");
+  const dayW = dayWidth(zoom, DAY_W);
+  // Phones: a slimmer name rail leaves room for the chart.
+  const railW = useNarrow() ? 112 : RAIL_W;
   const scheduled = useMemo(() => tasks.filter((t) => span(t)), [tasks]);
   const unscheduled = useMemo(() => tasks.filter((t) => !span(t)), [tasks]);
 
@@ -107,7 +112,7 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
   }, [scheduled]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const gridW = days * DAY_W;
+  const gridW = days * dayW;
 
   // Month header segments across the range.
   const months = useMemo(() => {
@@ -123,6 +128,22 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
   }, [rangeStart, days]);
 
   const todayOffset = diffDays(rangeStart, today);
+
+  // Open on today (it used to open weeks in the past), and keep today in view
+  // when the zoom changes. The rail is inside the scroller, so subtract it.
+  const scrollToToday = useCallback(
+    (smooth = false) => {
+      const el = scrollRef.current;
+      if (!el || todayOffset < 0) return;
+      const visible = el.clientWidth - railW;
+      el.scrollTo({ left: Math.max(0, todayOffset * dayW - visible * 0.3), behavior: smooth ? "smooth" : "auto" });
+    },
+    [todayOffset, dayW, railW],
+  );
+  useEffect(() => {
+    scrollToToday();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayW, railW, scheduled.length > 0]);
 
   if (scheduled.length === 0) {
     return (
@@ -140,18 +161,19 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
 
   return (
     <div className="tl-wrap">
+      <TimeScaleBar zoom={zoom} onZoom={setZoom} onToday={() => scrollToToday(true)} />
       <div className="tl-scroll" ref={scrollRef}>
-        <div className="tl-grid" style={{ width: RAIL_W + gridW }}>
+        <div className="tl-grid" style={{ width: railW + gridW }}>
           {/* Header: months + days */}
           <div className="tl-head" style={{ height: 46 }}>
-            <div className="tl-rail tl-head-rail" style={{ width: RAIL_W }}>
+            <div className="tl-rail tl-head-rail" style={{ width: railW }}>
               Assignee
             </div>
             <div className="tl-cols" style={{ width: gridW }}>
               <div className="tl-months">
                 {months.map((m, i) => (
-                  <div key={i} className="tl-month" style={{ width: m.span * DAY_W }}>
-                    {m.label}
+                  <div key={i} className="tl-month" style={{ width: m.span * dayW }}>
+                    {m.span * dayW >= 56 ? m.label : ""}
                   </div>
                 ))}
               </div>
@@ -164,9 +186,10 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
                     <div
                       key={i}
                       className={`tl-day${weekend ? " weekend" : ""}${isToday ? " today" : ""}`}
-                      style={{ width: DAY_W }}
+                      style={{ width: dayW }}
                     >
-                      {d.getDate()}
+                      {/* Weeks zoom: label Mondays only. */}
+                      {zoom === "days" || d.getDay() === 1 ? d.getDate() : ""}
                     </div>
                   );
                 })}
@@ -178,14 +201,14 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
           {todayOffset >= 0 && todayOffset < days && (
             <div
               className="tl-today-line"
-              style={{ left: RAIL_W + todayOffset * DAY_W + DAY_W / 2 }}
+              style={{ left: railW + todayOffset * dayW + dayW / 2 }}
             />
           )}
 
           {/* Lanes */}
           {lanes.map((lane) => (
             <div className="tl-lane" key={lane.key} style={{ minHeight: laneHeight(lane.rows) }}>
-              <div className="tl-rail" style={{ width: RAIL_W }}>
+              <div className="tl-rail" style={{ width: railW }}>
                 {lane.user ? (
                   <>
                     <Avatar
@@ -218,8 +241,8 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
                       title={`${t.name} — ${t.status.name}`}
                       style={{
                         top: 7 + (lane.rowOf.get(t.id) ?? 0) * BAR_STEP,
-                        left: offset * DAY_W + 2,
-                        width: len * DAY_W - 4,
+                        left: offset * dayW + 2,
+                        width: len * dayW - 4,
                         background: t.status.color,
                       }}
                       onClick={() => onOpenTask(t.id)}
