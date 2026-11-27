@@ -55,6 +55,7 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { Icons, StackMark, type IconKey } from "@/components/icons";
 import { colorFor, elapsedSeconds, formatTimer, initials, timeAgo } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
+import { pageTitleClaimed, setDocTitle } from "@/lib/title";
 
 interface NavItem {
   href: string;
@@ -471,6 +472,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Native app bar title: the active primary destination, else the workspace.
   const currentNav = PRIMARY_NAV.find((i) => isNavActive(i, pathname));
   const pageLabel = currentNav?.label ?? workspace?.name ?? "StackUp";
+  // Tab title from the sidebar item, unless the page names itself (L12).
+  useEffect(() => {
+    if (pageTitleClaimed()) return;
+    setDocTitle(currentNav?.label ?? null);
+  }, [pathname, currentNav?.label]);
 
   const accountAvatar = user ? (
     <Avatar name={user.fullName || user.email} id={user.id} avatarUrl={user.avatarUrl} />

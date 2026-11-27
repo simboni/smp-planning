@@ -243,7 +243,7 @@ export function Attachments({ taskId, canEdit }: { taskId: string; canEdit: bool
     <section className="tp-section">
       <div className="tp-section-head">
         <h3 className="tp-section-title">
-          {Icons.paperclip} Attachments
+          Attachments
           {count > 0 && <span className="tp-count-badge">{count}</span>}
         </h3>
         {canEdit && (

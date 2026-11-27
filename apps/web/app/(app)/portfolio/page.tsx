@@ -28,6 +28,7 @@ import {
 import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
 import { clamp01, formatPercent } from "@/lib/format";
+import { usePageTitle } from "@/lib/title";
 
 /* ------------------------------------------------------------------ *
  * Manage-lists modal (full listIds set on submit).
@@ -125,6 +126,7 @@ function PortfolioView() {
   const portfolioId = useSearchParams().get("id") ?? "";
 
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  usePageTitle(portfolio?.name);
   const [items, setItems] = useState<PortfolioItem[] | null>(null);
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);

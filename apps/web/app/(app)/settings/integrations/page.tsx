@@ -224,9 +224,8 @@ function EmailCard() {
         <div>
           <div className="setting-label">Provider</div>
           <div className="setting-hint">
-            Outbound task emails route through this provider. Configure a relay
-            via the <span className="mono">EMAIL_PROVIDER</span> /{" "}
-            <span className="mono">EMAIL_RELAY_URL</span> environment variables.
+            Outbound task emails are sent through this provider. Your StackUp
+            administrator sets it up on the server.
           </div>
         </div>
         <span style={{ fontWeight: 600 }}>{label}</span>

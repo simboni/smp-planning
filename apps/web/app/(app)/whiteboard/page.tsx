@@ -40,6 +40,7 @@ import {
 import { useHierarchy } from "@/components/HierarchyProvider";
 import { useRealtime } from "@/lib/realtime";
 import { Icons } from "@/components/icons";
+import { usePageTitle } from "@/lib/title";
 
 /* ------------------------------------------------------------------ *
  * Constants & tiny helpers.
@@ -322,6 +323,7 @@ function WhiteboardView() {
   const { tree } = useHierarchy();
 
   const [board, setBoard] = useState<WhiteboardDetail | null>(null);
+  usePageTitle(board?.name);
   const [elements, setElements] = useState<WhiteboardElement[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);

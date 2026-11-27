@@ -11,7 +11,7 @@
  * underneath refetches. Read-only when `canEdit` is false.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   fieldsApi,
@@ -185,6 +185,14 @@ export function TaskPanel({
 
   // Local editable drafts.
   const [titleDraft, setTitleDraft] = useState("");
+  // The title box grows with the text, so long titles are never clipped (M2).
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [titleDraft]);
   const [descDraft, setDescDraft] = useState("");
   const [editingDesc, setEditingDesc] = useState(false);
 
@@ -238,18 +246,28 @@ export function TaskPanel({
   }, [detail?.spaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Run a mutation, then reload detail + notify the list. */
-  const run = async (fn: () => Promise<unknown>): Promise<void> => {
-    if (busy) return;
+  // Edits run one after another. They used to be DROPPED while another was
+  // in flight — e.g. the first item typed right after creating a checklist
+  // vanished (L4). Now they queue and each one lands, in order.
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingRef = useRef(0);
+  const run = (fn: () => Promise<unknown>): Promise<void> => {
+    pendingRef.current += 1;
     setBusy(true);
-    try {
-      await fn();
-      await reload();
-      onChanged();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
-    } finally {
-      setBusy(false);
-    }
+    const next = queueRef.current.then(async () => {
+      try {
+        await fn();
+        await reload();
+        onChanged();
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      } finally {
+        pendingRef.current -= 1;
+        if (pendingRef.current === 0) setBusy(false);
+      }
+    });
+    queueRef.current = next;
+    return next;
   };
 
   const assignedIds = useMemo(
@@ -620,6 +638,7 @@ export function TaskPanel({
               {detail.isMilestone && <MilestoneMark size={16} />}
               {canEdit ? (
                 <textarea
+                  ref={titleRef}
                   className="tp-title-input"
                   rows={1}
                   value={titleDraft}

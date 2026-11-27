@@ -540,9 +540,9 @@ select.input { cursor: pointer; appearance: none;
   color: #fff; font-weight: 800; font-size: 1.05rem;
   flex-shrink: 0;
 }
-.ws-card-body { flex: 1; min-width: 0; }
-.ws-card-name { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
-.ws-card-meta { font-size: 0.82rem; color: var(--muted); margin-top: 1px; }
+.ws-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ws-card-name { display: block; font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-card-meta { display: block; font-size: 0.82rem; color: var(--muted); }
 .ws-card-arrow { color: var(--muted); flex-shrink: 0; }
 .ws-card:hover .ws-card-arrow { color: var(--brand); }
 
@@ -9435,3 +9435,16 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 .ev-archived-name { display: flex; flex-direction: column; font-weight: 600; min-width: 0; }
 .ev-archived-name .muted { font-size: 0.8rem; font-weight: 500; }
 .ev-archived-ro { font-size: 0.8rem; }
+
+/* Audit M5: say what the collapsed sessions card holds. */
+.sec-collapse-label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+
+/* Audit M7: a running timer's chip must not widen the top bar (that added a
+   sideways scrollbar and nudged the task drawer). It shrinks instead. */
+.timer-chip { flex-shrink: 1; min-width: 0; }
+.timer-chip-name { min-width: 0; flex-shrink: 1; }
+.topbar-search { min-width: 0; flex-shrink: 1; }
+@media (max-width: 1400px) { .timer-chip-name { max-width: 90px; } }
+
+/* Audit L6: scrolling past the end of the task drawer doesn't scroll the page behind it. */
+.tp-body, .tp-panel { overscroll-behavior: contain; }

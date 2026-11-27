@@ -138,6 +138,8 @@ export function formatDateTime(iso: string | null | undefined): string {
 /** "1:05", "0:45", "12:00" — h:mm from a second count (totals, chips). */
 export function formatDuration(seconds: number | null | undefined): string {
   const s = Math.max(0, Math.round(seconds ?? 0));
+  // Under a minute, show the seconds — a 7-second entry isn't "0:00".
+  if (s > 0 && s < 60) return `${s}s`;
   const h = Math.floor(s / 3600);
   const m = Math.round((s % 3600) / 60);
   // Rounding minutes can roll over (e.g. 3599s → 60m).

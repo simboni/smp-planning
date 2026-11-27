@@ -36,6 +36,7 @@ import { FormRenderer } from "@/components/FormRenderer";
 import { Icons } from "@/components/icons";
 import { copyToClipboard, publicFormUrl } from "@/lib/format";
 import { isNativeApp, share } from "@/lib/native";
+import { usePageTitle } from "@/lib/title";
 
 type SaveState = "idle" | "saving" | "saved";
 
@@ -335,6 +336,7 @@ function FormBuilderView() {
   const formId = search.get("id");
 
   const [form, setForm] = useState<FormDetail | null>(null);
+  usePageTitle(form?.name);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);

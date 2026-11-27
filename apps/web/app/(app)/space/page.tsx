@@ -41,6 +41,7 @@ import {
   timeAgo,
   toDateInputValue,
 } from "@/lib/format";
+import { usePageTitle } from "@/lib/title";
 
 function ListRow({ list }: { list: List }) {
   const dot = list.color || colorFor(list.id);
@@ -604,6 +605,7 @@ function SpaceView() {
   const { reload } = useHierarchy();
 
   const [space, setSpace] = useState<Space | null>(null);
+  usePageTitle(space?.name);
   const [folders, setFolders] = useState<FolderWithLists[]>([]);
   const [lists, setLists] = useState<List[]>([]);
   const [loading, setLoading] = useState(true);
