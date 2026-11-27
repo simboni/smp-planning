@@ -455,6 +455,8 @@ function CommentItem({
  * ------------------------------------------------------------------ */
 const KIND_ICON: Record<ActivityKind, React.ReactNode> = {
   created: Icons.plus,
+  subtask_added: Icons.plus,
+  checklist_added: Icons.checkCircle,
   status: Icons.circle,
   priority: Icons.flag,
   dates: Icons.calendar,
