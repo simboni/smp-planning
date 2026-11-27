@@ -57,15 +57,18 @@ export default function SettingsPage() {
           <h3>Workspace</h3>
         </div>
 
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Name</div>
-            <div className="setting-hint">The display name for this workspace.</div>
+        {/* Admins edit the name in Branding below; showing it here too repeated it (L10). */}
+        {!isAdmin && (
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">Name</div>
+              <div className="setting-hint">The display name for this workspace.</div>
+            </div>
+            <div style={{ fontWeight: 600 }}>
+              {workspace?.name ?? <span className="skel" style={{ width: 120, height: 18 }} />}
+            </div>
           </div>
-          <div style={{ fontWeight: 600 }}>
-            {workspace?.name ?? <span className="skel" style={{ width: 120, height: 18 }} />}
-          </div>
-        </div>
+        )}
 
         <div className="setting-row">
           <div>
@@ -75,16 +78,18 @@ export default function SettingsPage() {
           <div className="mono">{workspace?.slug ?? "—"}</div>
         </div>
 
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Color</div>
-            <div className="setting-hint">Accent color for the workspace mark.</div>
+        {!isAdmin && (
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">Color</div>
+              <div className="setting-hint">Accent color for the workspace mark.</div>
+            </div>
+            <div className="swatch">
+              <span className="swatch-dot" style={{ background: color }} />
+              <span className="mono">{color.toUpperCase()}</span>
+            </div>
           </div>
-          <div className="swatch">
-            <span className="swatch-dot" style={{ background: color }} />
-            <span className="mono">{color.toUpperCase()}</span>
-          </div>
-        </div>
+        )}
 
         <div className="setting-row">
           <div>
@@ -331,7 +336,7 @@ const PRESET_COLORS = [
   "#F59E0B",
   "#EF4444",
   "#EC4899",
-  "#8B5CF6",
+  "#84CC16",
   "#14B8A6",
   "#64748B",
 ];

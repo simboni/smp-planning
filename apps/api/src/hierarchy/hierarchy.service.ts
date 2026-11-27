@@ -63,6 +63,12 @@ export interface HierarchyTree {
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const DEFAULT_SPACE_COLOR = "#7B68EE";
+/** New Spaces without a chosen color cycle through these, so they're told
+ *  apart at a glance (they used to all be the same purple). */
+const SPACE_PALETTE = [
+  DEFAULT_SPACE_COLOR, "#0EA5E9", "#10B981", "#F59E0B", "#EF4444",
+  "#EC4899", "#14B8A6", "#4F46E5", "#84CC16", "#64748B",
+];
 
 @Injectable()
 export class HierarchyService {
@@ -369,9 +375,9 @@ export class HierarchyService {
     body: { name?: string; color?: string; icon?: string; isPrivate?: boolean },
   ): Promise<SpaceWithPermission> {
     const name = this.requireName(body?.name);
-    const color =
+    const chosenColor =
       body?.color === undefined || body.color === null
-        ? DEFAULT_SPACE_COLOR
+        ? null
         : this.validColor(body.color);
     const icon = body?.icon ?? null;
     const isPrivate = body?.isPrivate === true;
@@ -390,6 +396,7 @@ export class HierarchyService {
         `SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM spaces`,
         [],
       );
+      const color = chosenColor ?? SPACE_PALETTE[Number(nextOrder) % SPACE_PALETTE.length];
       const res = await client.query(
         `INSERT INTO spaces (workspace_id, name, color, icon, is_private, sort_order, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7)

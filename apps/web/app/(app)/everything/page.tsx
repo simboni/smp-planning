@@ -128,7 +128,7 @@ export default function EverythingPage() {
               <Link key={s.id} href={`/space?id=${s.id}`} className="ev-card card card-hover">
                 <div className="ev-card-top">
                   <span className="ev-icon" style={{ background: color }}>
-                    {s.icon ?? Icons.spaces}
+                    {s.icon ?? <span className="ev-initial">{s.name.trim().charAt(0).toUpperCase() || "S"}</span>}
                   </span>
                   {s.isPrivate && <span className="ev-lock" title="Private">{Icons.lock}</span>}
                 </div>
@@ -150,6 +150,7 @@ export default function EverythingPage() {
                           {l.name}
                         </span>
                       ))}
+                    {lists > 4 && <span className="ev-list-chip ev-list-more">+{lists - 4} more</span>}
                   </div>
                 )}
               </Link>
