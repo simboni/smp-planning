@@ -9,11 +9,11 @@
  * the task. A task with several assignees appears in each of their lanes.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TimeScaleBar, dayWidth, useNarrow, useZoom } from "@/components/views/TimeScale";
 import type { TaskCard, TaskUser } from "@/lib/api";
 import { Avatar } from "@/components/Avatar";
-import { addDays, atMidnight, diffDays, startOfWeekMonday } from "@/lib/viewUtils";
+import { addDays, atMidnight, dayKey, diffDays, startOfWeekMonday } from "@/lib/viewUtils";
 import { MilestoneMark } from "@/components/TaskBits";
 import type { ViewProps } from "@/components/views/types";
 
@@ -43,7 +43,28 @@ function span(t: TaskCard): { start: Date; end: Date } | null {
 
 const UNASSIGNED = "__unassigned__";
 
-export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps) {
+type DragMode = "move" | "resize-l" | "resize-r";
+interface DragState {
+  taskId: string;
+  mode: DragMode;
+  startX: number;
+  delta: number; // whole days
+  moved: boolean;
+}
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmt = (d: Date): string => `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}`;
+
+export interface TimelineViewProps extends ViewProps {
+  /** Save new start/due dates after a drag (optimistic in the shell). */
+  onShiftDates?: (task: TaskCard, startDate: string | null, dueDate: string | null) => void;
+}
+
+export function TimelineView({ tasks, canEdit, onOpenTask, onShiftDates }: TimelineViewProps) {
+  // Drag a bar to move it; drag either end to change start / due (like the
+  // Gantt). A click without movement still opens the task.
+  const canDrag = canEdit && !!onShiftDates;
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
   const [zoom, setZoom] = useZoom("timeline");
   const dayW = dayWidth(zoom, DAY_W);
   // Phones: a slimmer name rail leaves room for the chart.
@@ -145,6 +166,58 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayW, railW, scheduled.length > 0]);
 
+  const startDrag = (e: React.PointerEvent<HTMLElement>, task: TaskCard, mode: DragMode): void => {
+    if (!canDrag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const st: DragState = { taskId: task.id, mode, startX: e.clientX, delta: 0, moved: false };
+    dragRef.current = st;
+    setDrag(st);
+  };
+  const moveDrag = (e: React.PointerEvent<HTMLElement>): void => {
+    const st = dragRef.current;
+    if (!st) return;
+    const px = e.clientX - st.startX;
+    const delta = Math.round(px / dayW);
+    const moved = st.moved || Math.abs(px) > 4;
+    if (delta !== st.delta || moved !== st.moved) {
+      const next = { ...st, delta, moved };
+      dragRef.current = next;
+      setDrag(next);
+    }
+  };
+  /** The dates a task would get from the current drag. */
+  const draggedDates = (t: TaskCard, st: DragState): { s: Date | null; d: Date | null } => {
+    const s0 = parseDay(t.startDate);
+    const d0 = parseDay(t.dueDate);
+    if (st.mode === "move") {
+      return { s: s0 ? addDays(s0, st.delta) : null, d: d0 ? addDays(d0, st.delta) : null };
+    }
+    if (st.mode === "resize-l" && s0 && d0) {
+      const ns = addDays(s0, st.delta);
+      return { s: ns > d0 ? d0 : ns, d: d0 };
+    }
+    if (st.mode === "resize-r" && s0 && d0) {
+      const nd = addDays(d0, st.delta);
+      return { s: s0, d: nd < s0 ? s0 : nd };
+    }
+    return { s: s0, d: d0 };
+  };
+  const endDrag = (task: TaskCard): void => {
+    const st = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    if (!st || st.taskId !== task.id) return;
+    if (!st.moved) {
+      onOpenTask(task.id);
+      return;
+    }
+    if (st.delta === 0 || !onShiftDates) return;
+    const { s, d } = draggedDates(task, st);
+    onShiftDates(task, s ? dayKey(s) : null, d ? dayKey(d) : null);
+  };
+
   if (scheduled.length === 0) {
     return (
       <div className="empty-hint" style={{ textAlign: "center" }}>
@@ -230,26 +303,63 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
               <div className="tl-track" style={{ width: gridW, height: laneHeight(lane.rows) }}>
                 {lane.tasks.map((t) => {
                   const sp = span(t)!;
-                  const offset = diffDays(rangeStart, sp.start);
-                  const len = diffDays(sp.start, sp.end) + 1;
+                  const isDragging = drag?.taskId === t.id && drag.moved;
+                  let from = sp.start;
+                  let to = sp.end;
+                  if (isDragging && drag) {
+                    const dd = draggedDates(t, drag);
+                    from = dd.s ?? dd.d ?? from;
+                    to = dd.d ?? dd.s ?? to;
+                    if (to < from) [from, to] = [to, from];
+                  }
+                  const offset = diffDays(rangeStart, from);
+                  const len = diffDays(from, to) + 1;
                   const milestone = t.startDate == null && t.dueDate != null && len === 1;
+                  const canResize = canDrag && t.startDate != null && t.dueDate != null;
+                  const dateHint = len === 1 ? fmt(from) : `${fmt(from)} → ${fmt(to)}`;
                   return (
-                    <button
+                    <div
                       key={t.id}
-                      type="button"
-                      className="tl-bar"
-                      title={`${t.name} — ${t.status.name}`}
+                      role="button"
+                      tabIndex={0}
+                      className={`tl-bar${canDrag ? " draggable" : ""}${isDragging ? " dragging" : ""}`}
+                      title={`${t.name} — ${t.status.name}${canDrag ? " · drag to reschedule" : ""}`}
                       style={{
                         top: 7 + (lane.rowOf.get(t.id) ?? 0) * BAR_STEP,
                         left: offset * dayW + 2,
                         width: len * dayW - 4,
                         background: t.status.color,
                       }}
-                      onClick={() => onOpenTask(t.id)}
+                      onPointerDown={canDrag ? (e) => startDrag(e, t, "move") : undefined}
+                      onPointerMove={canDrag ? moveDrag : undefined}
+                      onPointerUp={canDrag ? () => endDrag(t) : undefined}
+                      onClick={canDrag ? undefined : () => onOpenTask(t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onOpenTask(t.id);
+                        }
+                      }}
                     >
+                      {canResize && (
+                        <span
+                          className="tl-handle l"
+                          onPointerDown={(e) => startDrag(e, t, "resize-l")}
+                          onPointerMove={moveDrag}
+                          onPointerUp={() => endDrag(t)}
+                        />
+                      )}
                       {milestone && <MilestoneMark size={12} />}
-                      <span className="tl-bar-label">{t.name}</span>
-                    </button>
+                      <span className="tl-bar-label">{isDragging ? dateHint : t.name}</span>
+                      {canResize && (
+                        <span
+                          className="tl-handle r"
+                          onPointerDown={(e) => startDrag(e, t, "resize-r")}
+                          onPointerMove={moveDrag}
+                          onPointerUp={() => endDrag(t)}
+                        />
+                      )}
+                    </div>
                   );
                 })}
               </div>

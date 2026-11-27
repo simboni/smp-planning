@@ -352,7 +352,12 @@ export function SpaceTasks({
           }
         />
       ) : (
-        <TimelineView {...viewProps} />
+        <TimelineView
+          {...viewProps}
+          onShiftDates={(task, s, d) =>
+            updateTask(task, { startDate: s, dueDate: d }, { startDate: s, dueDate: d })
+          }
+        />
       )}
 
       {selectedTask && (

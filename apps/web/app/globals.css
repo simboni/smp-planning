@@ -9579,3 +9579,14 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   .gantt-rail-row { padding-left: 8px; padding-right: 6px; }
   .ts-bar { justify-content: space-between; }
 }
+
+/* ---- Timeline: drag to reschedule ---- */
+.tl-bar.draggable { cursor: grab; touch-action: none; user-select: none; }
+.tl-bar.dragging { cursor: grabbing; z-index: 4; box-shadow: var(--shadow-2); opacity: 0.92; }
+.tl-handle {
+  position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; touch-action: none;
+}
+.tl-handle.l { left: 0; }
+.tl-handle.r { right: 0; }
+.tl-handle:hover { background: rgba(255, 255, 255, 0.28); }
+.tl-bar:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
