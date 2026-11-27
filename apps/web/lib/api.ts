@@ -1065,6 +1065,17 @@ export const authApi = {
       body,
       auth: "identity",
     }),
+  /** Change your own password; your other devices are signed out. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api<void>("/auth/me/password", {
+      method: "POST",
+      body: { currentPassword, newPassword },
+      auth: "identity",
+      headers:
+        getRefreshToken() && getRefreshToken() !== REFRESH_COOKIE_MARK
+          ? { "x-refresh-token": getRefreshToken() ?? "" }
+          : {},
+    }),
   /** Notification emails: each as it happens, one daily summary, or none. */
   emailPreferences: () =>
     api<EmailPreferences>("/auth/me/email", { auth: "identity" }),

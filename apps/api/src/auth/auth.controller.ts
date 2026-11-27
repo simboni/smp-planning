@@ -243,6 +243,26 @@ export class AuthController {
     return { user: await this.auth.updateProfile(auth.sub, body ?? {}) };
   }
 
+  /** Change your own password; signs out your other devices. */
+  @Post("me/password")
+  @HttpCode(204)
+  @Throttle(AUTH_THROTTLE)
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @Req() req: Request,
+    @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
+    @Body() body: { currentPassword?: string; newPassword?: string },
+  ) {
+    const header = req.headers["x-refresh-token"];
+    const current = (typeof header === "string" && header) || readRefreshCookie(req);
+    await this.auth.changePassword(
+      auth.sub,
+      body?.currentPassword ?? "",
+      body?.newPassword ?? "",
+      current || undefined,
+    );
+  }
+
   /**
    * Notification emails: 'instant' (each assignment / mention / reminder as it
    * happens), 'digest' (one summary a day; reminders still on time) or 'off'.

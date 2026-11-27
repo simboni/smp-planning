@@ -9489,3 +9489,40 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 
 /* Audit L2: Space page section tabs (Tasks / Lists / Sprints / Automations). */
 .sp-sections { margin: 4px 0 14px; }
+
+/* ---- Settings: left-hand section menu (audit, Pass 2) ---- */
+.settings-page { max-width: 1180px; }
+.settings-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
+.settings-nav { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 14px; }
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-title {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--muted); padding: 0 10px 4px;
+}
+.settings-nav-link {
+  display: block; padding: 7px 10px; border-radius: var(--r-sm);
+  color: var(--ink-2); font-size: 0.9rem; font-weight: 550; text-decoration: none;
+}
+.settings-nav-link:hover { background: var(--card-2); color: var(--ink); }
+.settings-nav-link.active { background: var(--brand-soft); color: var(--brand-700); font-weight: 650; }
+.settings-main { min-width: 0; }
+.settings-section { scroll-margin-top: 16px; }
+.profile-inline { display: flex; gap: 8px; align-items: center; min-width: 0; flex: 0 1 360px; }
+.profile-inline .input { flex: 1; min-width: 0; }
+.password-form { display: flex; flex-direction: column; gap: 12px; max-width: 420px; }
+.password-form .field { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.password-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 860px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  /* Phones: the menu becomes a strip of section tabs that stays on top. */
+  .settings-nav {
+    top: 0; z-index: 5; flex-direction: row; gap: 6px; overflow-x: auto;
+    padding: 8px 0; background: var(--bg); scrollbar-width: none;
+  }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .settings-nav-group { flex-direction: row; gap: 6px; }
+  .settings-nav-title { display: none; }
+  .settings-nav-link { white-space: nowrap; border: 1px solid var(--line); background: var(--card); }
+  .settings-section { scroll-margin-top: 64px; }
+  .profile-inline { flex-basis: 100%; }
+}

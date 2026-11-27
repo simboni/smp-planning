@@ -514,6 +514,40 @@ export class AuthService {
     );
   }
 
+  /**
+   * Change your own password (Settings → Profile). Needs the current one —
+   * accounts made with Google never had one they know, so they use "Forgot
+   * password" instead. Every OTHER session is signed out; the device making
+   * the change (identified by its refresh token) stays signed in.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    keepRefreshToken?: string,
+  ): Promise<void> {
+    if (!newPassword || newPassword.length < 8) {
+      throw new BadRequestException("New password must be at least 8 characters");
+    }
+    const res = await this.db.query(`SELECT password_hash FROM users WHERE id = $1`, [userId]);
+    const hash = (res.rows[0] as { password_hash?: string } | undefined)?.password_hash;
+    const valid = await argon2.verify(hash ?? DUMMY_HASH, currentPassword ?? "").catch(() => false);
+    if (!hash || !valid) {
+      throw new BadRequestException("Your current password is not correct");
+    }
+    if (currentPassword === newPassword) {
+      throw new BadRequestException("Choose a password different from your current one");
+    }
+    const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+    await this.db.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, userId]);
+    await this.db.query(
+      `UPDATE refresh_tokens SET revoked_at = now()
+        WHERE user_id = $1 AND revoked_at IS NULL
+          AND ($2::text IS NULL OR token_hash <> $2)`,
+      [userId, keepRefreshToken ? sha256(keepRefreshToken) : null],
+    );
+  }
+
   /** Revoke one session (sign that device out). */
   async revokeSession(userId: string, id: string): Promise<void> {
     const res = await this.db.query(

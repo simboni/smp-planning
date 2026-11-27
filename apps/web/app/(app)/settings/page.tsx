@@ -17,7 +17,7 @@ import { Icons } from "@/components/icons";
 import { colorFor } from "@/lib/format";
 import { applyBranding } from "@/lib/theme";
 import EmailSettings from "@/components/EmailSettings";
-import ProfileSettings from "@/components/ProfileSettings";
+import ProfileSettings, { PasswordSettings } from "@/components/ProfileSettings";
 import SecuritySettings from "@/components/SecuritySettings";
 
 export default function SettingsPage() {
@@ -41,126 +41,207 @@ export default function SettingsPage() {
   const isAdmin = workspace?.role === "owner" || workspace?.role === "admin";
   const isOwner = workspace?.role === "owner";
 
+  // Left-hand section menu (audit: Settings was one long page with no way
+  // to jump around). Sections only appear when they apply to you.
+  const sections: { id: string; label: string; group: string }[] = [
+    { id: "profile", label: "Profile", group: "Account" },
+    { id: "password", label: "Password", group: "Account" },
+    { id: "notifications", label: "Notifications", group: "Account" },
+    { id: "security", label: "Security", group: "Account" },
+    { id: "workspace", label: "General", group: "Workspace" },
+    ...(isAdmin ? [{ id: "branding", label: "Branding", group: "Workspace" }] : []),
+    { id: "usage", label: "Usage & limits", group: "Workspace" },
+    { id: "more", label: "Integrations, roles & plans", group: "Workspace" },
+    ...(isOwner ? [{ id: "danger", label: "Danger zone", group: "Workspace" }] : []),
+  ];
+  const active = useActiveSection(sections.map((x) => x.id));
+
   return (
-    <div className="page">
+    <div className="page settings-page">
       <div className="page-head">
         <h1>Settings</h1>
-        <p className="sub">Workspace preferences and configuration.</p>
+        <p className="sub">Your account and this workspace.</p>
       </div>
 
-      <ProfileSettings />
-
-      <EmailSettings />
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-head">
-          <h3>Workspace</h3>
-        </div>
-
-        {/* Admins edit the name in Branding below; showing it here too repeated it (L10). */}
-        {!isAdmin && (
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">Name</div>
-              <div className="setting-hint">The display name for this workspace.</div>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Settings sections">
+          {["Account", "Workspace"].map((group) => (
+            <div key={group} className="settings-nav-group">
+              <div className="settings-nav-title">{group}</div>
+              {sections
+                .filter((x) => x.group === group)
+                .map((x) => (
+                  <a
+                    key={x.id}
+                    href={`#${x.id}`}
+                    className={`settings-nav-link${active === x.id ? " active" : ""}`}
+                    aria-current={active === x.id ? "true" : undefined}
+                  >
+                    {x.label}
+                  </a>
+                ))}
             </div>
-            <div style={{ fontWeight: 600 }}>
-              {workspace?.name ?? <span className="skel" style={{ width: 120, height: 18 }} />}
-            </div>
-          </div>
-        )}
+          ))}
+        </nav>
 
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">URL slug</div>
-            <div className="setting-hint">Used in links to this workspace.</div>
-          </div>
-          <div className="mono">{workspace?.slug ?? "—"}</div>
-        </div>
+        <div className="settings-main">
+          <section id="profile" className="settings-section">
+            <ProfileSettings />
+          </section>
+          <section id="password" className="settings-section">
+            <PasswordSettings />
+          </section>
+          <section id="notifications" className="settings-section">
+            <EmailSettings />
+          </section>
+          <section id="security" className="settings-section">
+            <SecuritySettings />
+          </section>
 
-        {!isAdmin && (
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">Color</div>
-              <div className="setting-hint">Accent color for the workspace mark.</div>
-            </div>
-            <div className="swatch">
-              <span className="swatch-dot" style={{ background: color }} />
-              <span className="mono">{color.toUpperCase()}</span>
-            </div>
-          </div>
-        )}
+          <section id="workspace" className="settings-section">
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-head">
+                <h3>Workspace</h3>
+              </div>
 
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Your role</div>
-            <div className="setting-hint">Your permission level here.</div>
-          </div>
-          {workspace ? (
-            <span className={`badge role-${workspace.role}`}>{workspace.role}</span>
-          ) : (
-            <span className="skel" style={{ width: 70, height: 18 }} />
+              {/* Admins edit the name in Branding below; showing it here too repeated it (L10). */}
+              {!isAdmin && (
+                <div className="setting-row">
+                  <div>
+                    <div className="setting-label">Name</div>
+                    <div className="setting-hint">The display name for this workspace.</div>
+                  </div>
+                  <div style={{ fontWeight: 600 }}>
+                    {workspace?.name ?? <span className="skel" style={{ width: 120, height: 18 }} />}
+                  </div>
+                </div>
+              )}
+
+              <div className="setting-row">
+                <div>
+                  <div className="setting-label">URL slug</div>
+                  <div className="setting-hint">Used in links to this workspace.</div>
+                </div>
+                <div className="mono">{workspace?.slug ?? "—"}</div>
+              </div>
+
+              {!isAdmin && (
+                <div className="setting-row">
+                  <div>
+                    <div className="setting-label">Color</div>
+                    <div className="setting-hint">Accent color for the workspace mark.</div>
+                  </div>
+                  <div className="swatch">
+                    <span className="swatch-dot" style={{ background: color }} />
+                    <span className="mono">{color.toUpperCase()}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="setting-row">
+                <div>
+                  <div className="setting-label">Your role</div>
+                  <div className="setting-hint">Your permission level here.</div>
+                </div>
+                {workspace ? (
+                  <span className={`badge role-${workspace.role}`}>{workspace.role}</span>
+                ) : (
+                  <span className="skel" style={{ width: 70, height: 18 }} />
+                )}
+              </div>
+            </div>
+          </section>
+
+          {isAdmin && workspace && (
+            <section id="branding" className="settings-section">
+              <BrandingCard workspace={workspace} onSaved={setWorkspace} />
+            </section>
+          )}
+
+          <section id="usage" className="settings-section">
+            <UsageCard />
+          </section>
+
+          <section id="more" className="settings-section">
+            <Link href="/settings/integrations" className="card settings-link">
+              <div className="settings-link-ic">{Icons.bolt}</div>
+              <div className="settings-link-body">
+                <div className="setting-label">Integrations &amp; API</div>
+                <div className="setting-hint">
+                  Personal access tokens, webhooks, and import / export.
+                </div>
+              </div>
+              <span className="settings-link-arrow">{Icons.chevronRight}</span>
+            </Link>
+
+            <Link href="/settings/roles" className="card settings-link">
+              <div className="settings-link-ic">{Icons.lock}</div>
+              <div className="settings-link-body">
+                <div className="setting-label">Roles &amp; permissions</div>
+                <div className="setting-hint">
+                  Custom roles and fine-grained capabilities for members and guests.
+                </div>
+              </div>
+              <span className="settings-link-arrow">{Icons.chevronRight}</span>
+            </Link>
+
+            <Link href="/settings/audit" className="card settings-link">
+              <div className="settings-link-ic">{Icons.clock}</div>
+              <div className="settings-link-body">
+                <div className="setting-label">Audit log</div>
+                <div className="setting-hint">
+                  A tamper-evident record of every change in this workspace.
+                </div>
+              </div>
+              <span className="settings-link-arrow">{Icons.chevronRight}</span>
+            </Link>
+
+            <Link href="/settings/plans" className="card settings-link">
+              <div className="settings-link-ic">{Icons.coin}</div>
+              <div className="settings-link-body">
+                <div className="setting-label">Plans &amp; billing</div>
+                <div className="setting-hint">
+                  Free, Unlimited, Business and Enterprise — pick your workspace&apos;s plan.
+                </div>
+              </div>
+              <span className="settings-link-arrow">{Icons.chevronRight}</span>
+            </Link>
+          </section>
+
+          {isOwner && workspace && (
+            <section id="danger" className="settings-section">
+              <DangerZone workspace={workspace} />
+            </section>
           )}
         </div>
       </div>
-
-      <UsageCard />
-
-      {isAdmin && workspace && (
-        <BrandingCard workspace={workspace} onSaved={setWorkspace} />
-      )}
-
-      <Link href="/settings/integrations" className="card settings-link">
-        <div className="settings-link-ic">{Icons.bolt}</div>
-        <div className="settings-link-body">
-          <div className="setting-label">Integrations &amp; API</div>
-          <div className="setting-hint">
-            Personal access tokens, webhooks, and import / export.
-          </div>
-        </div>
-        <span className="settings-link-arrow">{Icons.chevronRight}</span>
-      </Link>
-
-      <Link href="/settings/roles" className="card settings-link">
-        <div className="settings-link-ic">{Icons.lock}</div>
-        <div className="settings-link-body">
-          <div className="setting-label">Roles &amp; permissions</div>
-          <div className="setting-hint">
-            Custom roles and fine-grained capabilities for members and guests.
-          </div>
-        </div>
-        <span className="settings-link-arrow">{Icons.chevronRight}</span>
-      </Link>
-
-      <Link href="/settings/audit" className="card settings-link">
-        <div className="settings-link-ic">{Icons.clock}</div>
-        <div className="settings-link-body">
-          <div className="setting-label">Audit log</div>
-          <div className="setting-hint">
-            A tamper-evident record of every change in this workspace.
-          </div>
-        </div>
-        <span className="settings-link-arrow">{Icons.chevronRight}</span>
-      </Link>
-
-      <Link href="/settings/plans" className="card settings-link">
-        <div className="settings-link-ic">{Icons.coin}</div>
-        <div className="settings-link-body">
-          <div className="setting-label">Plans &amp; billing</div>
-          <div className="setting-hint">
-            Free, Unlimited, Business and Enterprise — pick your workspace&apos;s plan.
-          </div>
-        </div>
-        <span className="settings-link-arrow">{Icons.chevronRight}</span>
-      </Link>
-
-      <div className="sec-heading">Security</div>
-      <SecuritySettings />
-
-      {isOwner && workspace && <DangerZone workspace={workspace} />}
-
     </div>
   );
+}
+
+/** Which section is in view, for the menu highlight. */
+function useActiveSection(ids: string[]): string {
+  const [active, setActive] = useState(ids[0] ?? "");
+  const key = ids.join(",");
+  useEffect(() => {
+    const els = ids
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => !!el);
+    if (els.length === 0 || typeof IntersectionObserver === "undefined") return;
+    const seen = new Map<string, boolean>();
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) seen.set(e.target.id, e.isIntersecting);
+        const first = ids.find((id) => seen.get(id));
+        if (first) setActive(first);
+      },
+      { rootMargin: "-80px 0px -55% 0px" },
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return active;
 }
 
 /**
