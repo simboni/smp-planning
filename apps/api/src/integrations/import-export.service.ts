@@ -3,6 +3,7 @@ import type { Role } from "@stackup/shared";
 import { DbService } from "../db/db.service";
 import { HierarchyService } from "../hierarchy/hierarchy.service";
 import { TasksService } from "../tasks/tasks.service";
+import { requireCapabilityOn } from "../governance/governance.service";
 
 type Ctx = readonly [string, string, Role];
 
@@ -29,6 +30,10 @@ export class ImportExportService {
 
   /** Full JSON export of everything the caller can see. */
   async exportWorkspace(workspaceId: string, userId: string, role: Role) {
+    // M17: whole-workspace export is admin-only by default; a custom role can grant it.
+    await this.db.withWorkspace(workspaceId, userId, (c) =>
+      requireCapabilityOn(c, userId, role, "exportData", "Your role does not allow exporting workspace data"),
+    );
     const spaces = await this.hierarchy.listSpaces(workspaceId, userId, role);
     const spaceIds = spaces.map((s) => s.id);
     const { lists, tasks } = await this.db.withWorkspace(

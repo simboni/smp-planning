@@ -83,17 +83,39 @@ net for a database that was restored by hand. It changes nothing otherwise.
 - A page open in two tabs can show a stale name after a rename until refresh.
 - Task position and an in-flight edit can race when two people drag at once.
 - Whiteboard: own edits can echo back; very large boards aren't size-capped.
-- A department's Space is left behind when the department is deleted — keep it,
-  archive it, or delete it? (your call)
-- Workspace capability toggles are shown but not enforced on every endpoint — enforce
-  or hide? (your call)
 - Leave spanning New Year counts against one year only.
 - Saved-view autosave doesn't roll back on failure.
 - On the Space page, *Add task* buttons only appear when grouped by Status (default
   is grouped by List).
 
+## Follow-up: decisions applied
+- **Deleting a department archives its Space** (it used to stay in the sidebar).
+  The work is kept; an admin restores it from Everything → Archived.
+- **Every Settings → Roles switch is enforced by the API**, not just shown:
+  | Switch | Now checked on |
+  |---|---|
+  | Create Spaces | creating a Space (already was) |
+  | Delete items | deleting Spaces, Folders, Lists, Tasks |
+  | Create Docs | creating a Doc |
+  | Create & manage Automations | creating, editing, deleting Automations |
+  | Export workspace data | whole-workspace export (list CSV export is unchanged) |
+  | View the audit log | audit log (already was) |
+  | Invite & manage members | inviting, changing, suspending, removing members |
+  - Defaults are unchanged. Owner/admin always have everything. Note one visible
+    effect: a plain **member can no longer export the whole workspace** (the role
+    table always said members don't; now it's true). Give them a role with
+    "Export workspace data" if they need it.
+  - "Invite & manage members" on a non-admin covers members and guests only: they
+    can't make anyone an admin or touch an admin or the owner. A refused invite
+    creates no account.
+  - New `GET /governance/me` tells the app the caller's switches; the sidebar
+    hides Delete, Settings → Integrations hides Export, and the Members page shows
+    the invite form (without Admin) to anyone granted member management.
+  - Task deletes that are refused now say why instead of the task silently coming back.
+
 ## Checks
-- API: 36 suites / 264 tests pass, including `crud-sweep.e2e-spec.ts` (15 tests;
+- API: 37 suites / 271 tests pass (includes `role-capabilities.e2e-spec.ts`, 7 tests,
+  6 of which fail on the old code), including `crud-sweep.e2e-spec.ts` (15 tests;
   14 of them fail on the old code).
 - `pnpm -r run lint` and `pnpm -r run build` clean.
 - Browser walkthrough (built app): legacy note migrated, Notes page + count + menu,

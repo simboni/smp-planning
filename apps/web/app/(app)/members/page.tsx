@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { Avatar } from "@/components/Avatar";
+import { useCapabilities } from "@/lib/capabilities";
 
 const INVITE_ROLES: WorkspaceRole[] = ["admin", "member", "guest"];
 
@@ -53,8 +54,13 @@ export default function MembersPage() {
     load();
   }, []);
 
-  const canInvite = role === "owner" || role === "admin";
+  const isAdmin = role === "owner" || role === "admin";
+  // A custom role with "Invite & manage members" can handle members and
+  // guests (never admins) — Settings → Roles.
+  const caps = useCapabilities();
+  const canInvite = isAdmin || caps?.manageMembers === true;
   const canManage = canInvite;
+  const inviteRoles = isAdmin ? INVITE_ROLES : INVITE_ROLES.filter((r) => r !== "admin");
 
   // Update a member in place from the endpoint's response (role / status).
   const updateMember = async (
@@ -204,7 +210,7 @@ export default function MembersPage() {
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value as WorkspaceRole)}
               >
-                {INVITE_ROLES.map((r) => (
+                {inviteRoles.map((r) => (
                   <option key={r} value={r}>
                     {r[0].toUpperCase() + r.slice(1)}
                   </option>
@@ -288,7 +294,8 @@ export default function MembersPage() {
             </thead>
             <tbody>
               {visible.map((m) => {
-                const actionable = canManage && m.role !== "owner" && m.id !== myId;
+                const actionable =
+                  canManage && m.role !== "owner" && (isAdmin || m.role !== "admin") && m.id !== myId;
                 return (
                   <tr
                     key={m.id}
@@ -340,6 +347,7 @@ export default function MembersPage() {
                         {actionable && (
                           <RowActions
                             member={m}
+                            roleOptions={isAdmin ? ROLE_OPTIONS : ROLE_OPTIONS.filter((r) => r !== "admin")}
                             onChangeRole={(r) => changeRole(m.id, r)}
                             onSetStatus={(s) => setStatus(m.id, s)}
                             onRemove={() => remove(m.id)}
@@ -372,11 +380,13 @@ const ROLE_OPTIONS: WorkspaceRole[] = ["admin", "member", "guest"];
 
 function RowActions({
   member,
+  roleOptions,
   onChangeRole,
   onSetStatus,
   onRemove,
 }: {
   member: Member;
+  roleOptions: WorkspaceRole[];
   onChangeRole: (role: WorkspaceRole) => void;
   onSetStatus: (status: "active" | "suspended") => void;
   onRemove: () => void;
@@ -418,7 +428,7 @@ function RowActions({
       {open && (
         <div className="menu row-actions-menu" role="menu">
           <div className="menu-label">Change role</div>
-          {ROLE_OPTIONS.map((r) => (
+          {roleOptions.map((r) => (
             <button
               key={r}
               type="button"

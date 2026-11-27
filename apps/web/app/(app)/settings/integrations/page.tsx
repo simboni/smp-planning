@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { showToast } from "@/lib/toast";
+import { allowed, useCapabilities } from "@/lib/capabilities";
 
 const EVENT_TYPES = [
   "*",
@@ -516,6 +517,7 @@ function WebhooksCard() {
 /* ---- Import / Export ---------------------------------------------- */
 
 function ImportExportCard() {
+  const canExport = allowed(useCapabilities(), "exportData");
   const [tree, setTree] = useState<HierarchyTree | null>(null);
   const [listId, setListId] = useState("");
   const [csv, setCsv] = useState("");
@@ -542,7 +544,13 @@ function ImportExportCard() {
   }, [tree]);
 
   const doExport = async () => {
-    const data = await importExportApi.exportWorkspace();
+    let data: unknown;
+    try {
+      data = await importExportApi.exportWorkspace();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Couldn't export the workspace.");
+      return;
+    }
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
     });
@@ -591,9 +599,13 @@ function ImportExportCard() {
         <div className="intg-io-col">
           <div className="intg-io-title">Export</div>
           <p className="intg-desc">Download the whole workspace as JSON.</p>
+          {canExport ? (
           <button className="btn btn-ghost" onClick={doExport}>
             {Icons.arrowDown} Export workspace (JSON)
           </button>
+          ) : (
+            <p className="intg-desc muted">Your role doesn't include exporting workspace data.</p>
+          )}
         </div>
 
         <div className="intg-io-col">

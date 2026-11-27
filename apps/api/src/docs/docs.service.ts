@@ -20,6 +20,7 @@ import {
 } from "../tasks/tasks.support";
 import { decodeBase64File, validMime } from "../visual/visual.support";
 import { sanitizeContent } from "./docs.support";
+import { requireCapabilityOn } from "../governance/governance.service";
 
 /** Card icon for an uploaded document, by mime family. */
 const DOC_FILE_ICON = (mime: string): string => {
@@ -304,15 +305,19 @@ export class DocsService {
       isPrivate?: boolean;
     },
   ): Promise<Doc> {
-    if (role === "guest") {
-      throw new ForbiddenException("Guests cannot create docs");
-    }
     const name = requireName(body?.name);
     const icon = this.validIcon(body?.icon) ?? "📄";
     const isPrivate = body?.isPrivate === true;
 
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
+      // M17: guests can't by default; a custom role can grant or revoke it.
+      await requireCapabilityOn(client, userId, role, "createDocs",
+        role === "guest" ? "Guests cannot create docs" : "Your role does not allow creating Docs");
       const { spaceId, folderId, listId } = await this.resolveLocation(client, body ?? {});
+      // A guest only ever works inside Spaces shared with them.
+      if (role === "guest" && spaceId === null) {
+        throw new ForbiddenException("Guests can only create docs inside a shared Space");
+      }
       if (spaceId !== null) {
         await requireSpaceEdit(this.access, client, userId, role, spaceId);
       }

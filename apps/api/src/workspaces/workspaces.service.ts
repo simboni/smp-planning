@@ -3,14 +3,17 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ForbiddenException,
 } from "@nestjs/common";
 import * as argon2 from "argon2";
 import { randomBytes } from "node:crypto";
+import type { PoolClient } from "pg";
 import type { Role, WorkspaceSummary } from "@stackup/shared";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { DbService } from "../db/db.service";
 import { LimitsService } from "../limits/limits.service";
+import { requireCapabilityOn } from "../governance/governance.service";
 
 export interface WorkspaceMember {
   id: string;
@@ -265,6 +268,28 @@ export class WorkspacesService {
   }
 
   /**
+   * M17 "Invite & manage members". Owner/admin always pass. Anyone else needs
+   * the capability from a custom role, and even then may only handle members
+   * and guests: never create an admin, never act on an admin or the owner.
+   */
+  private async requireMemberManager(
+    client: PoolClient,
+    actorUserId: string,
+    actorRole: Role,
+    opts: { targetRole?: Role; newRole?: Role },
+  ): Promise<void> {
+    if (actorRole === "owner" || actorRole === "admin") return;
+    await requireCapabilityOn(client, actorUserId, actorRole, "manageMembers",
+      "Your role does not allow managing members");
+    if (opts.newRole === "admin" || opts.newRole === "owner") {
+      throw new ForbiddenException("Only an admin can make someone an admin");
+    }
+    if (opts.targetRole === "admin" || opts.targetRole === "owner") {
+      throw new ForbiddenException("Only an admin can change an admin or the owner");
+    }
+  }
+
+  /**
    * Invite a member by email. If an identity with that email exists, add an
    * active membership (409 if already a member). Otherwise create a shell
    * user (active, random unusable password, name from the email local-part)
@@ -278,12 +303,20 @@ export class WorkspacesService {
     email: string,
     role: Role,
     title?: string | null,
+    actorRole: Role = "admin",
   ): Promise<WorkspaceMember> {
     const normalizedTitle = normalizeTitle(title);
+    // Check before creating any account for the invitee.
+    if (actorRole !== "owner" && actorRole !== "admin") {
+      await this.db.withWorkspace(workspaceId, actorUserId, (client) =>
+        this.requireMemberManager(client, actorUserId, actorRole, { newRole: role }),
+      );
+    }
     const targetUserId = await this.resolveOrCreateUser(email);
     let inviterName = "";
     let workspaceName = "";
     const added = await this.db.withWorkspace(workspaceId, actorUserId, async (client) => {
+      await this.requireMemberManager(client, actorUserId, actorRole, { newRole: role });
       const insert = await client.query(
         `INSERT INTO memberships (workspace_id, user_id, role, title)
          VALUES ($1, $2, $3, $4)
@@ -346,6 +379,7 @@ export class WorkspacesService {
     actorUserId: string,
     targetUserId: string,
     input: { role?: Role; status?: string; title?: string | null },
+    actorRole: Role = "admin",
   ): Promise<WorkspaceMember> {
     // A designation is descriptive, not a privilege: title-only updates are
     // allowed on anyone (including the owner and yourself). Role/status
@@ -374,6 +408,10 @@ export class WorkspacesService {
         [workspaceId, targetUserId],
       );
       if (!cur.rows[0]) throw new NotFoundException("Member not found");
+      await this.requireMemberManager(client, actorUserId, actorRole, {
+        targetRole: cur.rows[0].role as Role,
+        newRole: input.role,
+      });
       if (cur.rows[0].role === "owner" && !titleOnly) {
         throw new BadRequestException("The workspace owner can't be modified");
       }
@@ -437,6 +475,7 @@ export class WorkspacesService {
     workspaceId: string,
     actorUserId: string,
     targetUserId: string,
+    actorRole: Role = "admin",
   ): Promise<void> {
     if (targetUserId === actorUserId) {
       throw new BadRequestException("You can't remove yourself");
@@ -447,6 +486,9 @@ export class WorkspacesService {
         [workspaceId, targetUserId],
       );
       if (!cur.rows[0]) throw new NotFoundException("Member not found");
+      await this.requireMemberManager(client, actorUserId, actorRole, {
+        targetRole: cur.rows[0].role as Role,
+      });
       if (cur.rows[0].role === "owner") {
         throw new BadRequestException("The workspace owner can't be removed");
       }

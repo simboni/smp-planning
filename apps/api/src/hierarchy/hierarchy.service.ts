@@ -14,7 +14,7 @@ import {
 } from "../access/access.service";
 import { AuditService } from "../audit/audit.service";
 import { DbService } from "../db/db.service";
-import { GovernanceService } from "../governance/governance.service";
+import { GovernanceService, requireCapabilityOn } from "../governance/governance.service";
 import { remapTasksToSpace } from "../tasks/tasks.support";
 
 /** Top division inside a workspace (department / team / client). */
@@ -519,6 +519,7 @@ export class HierarchyService {
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       // Deleting a space requires full/manage rights (404s if not visible).
       await this.requireSpaceManage(client, userId, role, id);
+      await requireCapabilityOn(client, userId, role, "deleteItems", "Your role does not allow deleting items");
       const res = await client.query(
         `DELETE FROM spaces WHERE id = $1 RETURNING id`,
         [id],
@@ -737,6 +738,7 @@ export class HierarchyService {
         [id],
       );
       if (!owning.rows[0]) throw new NotFoundException("Folder not found");
+      await requireCapabilityOn(client, userId, role, "deleteItems", "Your role does not allow deleting items");
       await this.requireSpaceEdit(
         client,
         userId,
@@ -919,6 +921,7 @@ export class HierarchyService {
         [id],
       );
       if (!owning.rows[0]) throw new NotFoundException("List not found");
+      await requireCapabilityOn(client, userId, role, "deleteItems", "Your role does not allow deleting items");
       await this.requireSpaceEdit(
         client,
         userId,

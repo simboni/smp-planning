@@ -94,8 +94,8 @@ export class WorkspacesController {
   }
 
   @Post("current/members")
-  @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
-  @Roles("admin") // owner + admin (meet-or-exceed)
+  @UseGuards(JwtAuthGuard, WorkspaceGuard)
+  // owner/admin, or a custom role with "Invite & manage members" (service)
   async addMember(
     @Req() req: AuthedRequest,
     @Body() body: { email?: string; role?: Role; title?: string | null },
@@ -115,28 +115,29 @@ export class WorkspacesController {
       body.email,
       role,
       body?.title,
+      req.role!,
     );
   }
 
   @Patch("current/members/:userId")
-  @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
-  @Roles("admin") // owner + admin
+  @UseGuards(JwtAuthGuard, WorkspaceGuard)
+  // owner/admin, or a custom role with "Invite & manage members" (service)
   async updateMember(
     @Req() req: AuthedRequest,
     @Param("userId", ParseUUIDPipe) userId: string,
     @Body() body: { role?: Role; status?: string; title?: string | null },
   ) {
-    return this.workspaces.updateMember(req.workspaceId!, req.userId!, userId, body);
+    return this.workspaces.updateMember(req.workspaceId!, req.userId!, userId, body, req.role!);
   }
 
   @Delete("current/members/:userId")
   @HttpCode(204)
-  @UseGuards(JwtAuthGuard, WorkspaceGuard, RolesGuard)
-  @Roles("admin") // owner + admin
+  @UseGuards(JwtAuthGuard, WorkspaceGuard)
+  // owner/admin, or a custom role with "Invite & manage members" (service)
   async removeMember(
     @Req() req: AuthedRequest,
     @Param("userId", ParseUUIDPipe) userId: string,
   ) {
-    await this.workspaces.removeMember(req.workspaceId!, req.userId!, userId);
+    await this.workspaces.removeMember(req.workspaceId!, req.userId!, userId, req.role!);
   }
 }

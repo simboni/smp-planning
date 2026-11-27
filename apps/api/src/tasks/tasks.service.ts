@@ -30,6 +30,7 @@ import {
   assertIdArray,
   remapTasksToSpace,
 } from "./tasks.support";
+import { requireCapabilityOn } from "../governance/governance.service";
 
 export interface UserRef {
   id: string;
@@ -1342,6 +1343,7 @@ export class TasksService {
           role,
           existing.space_id as string,
         );
+        await requireCapabilityOn(client, userId, role, "deleteItems", "Your role does not allow deleting items");
         await client.query(`DELETE FROM tasks WHERE id = $1`, [id]);
         await this.audit.record(client, {
           workspaceId,

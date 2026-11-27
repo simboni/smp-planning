@@ -292,7 +292,10 @@ export function SpaceTasks({
           onDelete={(task) => {
             if (!window.confirm(`Delete “${task.name}”? This can't be undone.`)) return;
             setTasks((prev) => (prev ?? []).filter((t) => t.id !== task.id));
-            tasksApi.remove(task.id).catch(() => loadTasks());
+            tasksApi.remove(task.id).catch((err) => {
+              showToast(err instanceof ApiError ? err.message : "Couldn't delete the task.");
+              loadTasks();
+            });
           }}
           onQuickAdd={quickAdd}
           addSignal={0}

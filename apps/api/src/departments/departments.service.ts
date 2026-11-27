@@ -483,12 +483,21 @@ export class DepartmentsService {
   async remove(workspaceId: string, userId: string, id: string): Promise<void> {
     await this.db.withWorkspace(workspaceId, userId, async (client) => {
       const cur = await this.load(client, id);
-      // The department's share grants die with it; a linked space survives
-      // (it may hold real work) and simply stops being department-visible.
+      // The department's share grants die with it. Its linked Space may hold
+      // real work, so it is archived, not deleted: it leaves the sidebar and
+      // an admin can restore it from Everything → Archived.
       await client.query(
         `DELETE FROM shares WHERE principal_type = 'department' AND principal_id = $1`,
         [id],
       );
+      let archivedSpace: string | null = null;
+      if (cur.space_id) {
+        const sp = await client.query(
+          `UPDATE spaces SET archived = true WHERE id = $1 AND archived = false RETURNING name`,
+          [cur.space_id],
+        );
+        archivedSpace = (sp.rows[0]?.name as string | undefined) ?? null;
+      }
       await client.query(`DELETE FROM departments WHERE id = $1`, [id]);
       await this.audit.record(client, {
         workspaceId,
@@ -496,7 +505,7 @@ export class DepartmentsService {
         action: "department.deleted",
         entity: "department",
         entityId: id,
-        data: { name: cur.name },
+        data: { name: cur.name, archivedSpaceId: archivedSpace ? cur.space_id : null },
       });
     });
     this.publishChanged(workspaceId, id);

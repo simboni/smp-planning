@@ -33,6 +33,51 @@ function cleanOverrides(input: unknown): CapabilityOverrides {
   return out;
 }
 
+/**
+ * Effective capabilities for a user in the current workspace. owner/admin
+ * always hold everything; otherwise the membership's optional custom role is
+ * merged over the base role's defaults. Runs inside an existing withWorkspace
+ * transaction. Plain functions so any service can enforce a capability
+ * without depending on GovernanceService.
+ */
+export async function capabilitiesOn(
+  client: PoolClient,
+  userId: string,
+  role: Role,
+): Promise<Record<Capability, boolean>> {
+  if (role === "owner" || role === "admin") {
+    return { ...ROLE_CAPABILITIES[role] };
+  }
+  const res = await client.query(
+    `SELECT cr.base_role, cr.capabilities
+       FROM memberships m
+       JOIN custom_roles cr ON cr.id = m.custom_role_id
+      WHERE m.user_id = $1
+        AND m.workspace_id = NULLIF(current_setting('app.current_workspace', true), '')::uuid`,
+    [userId],
+  );
+  const row = res.rows[0] as
+    | { base_role: Role; capabilities: CapabilityOverrides }
+    | undefined;
+  return resolveCapabilities(
+    role,
+    row ? { baseRole: row.base_role, capabilities: cleanOverrides(row.capabilities) } : null,
+  );
+}
+
+/** Throw 403 unless the caller holds `cap` in the current workspace. */
+export async function requireCapabilityOn(
+  client: PoolClient,
+  userId: string,
+  role: Role,
+  cap: Capability,
+  message: string,
+): Promise<void> {
+  if ((await capabilitiesOn(client, userId, role))[cap] !== true) {
+    throw new ForbiddenException(message);
+  }
+}
+
 interface CustomRoleRow {
   id: string;
   name: string;
@@ -94,23 +139,7 @@ export class GovernanceService {
     userId: string,
     role: Role,
   ): Promise<Record<Capability, boolean>> {
-    if (role === "owner" || role === "admin") {
-      return { ...ROLE_CAPABILITIES[role] };
-    }
-    const res = await client.query(
-      `SELECT cr.base_role, cr.capabilities
-         FROM memberships m
-         JOIN custom_roles cr ON cr.id = m.custom_role_id
-        WHERE m.user_id = $1`,
-      [userId],
-    );
-    const row = res.rows[0] as
-      | { base_role: Role; capabilities: CapabilityOverrides }
-      | undefined;
-    return resolveCapabilities(
-      role,
-      row ? { baseRole: row.base_role, capabilities: cleanOverrides(row.capabilities) } : null,
-    );
+    return capabilitiesOn(client, userId, role);
   }
 
   /** True if the caller holds `cap`. */
@@ -120,8 +149,7 @@ export class GovernanceService {
     role: Role,
     cap: Capability,
   ): Promise<boolean> {
-    const caps = await this.capabilitiesFor(client, userId, role);
-    return caps[cap] === true;
+    return (await capabilitiesOn(client, userId, role))[cap] === true;
   }
 
   /** Throw 403 unless the caller holds `cap`. */
@@ -132,9 +160,18 @@ export class GovernanceService {
     cap: Capability,
     message: string,
   ): Promise<void> {
-    if (!(await this.can(client, userId, role, cap))) {
-      throw new ForbiddenException(message);
-    }
+    await requireCapabilityOn(client, userId, role, cap, message);
+  }
+
+  /** The caller's own effective capabilities (drives what the UI offers). */
+  async myCapabilities(
+    workspaceId: string,
+    userId: string,
+    role: Role,
+  ): Promise<Record<Capability, boolean>> {
+    return this.db.withWorkspace(workspaceId, userId, (client) =>
+      capabilitiesOn(client, userId, role),
+    );
   }
 
   // --- custom role management (admin) --------------------------------------

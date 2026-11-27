@@ -37,6 +37,7 @@ import { NewFormModal } from "@/components/NewFormModal";
 import { TreeDocModal } from "@/components/TreeDocModal";
 import { colorFor } from "@/lib/format";
 import { openUploadedDoc } from "@/lib/docs";
+import { allowed, useCapabilities } from "@/lib/capabilities";
 import { showToast } from "@/lib/toast";
 
 const EXPANDED_KEY = "stackup.tree.expanded";
@@ -138,6 +139,8 @@ export function HierarchyTree() {
   const { tree, loading, error, reload, setTree } = useHierarchy();
   const wsRole = getWorkspace()?.role;
   const isWsAdmin = wsRole === "owner" || wsRole === "admin";
+  // Settings → Roles can take deleting away from a role (the server enforces it too).
+  const canDelete = allowed(useCapabilities(), "deleteItems");
   const pathname = usePathname();
   const router = useRouter();
   const search = useSearchParams();
@@ -665,9 +668,11 @@ export function HierarchyTree() {
                 <button type="button" onClick={() => doArchive("list", list.id)}>
                   {Icons.archive} Archive
                 </button>
-                <button type="button" className="danger" onClick={() => doDelete("list", list.id, list.name)}>
-                  {Icons.trash} Delete
-                </button>
+                {canDelete && (
+                  <button type="button" className="danger" onClick={() => doDelete("list", list.id, list.name)}>
+                    {Icons.trash} Delete
+                  </button>
+                )}
               </div>
             )}
             {colorFor_ === k && <ColorPopover kind="list" id={list.id} />}
@@ -771,9 +776,11 @@ export function HierarchyTree() {
                 <button type="button" onClick={() => doArchive("folder", folder.id)}>
                   {Icons.archive} Archive
                 </button>
-                <button type="button" className="danger" onClick={() => doDelete("folder", folder.id, folder.name)}>
-                  {Icons.trash} Delete
-                </button>
+                {canDelete && (
+                  <button type="button" className="danger" onClick={() => doDelete("folder", folder.id, folder.name)}>
+                    {Icons.trash} Delete
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -968,9 +975,11 @@ export function HierarchyTree() {
                     <button type="button" onClick={() => doArchive("space", space.id)}>
                       {Icons.archive} Archive
                     </button>
+{canDelete && (
                     <button type="button" className="danger" onClick={() => doDelete("space", space.id, space.name)}>
                       {Icons.trash} Delete
                     </button>
+                    )}
                   </>
                 )}
               </div>

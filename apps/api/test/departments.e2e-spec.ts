@@ -323,12 +323,21 @@ describe("departments (HR module)", () => {
       .expect(204);
     expect(await spacesOf(inDept.accessToken)).not.toContain(dept.spaceId);
 
-    // Deleting the department removes its grants; the space itself survives
-    // for admins.
+    // Deleting the department removes its grants and archives its space —
+    // the work is kept, and an admin can restore it.
     await http
       .delete(`/departments/${dept.id}`)
       .set(auth(owner.accessToken))
       .expect(204);
+    expect(await spacesOf(owner.accessToken)).not.toContain(dept.spaceId);
+    const archived = await http.get("/hierarchy/archived").set(auth(owner.accessToken)).expect(200);
+    const row = archived.body.spaces.find((s: { id: string }) => s.id === dept.spaceId);
+    expect(row).toMatchObject({ canRestore: true });
+    await http
+      .patch(`/spaces/${dept.spaceId}`)
+      .set(auth(owner.accessToken))
+      .send({ archived: false })
+      .expect(200);
     expect(await spacesOf(owner.accessToken)).toContain(dept.spaceId);
   });
 

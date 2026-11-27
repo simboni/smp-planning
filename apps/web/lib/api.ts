@@ -1244,6 +1244,9 @@ export interface AuditIntegrity {
 }
 
 export const governanceApi = {
+  /** The caller's own effective capabilities. */
+  me: () =>
+    api<{ capabilities: Record<Capability, boolean> }>("/governance/me", { auth: "access" }),
   listRoles: () =>
     api<{ roles: CustomRole[] }>("/governance/roles", { auth: "access" }),
   createRole: (body: {

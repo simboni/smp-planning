@@ -48,7 +48,7 @@ import { GanttView } from "@/components/views/GanttView";
 import { TimelineView } from "@/components/views/TimelineView";
 import { FavoriteStar } from "@/components/FavoriteStar";
 import { PublicShareButton } from "@/components/PublicShareButton";
-import { saveEntityAsTemplate } from "@/lib/toast";
+import { saveEntityAsTemplate, showToast } from "@/lib/toast";
 
 interface ListMeta {
   list: List;
@@ -321,7 +321,10 @@ function ListShell() {
   const deleteTask = (task: TaskCard): void => {
     if (!window.confirm(`Delete “${task.name}”? This can't be undone.`)) return;
     setTasks((prev) => (prev ?? []).filter((t) => t.id !== task.id));
-    tasksApi.remove(task.id).catch(() => void loadTasks());
+    tasksApi.remove(task.id).catch((err) => {
+      showToast(err instanceof ApiError ? err.message : "Couldn't delete the task.");
+      void loadTasks();
+    });
   };
 
   const quickAdd = (statusId: string, name: string): void => {

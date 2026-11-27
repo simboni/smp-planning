@@ -502,7 +502,7 @@ function ManageDepartmentModal({
     if (!detail) return;
     if (
       !window.confirm(
-        `Delete “${detail.name}”? Members and any linked Space stay — only the department (and its access grants) is removed.`,
+        `Delete “${detail.name}”? Members stay. Its linked Space is archived — an admin can restore it from Everything → Archived.`,
       )
     ) {
       return;
@@ -1213,6 +1213,7 @@ export default function DepartmentsPage() {
           onDeleted={() => {
             setManagingId(null);
             load();
+            void reloadDeptTree(); // the archived Space leaves the sidebar
           }}
         />
       )}

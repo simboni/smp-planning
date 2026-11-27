@@ -23,6 +23,7 @@ import {
   validateActions,
   validateTrigger,
 } from "./automations.support";
+import { requireCapabilityOn } from "../governance/governance.service";
 
 export interface AutomationOut {
   id: string;
@@ -214,6 +215,7 @@ export class AutomationsService implements OnModuleInit, OnModuleDestroy {
     const name = requireName(body?.name);
     return this.db.withWorkspace(workspaceId, userId, async (client) => {
       await requireSpaceEdit(this.access, client, userId, role, spaceId);
+      await requireCapabilityOn(client, userId, role, "manageAutomations", "Your role does not allow managing Automations");
       const trigger = await validateTrigger(client, spaceId, body?.trigger);
       const actions = await validateActions(client, spaceId, body?.actions);
       const enabled = body?.enabled !== false;
@@ -261,6 +263,7 @@ export class AutomationsService implements OnModuleInit, OnModuleDestroy {
       const existing = await this.automationRow(client, id);
       const spaceId = existing.space_id as string;
       await requireSpaceEdit(this.access, client, userId, role, spaceId);
+      await requireCapabilityOn(client, userId, role, "manageAutomations", "Your role does not allow managing Automations");
 
       const sets: string[] = [];
       const params: unknown[] = [];
@@ -321,6 +324,7 @@ export class AutomationsService implements OnModuleInit, OnModuleDestroy {
         role,
         existing.space_id as string,
       );
+      await requireCapabilityOn(client, userId, role, "manageAutomations", "Your role does not allow managing Automations");
       await client.query(`DELETE FROM automations WHERE id = $1`, [id]);
       await this.audit.record(client, {
         workspaceId,

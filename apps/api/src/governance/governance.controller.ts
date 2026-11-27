@@ -35,6 +35,14 @@ export class GovernanceController {
 
   // --- custom roles (admin) ------------------------------------------------
 
+  /** The caller's own effective capabilities (hides actions the role can't take). */
+  @Get("governance/me")
+  async myCapabilities(@Req() req: AuthedRequest) {
+    return {
+      capabilities: await this.gov.myCapabilities(req.workspaceId!, req.userId!, req.role!),
+    };
+  }
+
   @Get("governance/roles")
   async listRoles(@Req() req: AuthedRequest) {
     return { roles: await this.gov.listRoles(req.workspaceId!, req.userId!) };
