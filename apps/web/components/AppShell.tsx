@@ -76,7 +76,7 @@ function isNavActive(item: NavItem, pathname: string): boolean {
     (item.href === "/portfolios" && pathname === "/portfolio") ||
     (item.href === "/dashboards" && pathname === "/dashboard-view") ||
     (item.href === "/people" &&
-      (pathname === "/members" || pathname === "/teams"))
+      (pathname === "/members" || pathname === "/teams" || pathname === "/hr"))
   );
 }
 
@@ -103,7 +103,6 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Organization",
     items: [
       { href: "/departments", label: "Departments", icon: "org" },
-      { href: "/hr", label: "HR", icon: "members" },
       { href: "/leave", label: "Leave", icon: "calendar" },
       { href: "/people", label: "People", icon: "team" },
     ],
@@ -751,7 +750,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span>Copilot</span>
             </button>
 
-            <Link href="/people" className="btn btn-primary btn-sm">
+            <Link href="/people?tab=members" className="btn btn-primary btn-sm">
               {Icons.invite}
               <span>Invite</span>
             </Link>

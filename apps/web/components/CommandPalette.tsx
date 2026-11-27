@@ -44,7 +44,7 @@ const DESTINATIONS: { label: string; href: string; icon: IconKey; keywords?: str
   { label: "Templates", href: "/templates", icon: "copy", keywords: "template center reuse blueprint" },
   { label: "People", href: "/people", icon: "members", keywords: "members teams invite roles" },
   { label: "Departments", href: "/departments", icon: "org", keywords: "org units accounting operations hr sales structure" },
-  { label: "HR", href: "/hr", icon: "team", keywords: "people directory designations departments staff" },
+  { label: "People directory", href: "/people?tab=directory", icon: "team", keywords: "hr people directory designations departments staff" },
   { label: "Leave", href: "/leave", icon: "calendar", keywords: "time off holiday vacation sick annual approvals balance" },
   { label: "Settings", href: "/settings", icon: "settings", keywords: "workspace preferences" },
   { label: "Everything", href: "/everything", icon: "spaces", keywords: "spaces folders lists overview" },

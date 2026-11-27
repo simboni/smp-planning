@@ -8861,8 +8861,12 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
 }
 .hr-dir-dept { display: inline-flex; align-items: center; gap: 5px; }
 
-/* ---- People page: Members | Teams tabs ---- */
+/* ---- People page: Directory | Members | Teams tabs ---- */
 .people-tabs-head { padding-bottom: 0; margin-bottom: -14px; }
+.people-tabs-head .page-head { margin-bottom: 12px; }
+/* The tabs' own page titles would repeat "People"; their one-line
+   descriptions stay as the tab's intro. */
+.people-embed .page-head h1 { display: none; }
 
 /* ---- Native menu sheet: section headings ---- */
 .app-sheet-section { margin-bottom: 10px; }

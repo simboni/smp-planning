@@ -39,7 +39,7 @@ function buildChecklist(ov: HomeOverview | null): ChecklistItem[] {
       title: "Invite your teammates",
       sub: "Work is better together.",
       done: (ov?.members ?? 0) > 1,
-      href: "/members",
+      href: "/people?tab=members",
       cta: "Invite",
     },
     {
@@ -72,7 +72,7 @@ const STATS: {
   { key: "docs", label: "Docs", href: "/docs", icon: "docs", color: "#00B8D9" },
   { key: "goals", label: "Goals", href: "/goals", icon: "goals", color: "#36B37E" },
   { key: "dashboards", label: "Dashboards", href: "/dashboards", icon: "dashboards", color: "#FFAB00" },
-  { key: "members", label: "Members", href: "/members", icon: "members", color: "#E5578C" },
+  { key: "members", label: "Members", href: "/people?tab=members", icon: "members", color: "#E5578C" },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -375,7 +375,7 @@ export default function DashboardPage() {
             {Icons.checkCircle}
             My Work
           </Link>
-          <Link href="/members" className="btn btn-soft">
+          <Link href="/people?tab=members" className="btn btn-soft">
             {Icons.invite}
             Invite teammates
           </Link>

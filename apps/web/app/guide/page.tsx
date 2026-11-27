@@ -524,7 +524,7 @@ function QuickStart({ signedIn }: { signedIn: boolean }) {
     ["Create your workspace", "This is your organization's home base.", "/dashboard"],
     ["Set up a Space", "Add your first department or area of work.", "/everything"],
     ["Add a List and Tasks", "Create a project list and add real work to it.", "/everything"],
-    ["Invite your team", "Bring people in and assign roles.", "/members"],
+    ["Invite your team", "Bring people in and assign roles.", "/people?tab=members"],
     ["Pick a view & track", "See work as a list, board or calendar and keep it moving.", "/my-work"],
   ];
   return (
