@@ -2035,6 +2035,8 @@ export interface TaskComment {
 
 export type ActivityKind =
   | "created"
+  | "subtask_added"
+  | "checklist_added"
   | "status"
   | "priority"
   | "dates"

@@ -18,6 +18,9 @@ import type { ViewProps } from "@/components/views/types";
 
 const DAY_W = 30;
 const ROW_H = 44;
+/** Vertical distance between stacked bars in one lane. */
+const BAR_STEP = 32;
+const laneHeight = (rows: number): number => Math.max(ROW_H, 14 + rows * BAR_STEP - 6);
 const RAIL_W = 180;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -75,7 +78,26 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
         for (const a of t.assignees) ensure(a.id, a).tasks.push(t);
       }
     }
-    const arr = [...byUser.entries()].map(([key, v]) => ({ key, ...v }));
+    // Stack overlapping bars into sub-rows (M6): first-fit by start date, so
+    // tasks whose dates overlap never draw over each other.
+    const arr = [...byUser.entries()].map(([key, v]) => {
+      const sorted = [...v.tasks].sort(
+        (a, b) => span(a)!.start.getTime() - span(b)!.start.getTime(),
+      );
+      const rowEnds: number[] = [];
+      const rowOf = new Map<string, number>();
+      for (const t of sorted) {
+        const sp = span(t)!;
+        let r = rowEnds.findIndex((end) => end < sp.start.getTime());
+        if (r === -1) {
+          r = rowEnds.length;
+          rowEnds.push(0);
+        }
+        rowEnds[r] = sp.end.getTime();
+        rowOf.set(t.id, r);
+      }
+      return { key, ...v, tasks: sorted, rowOf, rows: Math.max(1, rowEnds.length) };
+    });
     arr.sort((a, b) => {
       if (a.key === UNASSIGNED) return 1;
       if (b.key === UNASSIGNED) return -1;
@@ -162,7 +184,7 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
 
           {/* Lanes */}
           {lanes.map((lane) => (
-            <div className="tl-lane" key={lane.key} style={{ minHeight: ROW_H }}>
+            <div className="tl-lane" key={lane.key} style={{ minHeight: laneHeight(lane.rows) }}>
               <div className="tl-rail" style={{ width: RAIL_W }}>
                 {lane.user ? (
                   <>
@@ -182,7 +204,7 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
                 )}
                 <span className="tl-rail-count">{lane.tasks.length}</span>
               </div>
-              <div className="tl-track" style={{ width: gridW }}>
+              <div className="tl-track" style={{ width: gridW, height: laneHeight(lane.rows) }}>
                 {lane.tasks.map((t) => {
                   const sp = span(t)!;
                   const offset = diffDays(rangeStart, sp.start);
@@ -195,6 +217,7 @@ export function TimelineView({ tasks, canEdit: _canEdit, onOpenTask }: ViewProps
                       className="tl-bar"
                       title={`${t.name} — ${t.status.name}`}
                       style={{
+                        top: 7 + (lane.rowOf.get(t.id) ?? 0) * BAR_STEP,
                         left: offset * DAY_W + 2,
                         width: len * DAY_W - 4,
                         background: t.status.color,

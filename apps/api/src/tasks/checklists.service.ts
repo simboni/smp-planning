@@ -7,7 +7,7 @@ import type { PoolClient } from "pg";
 import type { Role } from "@stackup/shared";
 import { AccessService } from "../access/access.service";
 import { DbService } from "../db/db.service";
-import { optionalName, requireName, requireSpaceEdit } from "./tasks.support";
+import { optionalName, recordActivity, requireName, requireSpaceEdit } from "./tasks.support";
 
 export interface ChecklistItem {
   id: string;
@@ -106,6 +106,13 @@ export class ChecklistsService {
          RETURNING id, name, position`,
         [workspaceId, taskId, name, pos.rows[0].n as number],
       );
+      await recordActivity(client, {
+        workspaceId,
+        taskId,
+        actorUserId: userId,
+        kind: "checklist_added",
+        data: { name },
+      });
       return {
         id: res.rows[0].id as string,
         name: res.rows[0].name as string,

@@ -10,7 +10,7 @@
  * future work (Module 6+).
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TaskCard } from "@/lib/api";
 import { Icons } from "@/components/icons";
 import { colorFor } from "@/lib/format";
@@ -86,6 +86,17 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
   }, [scheduled]);
 
   const todayIdx = diffDays(rangeStart, today);
+
+  // Open on today (L1): the range starts weeks earlier, so without this the
+  // chart opened on an old date with today — and its line — off-screen.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrolledToToday = useRef(false);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || scrolledToToday.current || todayIdx < 0) return;
+    scrolledToToday.current = true;
+    el.scrollLeft = Math.max(0, todayIdx * DAY_W - el.clientWidth * 0.3);
+  }, [todayIdx]);
   const chartW = totalDays * DAY_W;
 
   const startDrag = (
@@ -169,7 +180,7 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
         </div>
 
         {/* timeline */}
-        <div className="gantt-scroll">
+        <div className="gantt-scroll" ref={scrollRef}>
           <div className="gantt-chart" style={{ width: chartW }}>
             <div className="gantt-months">
               {months.map((m, i) => (
@@ -253,8 +264,8 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
                       left: startIdx * DAY_W + 2,
                       width: Math.max((endIdx - startIdx + 1) * DAY_W - 4, DAY_W - 4),
                       top: row * ROW_H + 7,
-                      background: `color-mix(in srgb, ${color} 24%, var(--card))`,
-                      borderColor: `color-mix(in srgb, ${color} 55%, transparent)`,
+                      background: `color-mix(in srgb, ${color} 42%, var(--card))`,
+                      borderColor: `color-mix(in srgb, ${color} 85%, transparent)`,
                     }}
                     title={t.name}
                     onPointerDown={(e) => startDrag(e, t, "move")}
@@ -272,7 +283,7 @@ export function GanttView({ tasks, canEdit, onOpenTask, onShiftDates }: GanttVie
                         onPointerUp={() => endDrag(t)}
                       />
                     )}
-                    <span className="gantt-bar-name" style={{ color }}>
+                    <span className="gantt-bar-name" style={{ color: "var(--ink)" }}>
                       {t.name}
                     </span>
                     {canResize && (

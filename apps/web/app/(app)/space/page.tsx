@@ -605,6 +605,9 @@ function SpaceView() {
   const { reload } = useHierarchy();
 
   const [space, setSpace] = useState<Space | null>(null);
+  // L2: the lists, Sprints and Automations used to stack under every view
+  // (even a Calendar). They're separate tabs now; Tasks is the default.
+  const [section, setSection] = useState<"tasks" | "lists" | "sprints" | "automations">("tasks");
   usePageTitle(space?.name);
   const [folders, setFolders] = useState<FolderWithLists[]>([]);
   const [lists, setLists] = useState<List[]>([]);
@@ -807,59 +810,97 @@ function SpaceView() {
         </div>
       )}
 
-      {/* Every task in the space, in any view (Module 5 views reused) */}
-      <SpaceTasks
-        spaceId={space.id}
-        lists={[...lists, ...folders.flatMap((f) => f.lists)].map((l) => ({
-          id: l.id,
-          name: l.name,
-        }))}
-        canEdit={canEdit}
-      />
+      <div className="chips sp-sections" role="tablist" aria-label="Space sections">
+        {(
+          [
+            ["tasks", "Tasks"],
+            ["lists", `Lists (${folders.reduce((n, f) => n + f.lists.length, 0) + lists.length})`],
+            ["sprints", "Sprints"],
+            ["automations", "Automations"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={section === key}
+            className={`chip${section === key ? " active" : ""}`}
+            onClick={() => setSection(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {/* Folders */}
-      {folders.map((f) => (
-        <div key={f.id} className="sp-group">
-          <div className="sp-group-head">
-            <span className="sp-group-ic">{Icons.folder}</span>
-            <h3>{f.name}</h3>
-            <span className="badge badge-soft">{f.lists.length}</span>
+      {section === "tasks" && (
+        <>
+        {/* Every task in the space, in any view (Module 5 views reused) */}
+        <SpaceTasks
+          spaceId={space.id}
+          lists={[...lists, ...folders.flatMap((f) => f.lists)].map((l) => ({
+            id: l.id,
+            name: l.name,
+          }))}
+          canEdit={canEdit}
+        />
+        </>
+      )}
+
+      {section === "lists" && (
+        <>
+        {/* Folders */}
+        {folders.map((f) => (
+          <div key={f.id} className="sp-group">
+            <div className="sp-group-head">
+              <span className="sp-group-ic">{Icons.folder}</span>
+              <h3>{f.name}</h3>
+              <span className="badge badge-soft">{f.lists.length}</span>
+            </div>
+            {f.lists.length === 0 ? (
+              <div className="sp-group-empty">No lists in this folder yet.</div>
+            ) : (
+              <div className="sp-lists">
+                {f.lists.map((l) => (
+                  <ListRow key={l.id} list={l} />
+                ))}
+              </div>
+            )}
           </div>
-          {f.lists.length === 0 ? (
-            <div className="sp-group-empty">No lists in this folder yet.</div>
-          ) : (
+        ))}
+
+        {/* Folderless lists */}
+        {lists.length > 0 && (
+          <div className="sp-group">
+            {folders.length > 0 && (
+              <div className="sp-group-head">
+                <span className="sp-group-ic">{Icons.list}</span>
+                <h3>Lists</h3>
+                <span className="badge badge-soft">{lists.length}</span>
+              </div>
+            )}
             <div className="sp-lists">
-              {f.lists.map((l) => (
+              {lists.map((l) => (
                 <ListRow key={l.id} list={l} />
               ))}
             </div>
-          )}
-        </div>
-      ))}
-
-      {/* Folderless lists */}
-      {lists.length > 0 && (
-        <div className="sp-group">
-          {folders.length > 0 && (
-            <div className="sp-group-head">
-              <span className="sp-group-ic">{Icons.list}</span>
-              <h3>Lists</h3>
-              <span className="badge badge-soft">{lists.length}</span>
-            </div>
-          )}
-          <div className="sp-lists">
-            {lists.map((l) => (
-              <ListRow key={l.id} list={l} />
-            ))}
           </div>
-        </div>
+        )}
+        </>
       )}
 
-      {/* Sprints (Module 10) */}
-      <SprintsSection spaceId={space.id} canEdit={canEdit} />
+      {section === "sprints" && (
+        <>
+        {/* Sprints (Module 10) */}
+        <SprintsSection spaceId={space.id} canEdit={canEdit} />
+        </>
+      )}
 
-      {/* Automations (Module 11) */}
-      <AutomationsSection spaceId={space.id} canEdit={canEdit} />
+      {section === "automations" && (
+        <>
+        {/* Automations (Module 11) */}
+        <AutomationsSection spaceId={space.id} canEdit={canEdit} />
+        </>
+      )}
 
       {/* Empty state */}
       {folders.length === 0 && lists.length === 0 && !adding && (

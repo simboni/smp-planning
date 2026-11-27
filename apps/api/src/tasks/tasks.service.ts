@@ -873,6 +873,16 @@ export class TasksService {
         kind: "created",
         data: { name },
       });
+      if (parentId) {
+        // The parent's feed shows it too (L3: subtasks weren't logged there).
+        await recordActivity(client, {
+          workspaceId,
+          taskId: parentId,
+          actorUserId: userId,
+          kind: "subtask_added",
+          data: { name, subtaskId: taskId },
+        });
+      }
       await this.audit.record(client, {
         workspaceId,
         actorUserId: userId,
@@ -1119,7 +1129,11 @@ export class TasksService {
           `SELECT start_date, due_date FROM tasks WHERE id = $1`,
           [id],
         );
-        activities.push({
+        // Re-saving the same dates is not a change worth logging (L3).
+        const sameDates =
+          iso(after.rows[0].start_date) === iso(existing.start_date) &&
+          iso(after.rows[0].due_date) === iso(existing.due_date);
+        if (!sameDates) activities.push({
           kind: "dates",
           data: {
             startDate: iso(after.rows[0].start_date),

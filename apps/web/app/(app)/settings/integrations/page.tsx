@@ -564,7 +564,7 @@ function ImportExportCard() {
     if (!listId || !csv.trim()) return;
     try {
       const r = await importExportApi.importCsv(listId, csv);
-      setMsg(`Imported ${r.tasks} task(s) from CSV.`);
+      setMsg(`Imported ${r.tasks} ${r.tasks === 1 ? "task" : "tasks"} from CSV.`);
       setCsv("");
     } catch (e) {
       setMsg((e as Error).message);
@@ -575,7 +575,7 @@ function ImportExportCard() {
     try {
       const parsed = JSON.parse(board);
       const r = await importExportApi.importBoard(source, parsed);
-      setMsg(`Imported ${r.tasks} task(s) into ${r.lists} list(s).`);
+      setMsg(`Imported ${r.tasks} ${r.tasks === 1 ? "task" : "tasks"} into ${r.lists} ${r.lists === 1 ? "list" : "lists"}.`);
       setBoard("");
     } catch (e) {
       setMsg(
