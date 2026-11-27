@@ -219,6 +219,9 @@ function ListShell() {
 
   // Deep link (Inbox → task): /list?id=<listId>&task=<taskId> opens the panel.
   const taskParam = search.get("task");
+  // ?tab=activity (from a comment/mention notification) opens that tab — for
+  // the linked task only, not for tasks opened later from the list.
+  const tabParam = search.get("tab");
   useEffect(() => {
     if (taskParam) setSelectedTask(taskParam);
   }, [taskParam]);
@@ -634,6 +637,7 @@ function ListShell() {
       {selectedTask && (
         <TaskPanel
           taskId={selectedTask}
+          initialTab={selectedTask === taskParam && tabParam === "activity" ? "activity" : undefined}
           statuses={statuses}
           members={members}
           canEdit={canEdit}

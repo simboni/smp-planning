@@ -158,6 +158,7 @@ function MemberPicker({
  * ------------------------------------------------------------------ */
 export function TaskPanel({
   taskId,
+  initialTab,
   statuses,
   members,
   canEdit,
@@ -167,6 +168,8 @@ export function TaskPanel({
   onOpenTask,
 }: {
   taskId: string;
+  /** Tab to open on, e.g. "activity" when arriving from a comment notification. */
+  initialTab?: "details" | "activity" | "files";
   statuses: Status[];
   members: Member[];
   canEdit: boolean;
@@ -179,10 +182,10 @@ export function TaskPanel({
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   // Audit: the drawer was one long column. Details / Comments & activity /
   // Files & email tabs; every task opens on Details.
-  const [tab, setTab] = useState<"details" | "activity" | "files">("details");
+  const [tab, setTab] = useState<"details" | "activity" | "files">(initialTab ?? "details");
   useEffect(() => {
-    setTab("details");
-  }, [taskId]);
+    setTab(initialTab ?? "details");
+  }, [taskId, initialTab]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);

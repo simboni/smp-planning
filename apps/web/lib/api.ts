@@ -4305,3 +4305,12 @@ export const importExportApi = {
     URL.revokeObjectURL(url);
   },
 };
+
+/**
+ * The link a notification opens. Comments and mentions open the task on its
+ * "Comments & activity" tab, so you land on what you were notified about.
+ */
+export function notificationTaskHref(listId: string, taskId: string, kind?: string | null): string {
+  const tab = kind === "comment" || kind === "mention" ? "&tab=activity" : "";
+  return `/list?id=${listId}&task=${taskId}${tab}`;
+}

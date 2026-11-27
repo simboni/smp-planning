@@ -361,7 +361,9 @@ export class NotificationMailerService implements OnModuleInit, OnModuleDestroy 
 
   private taskUrl(it: Item): string {
     if (it.taskId && it.listId) {
-      return `${this.base()}/list?id=${it.listId}&task=${it.taskId}`;
+      // Mentions/comments land on the task's Comments & activity tab.
+      const tab = it.kind === "comment" || it.kind === "mention" ? "&tab=activity" : "";
+      return `${this.base()}/list?id=${it.listId}&task=${it.taskId}${tab}`;
     }
     return `${this.base()}/inbox`;
   }

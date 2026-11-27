@@ -204,6 +204,7 @@ describe("assignments and mentions", () => {
     expect(mails[0].meta).toEqual({ kind: "assigned", userId: bob.userId });
     expect(mails[0].text).toContain(`https://stackup.smp.co.ke/list?id=${f.listId}&task=${f.taskId}`);
     expect(mails[0].html).toContain("https://stackup.smp.co.ke/settings"); // email settings link
+    expect(mails[0].text).not.toContain("tab=activity"); // assignments open on Details
     expect(to(f.owner.email).filter((m) => m.meta?.kind === "assigned")).toHaveLength(0);
 
     await run(f);
@@ -225,6 +226,8 @@ describe("assignments and mentions", () => {
     expect(m.subject).toBe("Alice Owner mentioned you on “Fix the roof”");
     expect(m.text).toContain("“@Bob Mwangi can you check the gutters too?”");
     expect(m.meta?.kind).toBe("mention");
+    // The link opens the task on its Comments & activity tab.
+    expect(m.text).toContain(`/list?id=${f.listId}&task=${f.taskId}&tab=activity`);
   });
 
   it("puts several updates in the same minute into one email", async () => {

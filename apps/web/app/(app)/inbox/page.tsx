@@ -15,6 +15,7 @@ import {
   ApiError,
   notificationsApi,
   remindersApi,
+  notificationTaskHref,
   tasksApi,
   type AppNotification,
   type Reminder,
@@ -97,7 +98,7 @@ export default function InboxPage() {
     if (n.taskId) {
       tasksApi
         .get(n.taskId)
-        .then((r) => router.push(`/list?id=${r.task.listId}&task=${r.task.id}`))
+        .then((r) => router.push(notificationTaskHref(r.task.listId, r.task.id, n.kind)))
         .catch(() => undefined); // task gone / no access → stay here, it's read now
     }
   };

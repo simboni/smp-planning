@@ -10,6 +10,7 @@ import {
   eventsApi,
   getRefreshToken,
   hasLegacyRefreshToken,
+  notificationTaskHref,
   getUser,
   getWorkspace,
   notificationsApi,
@@ -292,7 +293,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (n.taskId) {
       tasksApi
         .get(n.taskId)
-        .then((r) => router.push(`/list?id=${r.task.listId}&task=${r.task.id}`))
+        .then((r) => router.push(notificationTaskHref(r.task.listId, r.task.id, n.kind)))
         .catch(() => undefined);
     }
   };

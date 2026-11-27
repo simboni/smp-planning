@@ -188,7 +188,8 @@ describe("notification push bridge", () => {
     expect(sends).toHaveLength(1);
     expect(sends[0].title).toBe("New mention");
     expect(sends[0].body).toBe("mentioned you in a comment");
-    expect(sends[0].path).toBe(`/list?task=${f.taskId}`);
+    // A mention opens the task on its Comments & activity tab.
+    expect(sends[0].path).toBe(`/list?task=${f.taskId}&tab=activity`);
 
     // After unregistering, a further mention pushes nothing to that device.
     await http

@@ -123,7 +123,10 @@ export class InboxService implements OnModuleInit, OnModuleDestroy {
     await this.push.notifyUser(userId, {
       title: titles[row.kind] ?? "New notification",
       body,
-      path: row.task_id ? `/list?task=${row.task_id}` : "/inbox",
+      // Comments and mentions open on the task's Comments & activity tab.
+      path: row.task_id
+        ? `/list?task=${row.task_id}${row.kind === "comment" || row.kind === "mention" ? "&tab=activity" : ""}`
+        : "/inbox",
     });
   }
 
