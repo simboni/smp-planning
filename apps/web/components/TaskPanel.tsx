@@ -177,6 +177,12 @@ export function TaskPanel({
   onOpenTask: (taskId: string) => void;
 }) {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
+  // Audit: the drawer was one long column. Details / Comments & activity /
+  // Files & email tabs; every task opens on Details.
+  const [tab, setTab] = useState<"details" | "activity" | "files">("details");
+  useEffect(() => {
+    setTab("details");
+  }, [taskId]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -832,417 +838,454 @@ export function TaskPanel({
               </div>
             </div>
 
-            {/* Time tracking (Module 8) */}
-            <TimeTracking
-              taskId={detail.id}
-              estimateMinutes={detail.timeEstimateMinutes}
-              canTrack={canEdit || canComment}
-              onChanged={onChanged}
-            />
+            <div className="tp-tabs" role="tablist" aria-label="Task sections">
+              {(
+                [
+                  ["details", "Details"],
+                  ["activity", "Comments & activity"],
+                  ["files", "Files & email"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === key}
+                  className={`tp-tab${tab === key ? " active" : ""}`}
+                  onClick={() => setTab(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-            {/* Custom fields */}
-            <section className="tp-section">
-              <div className="tp-section-head">
-                <h3 className="tp-section-title">
-                  Custom Fields
-                  {detail.fields.length > 0 && (
-                    <span className="tp-count-badge">{detail.fields.length}</span>
-                  )}
-                </h3>
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setManagingFields(true)}
-                  >
-                    {Icons.sliders} Manage fields
-                  </button>
-                )}
-              </div>
-              {detail.fields.length === 0 ? (
-                <div className="tp-empty tp-empty-pad">No custom fields in this space yet.</div>
-              ) : (
-                <div className="tp-field-list">
-                  {detail.fields.map((f) => (
-                    <FieldRow
-                      key={f.fieldId}
-                      entry={f}
-                      canEdit={canEdit}
-                      onSave={(v) => saveField(f.fieldId, v)}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* Description */}
-            <section className="tp-section">
-              <div className="tp-section-head">
-                <h3 className="tp-section-title">Description</h3>
-                <div className="tp-section-actions">
-                  <AiSummaryButton taskId={detail.id} />
-                  {canEdit && (
-                    <AiWriterButton
-                      text={descDraft}
-                      onReplace={(next) => {
-                        setDescDraft(next);
-                        setEditingDesc(false);
-                        void run(() =>
-                          tasksApi.update(detail.id, { description: next }),
-                        );
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-              {canEdit ? (
-                <textarea
-                  className="tp-desc"
-                  placeholder="Add a description…"
-                  value={descDraft}
-                  onFocus={() => setEditingDesc(true)}
-                  onChange={(e) => setDescDraft(e.target.value)}
-                  onBlur={saveDesc}
+            {tab === "details" && (
+              <>
+                {/* Time tracking (Module 8) */}
+                <TimeTracking
+                  taskId={detail.id}
+                  estimateMinutes={detail.timeEstimateMinutes}
+                  canTrack={canEdit || canComment}
+                  onChanged={onChanged}
                 />
-              ) : detail.description ? (
-                <p className="tp-desc-ro">{detail.description}</p>
-              ) : (
-                <p className="tp-empty">No description.</p>
-              )}
-            </section>
 
-            {/* Subtasks */}
-            <section className="tp-section">
-              <div className="tp-section-head">
-                <h3 className="tp-section-title">
-                  Subtasks
-                  {detail.subtasks.length > 0 && (
-                    <span className="tp-count-badge">{detail.subtasks.length}</span>
-                  )}
-                </h3>
-                {canEdit && (
-                  <div className="tp-section-actions">
-                    <AiSubtaskButton
-                      taskId={detail.id}
-                      onGenerated={(items) => items.forEach((n) => addSubtask(n))}
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="tp-subtasks">
-                {detail.subtasks.map((st: TaskCard) => (
-                  <button
-                    key={st.id}
-                    type="button"
-                    className={`tp-subtask${st.status.type === "done" ? " done" : ""}`}
-                    onClick={() => onOpenTask(st.id)}
-                  >
-                    <span
-                      className="status-dot lg"
-                      style={{ background: st.status.color || colorFor(st.status.id) }}
-                    />
-                    <span className="tp-subtask-name">{st.name}</span>
-                    {st.assignees.length > 0 && <AvatarStack users={st.assignees} size={20} />}
-                    {Icons.chevronRight}
-                  </button>
-                ))}
-                {detail.subtasks.length === 0 && !subInput && (
-                  <div className="tp-empty tp-empty-pad">No subtasks yet.</div>
-                )}
-                {canEdit && subInput && (
-                  <InlineAdd
-                    placeholder="Subtask name…"
-                    onCommit={addSubtask}
-                    onCancel={() => setSubInput(false)}
-                  />
-                )}
-                {canEdit && !subInput && (
-                  <button type="button" className="tp-add-row" onClick={() => setSubInput(true)}>
-                    {Icons.plus} Add subtask
-                  </button>
-                )}
-              </div>
-            </section>
-
-            {/* Dependencies */}
-            <section className="tp-section">
-              <div className="tp-section-head">
-                <h3 className="tp-section-title">
-                  Dependencies
-                  {detail.waitingOn.length + detail.blocking.length > 0 && (
-                    <span className="tp-count-badge">
-                      {detail.waitingOn.length + detail.blocking.length}
-                    </span>
-                  )}
-                </h3>
-                {canEdit && (
-                  <div className="tp-pop-anchor">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setPop(pop === "dep" ? null : "dep")}
-                    >
-                      {Icons.plus} Add
-                    </button>
-                    {pop === "dep" && (
-                      <TaskPickerPop
-                        listId={detail.listId}
-                        excludeIds={depExclude}
-                        placeholder="Wait on a task in this list…"
-                        onPick={addDependency}
-                        onClose={() => setPop(null)}
-                      />
+                {/* Custom fields — hidden for people who can't add any */}
+                {(detail.fields.length > 0 || canEdit) && (
+                <section className={`tp-section${detail.fields.length === 0 ? " is-empty" : ""}`}>
+                  <div className="tp-section-head">
+                    <h3 className="tp-section-title">
+                      Custom Fields
+                      {detail.fields.length > 0 && (
+                        <span className="tp-count-badge">{detail.fields.length}</span>
+                      )}
+                    </h3>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setManagingFields(true)}
+                      >
+                        {Icons.sliders} Manage fields
+                      </button>
                     )}
                   </div>
-                )}
-              </div>
-              {detail.waitingOn.length === 0 && detail.blocking.length === 0 ? (
-                <div className="tp-empty tp-empty-pad">No dependencies.</div>
-              ) : (
-                <>
-                  {detail.waitingOn.length > 0 && (
-                    <div className="tp-dep-group">
-                      <div className="tp-dep-title">{Icons.ban} Waiting on</div>
-                      {detail.waitingOn.map((r) => (
-                        <RefRow
-                          key={r.id}
-                          r={r}
-                          onOpen={() => onOpenTask(r.id)}
-                          onRemove={
-                            canEdit ? () => removeDependency(detail.id, r.id) : undefined
-                          }
+                  {detail.fields.length === 0 ? (
+                    <div className="tp-empty tp-empty-pad">No custom fields in this space yet.</div>
+                  ) : (
+                    <div className="tp-field-list">
+                      {detail.fields.map((f) => (
+                        <FieldRow
+                          key={f.fieldId}
+                          entry={f}
+                          canEdit={canEdit}
+                          onSave={(v) => saveField(f.fieldId, v)}
                         />
                       ))}
                     </div>
                   )}
-                  {detail.blocking.length > 0 && (
-                    <div className="tp-dep-group">
-                      <div className="tp-dep-title">{Icons.bolt} Blocking</div>
-                      {detail.blocking.map((r) => (
-                        <RefRow
-                          key={r.id}
-                          r={r}
-                          onOpen={() => onOpenTask(r.id)}
-                          onRemove={
-                            canEdit ? () => removeDependency(r.id, detail.id) : undefined
-                          }
-                        />
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
-
-            {/* Linked tasks */}
-            <section className="tp-section">
-              <div className="tp-section-head">
-                <h3 className="tp-section-title">
-                  Linked tasks
-                  {detail.linked.length > 0 && (
-                    <span className="tp-count-badge">{detail.linked.length}</span>
-                  )}
-                </h3>
-                {canEdit && (
-                  <div className="tp-pop-anchor">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setPop(pop === "link" ? null : "link")}
-                    >
-                      {Icons.link} Link
-                    </button>
-                    {pop === "link" && (
-                      <TaskPickerPop
-                        listId={detail.listId}
-                        excludeIds={linkExclude}
-                        placeholder="Link a task in this list…"
-                        onPick={addLink}
-                        onClose={() => setPop(null)}
-                      />
-                    )}
-                  </div>
+                </section>
                 )}
-              </div>
-              {detail.linked.length === 0 ? (
-                <div className="tp-empty tp-empty-pad">No linked tasks.</div>
-              ) : (
-                <div className="tp-dep-group">
-                  {detail.linked.map((r) => (
-                    <RefRow
-                      key={r.id}
-                      r={r}
-                      onOpen={() => onOpenTask(r.id)}
-                      onRemove={canEdit ? () => removeLink(r.id) : undefined}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
 
-            {/* Checklists */}
-            <section className="tp-section">
-              <div className="tp-section-head">
-                <h3 className="tp-section-title">Checklists</h3>
-              </div>
-              {detail.checklists.map((cl) => {
-                const total = cl.items.length;
-                const done = cl.items.filter((i) => i.resolved).length;
-                return (
-                  <div className="tp-checklist" key={cl.id}>
-                    <div className="tp-checklist-head">
-                      {canEdit ? (
-                        <input
-                          className="tp-checklist-name"
-                          defaultValue={cl.name}
-                          onBlur={(e) => renameChecklist(cl, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                {/* Description */}
+                <section className="tp-section">
+                  <div className="tp-section-head">
+                    <h3 className="tp-section-title">Description</h3>
+                    <div className="tp-section-actions">
+                      <AiSummaryButton taskId={detail.id} />
+                      {canEdit && (
+                        <AiWriterButton
+                          text={descDraft}
+                          onReplace={(next) => {
+                            setDescDraft(next);
+                            setEditingDesc(false);
+                            void run(() =>
+                              tasksApi.update(detail.id, { description: next }),
+                            );
                           }}
                         />
-                      ) : (
-                        <span className="tp-checklist-name-ro">{cl.name}</span>
-                      )}
-                      <span className="tp-checklist-prog">
-                        {done}/{total}
-                      </span>
-                      {canEdit && (
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          title="Delete checklist"
-                          onClick={() => deleteChecklist(cl)}
-                        >
-                          {Icons.trash}
-                        </button>
-                      )}
-                    </div>
-                    {total > 0 && (
-                      <div className="progress tp-checklist-bar">
-                        <span style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
-                      </div>
-                    )}
-                    <div className="tp-items">
-                      {cl.items
-                        .slice()
-                        .sort((a, b) => a.position - b.position)
-                        .map((it) => (
-                          <div className={`tp-item${it.resolved ? " done" : ""}`} key={it.id}>
-                            <button
-                              type="button"
-                              className={`tp-item-check${it.resolved ? " on" : ""}`}
-                              aria-label={it.resolved ? "Mark undone" : "Mark done"}
-                              disabled={!canEdit}
-                              onClick={() => toggleItem(it.id, !it.resolved)}
-                            >
-                              {it.resolved && Icons.check}
-                            </button>
-                            {canEdit ? (
-                              <input
-                                className="tp-item-name"
-                                defaultValue={it.name}
-                                onBlur={(e) => renameItem(it.id, e.target.value, it.name)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                }}
-                              />
-                            ) : (
-                              <span className="tp-item-name-ro">{it.name}</span>
-                            )}
-                            {canEdit && (
-                              <select
-                                className="tp-item-assignee"
-                                value={it.assigneeUserId ?? ""}
-                                title="Assign"
-                                onChange={(e) => assignItem(it.id, e.target.value || null)}
-                              >
-                                <option value="">—</option>
-                                {members.map((m) => (
-                                  <option key={m.id} value={m.id}>
-                                    {m.fullName || m.email}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                            {canEdit && (
-                              <button
-                                type="button"
-                                className="icon-btn tp-item-del"
-                                title="Delete item"
-                                onClick={() => deleteItem(it.id)}
-                              >
-                                {Icons.close}
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      {canEdit && (
-                        <InlineAdd
-                          placeholder="Add an item…"
-                          keepFocus
-                          onCommit={(v) => addItem(cl.id, v)}
-                        />
                       )}
                     </div>
                   </div>
-                );
-              })}
-              {canEdit &&
-                (addingChecklist ? (
-                  <InlineAdd
-                    placeholder="Checklist name…"
-                    onCommit={addChecklist}
-                    onCancel={() => setAddingChecklist(false)}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    className="tp-add-row"
-                    onClick={() => setAddingChecklist(true)}
-                  >
-                    {Icons.plus} Add checklist
-                  </button>
-                ))}
-              {!canEdit && detail.checklists.length === 0 && (
-                <div className="tp-empty tp-empty-pad">No checklists.</div>
-              )}
-            </section>
+                  {canEdit ? (
+                    <textarea
+                      className="tp-desc"
+                      placeholder="Add a description…"
+                      value={descDraft}
+                      onFocus={() => setEditingDesc(true)}
+                      onChange={(e) => setDescDraft(e.target.value)}
+                      onBlur={saveDesc}
+                    />
+                  ) : detail.description ? (
+                    <p className="tp-desc-ro">{detail.description}</p>
+                  ) : (
+                    <p className="tp-empty">No description.</p>
+                  )}
+                </section>
 
-            {/* Watchers */}
-            <section className="tp-section">
-              <div className="tp-section-head">
-                <h3 className="tp-section-title">Watchers</h3>
-                {me && (
-                  <button
-                    type="button"
-                    className={`btn btn-sm ${watcherIds.has(me.id) ? "btn-soft" : "btn-ghost"}`}
-                    onClick={toggleWatch}
-                    disabled={busy}
-                  >
-                    {Icons.eye}
-                    {watcherIds.has(me.id) ? "Watching" : "Watch"}
-                  </button>
-                )}
-              </div>
-              {detail.watchers.length > 0 ? (
-                <AvatarStack users={detail.watchers} max={8} size={26} />
-              ) : (
-                <span className="tp-empty">No watchers yet.</span>
-              )}
-            </section>
+                {/* Subtasks */}
+                <section className={`tp-section${detail.subtasks.length === 0 ? " is-empty" : ""}`}>
+                  <div className="tp-section-head">
+                    <h3 className="tp-section-title">
+                      Subtasks
+                      {detail.subtasks.length > 0 && (
+                        <span className="tp-count-badge">{detail.subtasks.length}</span>
+                      )}
+                    </h3>
+                    {canEdit && (
+                      <div className="tp-section-actions">
+                        <AiSubtaskButton
+                          taskId={detail.id}
+                          onGenerated={(items) => items.forEach((n) => addSubtask(n))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="tp-subtasks">
+                    {detail.subtasks.map((st: TaskCard) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        className={`tp-subtask${st.status.type === "done" ? " done" : ""}`}
+                        onClick={() => onOpenTask(st.id)}
+                      >
+                        <span
+                          className="status-dot lg"
+                          style={{ background: st.status.color || colorFor(st.status.id) }}
+                        />
+                        <span className="tp-subtask-name">{st.name}</span>
+                        {st.assignees.length > 0 && <AvatarStack users={st.assignees} size={20} />}
+                        {Icons.chevronRight}
+                      </button>
+                    ))}
+                    {detail.subtasks.length === 0 && !subInput && (
+                      <div className="tp-empty tp-empty-pad">No subtasks yet.</div>
+                    )}
+                    {canEdit && subInput && (
+                      <InlineAdd
+                        placeholder="Subtask name…"
+                        onCommit={addSubtask}
+                        onCancel={() => setSubInput(false)}
+                      />
+                    )}
+                    {canEdit && !subInput && (
+                      <button type="button" className="tp-add-row" onClick={() => setSubInput(true)}>
+                        {Icons.plus} Add subtask
+                      </button>
+                    )}
+                  </div>
+                </section>
 
-            {/* Attachments & proofing (Module 12) */}
-            <Attachments taskId={detail.id} canEdit={canEdit} />
+                {/* Dependencies */}
+                <section
+                  className={`tp-section${detail.waitingOn.length + detail.blocking.length === 0 ? " is-empty" : ""}`}
+                >
+                  <div className="tp-section-head">
+                    <h3 className="tp-section-title">
+                      Dependencies
+                      {detail.waitingOn.length + detail.blocking.length > 0 && (
+                        <span className="tp-count-badge">
+                          {detail.waitingOn.length + detail.blocking.length}
+                        </span>
+                      )}
+                    </h3>
+                    {canEdit && (
+                      <div className="tp-pop-anchor">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setPop(pop === "dep" ? null : "dep")}
+                        >
+                          {Icons.plus} Add
+                        </button>
+                        {pop === "dep" && (
+                          <TaskPickerPop
+                            listId={detail.listId}
+                            excludeIds={depExclude}
+                            placeholder="Wait on a task in this list…"
+                            onPick={addDependency}
+                            onClose={() => setPop(null)}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {detail.waitingOn.length === 0 && detail.blocking.length === 0 ? (
+                    <div className="tp-empty tp-empty-pad">No dependencies.</div>
+                  ) : (
+                    <>
+                      {detail.waitingOn.length > 0 && (
+                        <div className="tp-dep-group">
+                          <div className="tp-dep-title">{Icons.ban} Waiting on</div>
+                          {detail.waitingOn.map((r) => (
+                            <RefRow
+                              key={r.id}
+                              r={r}
+                              onOpen={() => onOpenTask(r.id)}
+                              onRemove={
+                                canEdit ? () => removeDependency(detail.id, r.id) : undefined
+                              }
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {detail.blocking.length > 0 && (
+                        <div className="tp-dep-group">
+                          <div className="tp-dep-title">{Icons.bolt} Blocking</div>
+                          {detail.blocking.map((r) => (
+                            <RefRow
+                              key={r.id}
+                              r={r}
+                              onOpen={() => onOpenTask(r.id)}
+                              onRemove={
+                                canEdit ? () => removeDependency(r.id, detail.id) : undefined
+                              }
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
 
-            {/* Email log & compose (Module 13) */}
-            <TaskEmail taskId={detail.id} canEdit={canEdit} />
+                {/* Linked tasks */}
+                <section className={`tp-section${detail.linked.length === 0 ? " is-empty" : ""}`}>
+                  <div className="tp-section-head">
+                    <h3 className="tp-section-title">
+                      Linked tasks
+                      {detail.linked.length > 0 && (
+                        <span className="tp-count-badge">{detail.linked.length}</span>
+                      )}
+                    </h3>
+                    {canEdit && (
+                      <div className="tp-pop-anchor">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setPop(pop === "link" ? null : "link")}
+                        >
+                          {Icons.link} Link
+                        </button>
+                        {pop === "link" && (
+                          <TaskPickerPop
+                            listId={detail.listId}
+                            excludeIds={linkExclude}
+                            placeholder="Link a task in this list…"
+                            onPick={addLink}
+                            onClose={() => setPop(null)}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {detail.linked.length === 0 ? (
+                    <div className="tp-empty tp-empty-pad">No linked tasks.</div>
+                  ) : (
+                    <div className="tp-dep-group">
+                      {detail.linked.map((r) => (
+                        <RefRow
+                          key={r.id}
+                          r={r}
+                          onOpen={() => onOpenTask(r.id)}
+                          onRemove={canEdit ? () => removeLink(r.id) : undefined}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
 
-            {/* Comments & activity (Module 6) */}
-            <CommentsActivity
-              taskId={detail.id}
-              members={members}
-              canComment={canComment}
-            />
+                {/* Checklists */}
+                <section className={`tp-section${detail.checklists.length === 0 ? " is-empty" : ""}`}>
+                  <div className="tp-section-head">
+                    <h3 className="tp-section-title">Checklists</h3>
+                  </div>
+                  {detail.checklists.map((cl) => {
+                    const total = cl.items.length;
+                    const done = cl.items.filter((i) => i.resolved).length;
+                    return (
+                      <div className="tp-checklist" key={cl.id}>
+                        <div className="tp-checklist-head">
+                          {canEdit ? (
+                            <input
+                              className="tp-checklist-name"
+                              defaultValue={cl.name}
+                              onBlur={(e) => renameChecklist(cl, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              }}
+                            />
+                          ) : (
+                            <span className="tp-checklist-name-ro">{cl.name}</span>
+                          )}
+                          <span className="tp-checklist-prog">
+                            {done}/{total}
+                          </span>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Delete checklist"
+                              onClick={() => deleteChecklist(cl)}
+                            >
+                              {Icons.trash}
+                            </button>
+                          )}
+                        </div>
+                        {total > 0 && (
+                          <div className="progress tp-checklist-bar">
+                            <span style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
+                          </div>
+                        )}
+                        <div className="tp-items">
+                          {cl.items
+                            .slice()
+                            .sort((a, b) => a.position - b.position)
+                            .map((it) => (
+                              <div className={`tp-item${it.resolved ? " done" : ""}`} key={it.id}>
+                                <button
+                                  type="button"
+                                  className={`tp-item-check${it.resolved ? " on" : ""}`}
+                                  aria-label={it.resolved ? "Mark undone" : "Mark done"}
+                                  disabled={!canEdit}
+                                  onClick={() => toggleItem(it.id, !it.resolved)}
+                                >
+                                  {it.resolved && Icons.check}
+                                </button>
+                                {canEdit ? (
+                                  <input
+                                    className="tp-item-name"
+                                    defaultValue={it.name}
+                                    onBlur={(e) => renameItem(it.id, e.target.value, it.name)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                    }}
+                                  />
+                                ) : (
+                                  <span className="tp-item-name-ro">{it.name}</span>
+                                )}
+                                {canEdit && (
+                                  <select
+                                    className="tp-item-assignee"
+                                    value={it.assigneeUserId ?? ""}
+                                    title="Assign"
+                                    onChange={(e) => assignItem(it.id, e.target.value || null)}
+                                  >
+                                    <option value="">—</option>
+                                    {members.map((m) => (
+                                      <option key={m.id} value={m.id}>
+                                        {m.fullName || m.email}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    className="icon-btn tp-item-del"
+                                    title="Delete item"
+                                    onClick={() => deleteItem(it.id)}
+                                  >
+                                    {Icons.close}
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          {canEdit && (
+                            <InlineAdd
+                              placeholder="Add an item…"
+                              keepFocus
+                              onCommit={(v) => addItem(cl.id, v)}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {canEdit &&
+                    (addingChecklist ? (
+                      <InlineAdd
+                        placeholder="Checklist name…"
+                        onCommit={addChecklist}
+                        onCancel={() => setAddingChecklist(false)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="tp-add-row"
+                        onClick={() => setAddingChecklist(true)}
+                      >
+                        {Icons.plus} Add checklist
+                      </button>
+                    ))}
+                  {!canEdit && detail.checklists.length === 0 && (
+                    <div className="tp-empty tp-empty-pad">No checklists.</div>
+                  )}
+                </section>
+
+                {/* Watchers */}
+                <section className={`tp-section${detail.watchers.length === 0 ? " is-empty" : ""}`}>
+                  <div className="tp-section-head">
+                    <h3 className="tp-section-title">Watchers</h3>
+                    {me && (
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${watcherIds.has(me.id) ? "btn-soft" : "btn-ghost"}`}
+                        onClick={toggleWatch}
+                        disabled={busy}
+                      >
+                        {Icons.eye}
+                        {watcherIds.has(me.id) ? "Watching" : "Watch"}
+                      </button>
+                    )}
+                  </div>
+                  {detail.watchers.length > 0 ? (
+                    <AvatarStack users={detail.watchers} max={8} size={26} />
+                  ) : (
+                    <span className="tp-empty">No watchers yet.</span>
+                  )}
+                </section>
+              </>
+            )}
+
+            {tab === "files" && (
+              <>
+                {/* Attachments & proofing (Module 12) */}
+                <Attachments taskId={detail.id} canEdit={canEdit} />
+
+                {/* Email log & compose (Module 13) */}
+                <TaskEmail taskId={detail.id} canEdit={canEdit} />
+              </>
+            )}
+
+            {tab === "activity" && (
+              <>
+                {/* Comments & activity (Module 6) */}
+                <CommentsActivity
+                  taskId={detail.id}
+                  members={members}
+                  canComment={canComment}
+                />
+              </>
+            )}
           </div>
         )}
 

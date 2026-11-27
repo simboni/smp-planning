@@ -9526,3 +9526,22 @@ html:not([data-app="native"]) .ptr-puck { display: none; }
   .settings-section { scroll-margin-top: 64px; }
   .profile-inline { flex-basis: 100%; }
 }
+
+/* ---- Task drawer: Details / Comments & activity / Files & email tabs ---- */
+.tp-tabs {
+  display: flex; gap: 4px; margin: 18px 0 4px; border-bottom: 1px solid var(--line);
+  position: sticky; top: -20px; z-index: 3; background: var(--card); padding-top: 4px;
+}
+.tp-tab {
+  appearance: none; border: 0; background: none; cursor: pointer; font: inherit;
+  font-size: 0.86rem; font-weight: 600; color: var(--muted);
+  padding: 8px 10px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tp-tab:hover { color: var(--ink); }
+.tp-tab.active { color: var(--brand-700); border-bottom-color: var(--brand); }
+/* Empty sections shrink to one line: heading + its add button. */
+.tp-section.is-empty { margin-top: 12px; }
+.tp-section.is-empty > .tp-empty, .tp-section.is-empty > .tp-empty-pad,
+.tp-section.is-empty .tp-empty.tp-empty-pad { display: none; }
+.tp-section.is-empty .tp-section-head { margin-bottom: 4px; }
+.tp-section.is-empty .tp-section-title { opacity: 0.8; }
