@@ -14,8 +14,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icons, type IconKey } from "@/components/icons";
 import { useHierarchy } from "@/components/HierarchyProvider";
+import { openCopilot } from "@/components/BuildWithAi";
 import {
-  aiApi,
   docsApi,
   hierarchyApi,
   searchApi,
@@ -213,38 +213,33 @@ export function CommandPalette({
 
     const out: Group[] = [];
 
-    // AI: interpret the raw query as a natural-language command. Shown first
-    // so ⌘K doubles as an "ask AI" bar; routing is intentionally conservative.
-    if (needle) {
+    // Ask Copilot comes LAST (audit): Enter opens the top real match instead
+    // of running AI. With no matches it's the only item, so Enter still asks.
+    const askCopilot = (): void => {
+      if (!needle) return;
       const text = q.trim();
       out.push({
-        title: "AI",
+        title: "Copilot",
         items: [
           {
             key: "ai-command",
             icon: "zap",
-            title: `Ask AI · “${text}”`,
-            subtitle: "Interpret as a command",
+            title: `Ask Copilot · “${text}”`,
+            subtitle: "Answer or build from your workspace",
             tag: "AI",
             run: () => {
               onClose();
-              void aiApi
-                .command(text)
-                .then(({ command }) => {
-                  if (command.intent === "create_task") {
-                    router.push("/everything");
-                  } else if (command.intent === "search") {
-                    router.push(`/everything`);
-                  }
-                })
-                .catch(() => undefined);
+              openCopilot("ask", text);
             },
           },
         ],
       });
-    }
+    };
 
-    if (!results) return out;
+    if (!results) {
+      askCopilot();
+      return out;
+    }
 
     if (results.tasks.length)
       out.push({
@@ -329,6 +324,7 @@ export function CommandPalette({
           run: () => nav(`/chat?c=${c.id}`),
         })),
       });
+    askCopilot();
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, results, quickActions]);

@@ -177,6 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builderMode, setBuilderMode] = useState<CopilotMode>("ask");
+  const [builderPrompt, setBuilderPrompt] = useState("");
   const [sessionPrompt, setSessionPrompt] = useState<
     null | { resolve: (renewed: boolean) => void }
   >(null);
@@ -385,8 +386,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // carry a mode so create flows land directly on Build / Form.
   useEffect(() => {
     const onBuild = (e: Event): void => {
-      const mode = (e as CustomEvent<{ mode?: CopilotMode }>).detail?.mode;
-      setBuilderMode(mode ?? "ask");
+      const detail = (e as CustomEvent<{ mode?: CopilotMode; prompt?: string }>).detail;
+      setBuilderMode(detail?.mode ?? "ask");
+      setBuilderPrompt(detail?.prompt ?? "");
       setBuilderOpen(true);
     };
     window.addEventListener("stackup:build-with-ai", onBuild);
@@ -998,7 +1000,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <BuildWithAi
         open={builderOpen}
         initialMode={builderMode}
-        onClose={() => setBuilderOpen(false)}
+        initialPrompt={builderPrompt}
+        onClose={() => {
+          setBuilderOpen(false);
+          setBuilderPrompt("");
+        }}
       />
       {sessionPrompt && <SessionExpiryModal resolve={sessionPrompt.resolve} />}
       {newTaskOpen && <QuickTaskModal onClose={() => setNewTaskOpen(false)} />}

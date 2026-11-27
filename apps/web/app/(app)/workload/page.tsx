@@ -33,13 +33,26 @@ function loadClass(assigned: number, capacity: number): string {
   return "ok";
 }
 
-function MemberRow({ member }: { member: WorkloadMember }) {
+function MemberRow({
+  member,
+  byCount,
+  maxCount,
+}: {
+  member: WorkloadMember;
+  /** No estimates anywhere this week: compare people by task count. */
+  byCount: boolean;
+  maxCount: number;
+}) {
   const [open, setOpen] = useState(false);
   const { user, capacitySeconds, assignedSeconds, trackedSeconds, tasks } = member;
+  const unestimated = tasks.filter((t) => !t.estimateSeconds).length;
 
-  const cls = loadClass(assignedSeconds, capacitySeconds);
-  const assignedPct =
-    capacitySeconds > 0
+  const cls = byCount ? "ok" : loadClass(assignedSeconds, capacitySeconds);
+  const assignedPct = byCount
+    ? maxCount > 0
+      ? (tasks.length / maxCount) * 100
+      : 0
+    : capacitySeconds > 0
       ? Math.min(100, (assignedSeconds / capacitySeconds) * 100)
       : assignedSeconds > 0
         ? 100
@@ -67,7 +80,11 @@ function MemberRow({ member }: { member: WorkloadMember }) {
         <span className="wl-bars">
           <span
             className={`wl-bar ${cls}`}
-            title={`Assigned ${formatHours(assignedSeconds)} of ${formatHours(capacitySeconds)} capacity`}
+            title={
+              byCount
+                ? `${tasks.length} ${tasks.length === 1 ? "task" : "tasks"} this week`
+                : `Assigned ${formatHours(assignedSeconds)} of ${formatHours(capacitySeconds)} capacity`
+            }
           >
             <span className="wl-bar-fill" style={{ width: `${assignedPct}%` }} />
           </span>
@@ -80,7 +97,18 @@ function MemberRow({ member }: { member: WorkloadMember }) {
         </span>
 
         <span className={`wl-label ${cls}`}>
-          {formatHours(assignedSeconds)} / {formatHours(capacitySeconds)}
+          {byCount ? (
+            `${tasks.length} ${tasks.length === 1 ? "task" : "tasks"}`
+          ) : (
+            <>
+              {formatHours(assignedSeconds)} / {formatHours(capacitySeconds)}
+              {unestimated > 0 && (
+                <span className="wl-unest" title="Tasks this week with no time estimate">
+                  {" "}+{unestimated} unestimated
+                </span>
+              )}
+            </>
+          )}
         </span>
         <span className="wl-tracked-label" title="Tracked this week">
           {Icons.timer}
@@ -160,6 +188,11 @@ export default function WorkloadPage() {
     [weekStart],
   );
 
+  // Audit: with no estimates, everyone showed 0h / 40h. Fall back to counts.
+  const byCount =
+    !!week && !week.members.some((m) => m.tasks.some((t) => (t.estimateSeconds ?? 0) > 0));
+  const maxCount = week ? Math.max(0, ...week.members.map((m) => m.tasks.length)) : 0;
+
   return (
     <div className="page page-wide">
       <div className="page-head page-head-row">
@@ -171,6 +204,14 @@ export default function WorkloadPage() {
       </div>
 
       {error && <div className="form-error">{error}</div>}
+
+      {byCount && week && week.members.some((m) => m.tasks.length > 0) && (
+        <div className="notice" style={{ marginBottom: 14 }}>
+          {Icons.info}
+          No time estimates on this week&apos;s tasks, so workload is shown as task counts.
+          Add estimates in a task&apos;s details to see hours against capacity.
+        </div>
+      )}
 
       <div className="wl-legend">
         <span className="wl-legend-item">
@@ -201,7 +242,9 @@ export default function WorkloadPage() {
             <p>Invite teammates and assign estimated tasks to see capacity here.</p>
           </div>
         ) : (
-          week.members.map((m) => <MemberRow key={m.user.id} member={m} />)
+          week.members.map((m) => (
+            <MemberRow key={m.user.id} member={m} byCount={byCount} maxCount={maxCount} />
+          ))
         )}
       </div>
     </div>

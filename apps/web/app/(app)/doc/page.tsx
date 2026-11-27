@@ -1081,10 +1081,9 @@ function DocView() {
 
           <span className="doc-head-spacer" />
 
-          <span
-            className={`doc-save${saveState === "idle" ? " hidden" : ""}`}
-            aria-live="polite"
-          >
+          {/* Always visible (audit: "no save indicator") — idle reads
+              "All changes saved" so you know where you stand. */}
+          <span className={`doc-save${saveState === "idle" ? " idle" : ""}`} aria-live="polite">
             {saveState === "saving" ? (
               <>
                 <span className="doc-save-dot pulsing" />
@@ -1100,6 +1099,11 @@ function DocView() {
                 <span className="doc-save-dot failed" />
                 Not saved — retry
               </button>
+            ) : saveState === "idle" ? (
+              <>
+                <span className="doc-save-dot" />
+                All changes saved
+              </>
             ) : (
               <>
                 <span className="doc-save-dot" />

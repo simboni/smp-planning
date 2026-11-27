@@ -396,13 +396,20 @@ export default function DocsPage() {
     }
   };
 
-  const sorted = useMemo(
-    () =>
-      [...(docs ?? [])].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      ),
-    [docs],
-  );
+  // Audit: the list had no search or sort.
+  const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"updated" | "name">("updated");
+  const sorted = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = (docs ?? []).filter(
+      (d) => !q || d.name.toLowerCase().includes(q) || docPlace(d).toLowerCase().includes(q),
+    );
+    return list.sort((a, b) =>
+      sortBy === "name"
+        ? a.name.localeCompare(b.name)
+        : new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  }, [docs, query, sortBy]);
 
   return (
     <div className="page">
@@ -425,11 +432,41 @@ export default function DocsPage() {
 
       {error && <div className="form-error">{error}</div>}
 
+      {docs !== null && docs.length > 0 && (
+        <div className="docs-toolbar">
+          <input
+            className="input docs-search"
+            type="search"
+            placeholder="Search docs by name or place…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search docs"
+          />
+          <select
+            className="input docs-sort"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as "updated" | "name")}
+            aria-label="Sort docs"
+          >
+            <option value="updated">Recently updated</option>
+            <option value="name">Name A–Z</option>
+          </select>
+        </div>
+      )}
+
       {docs === null ? (
         <div className="docs-grid">
           <span className="skel" style={{ height: 128, borderRadius: 14 }} />
           <span className="skel" style={{ height: 128, borderRadius: 14 }} />
           <span className="skel" style={{ height: 128, borderRadius: 14 }} />
+        </div>
+      ) : sorted.length === 0 && (docs ?? []).length > 0 ? (
+        <div className="empty-state">
+          <span className="empty-ic">{Icons.search ?? Icons.docs}</span>
+          <h3>No docs match “{query.trim()}”</h3>
+          <button type="button" className="btn btn-ghost" onClick={() => setQuery("")}>
+            Clear search
+          </button>
         </div>
       ) : sorted.length === 0 ? (
         <div className="empty-state">

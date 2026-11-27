@@ -203,11 +203,19 @@ export default function TimesheetPage() {
                 type="button"
                 className="btn btn-primary btn-sm"
                 disabled={busy || sheet.totalSeconds <= 0}
+                title={
+                  sheet.totalSeconds <= 0
+                    ? "Track time on a task this week first — there's nothing to submit yet."
+                    : "Send this week's hours to your admin for approval"
+                }
                 onClick={submit}
               >
                 {Icons.send}
                 {submission?.status === "rejected" ? "Resubmit" : "Submit for approval"}
               </button>
+            )}
+            {sheet && canSubmit && sheet.totalSeconds <= 0 && (
+              <span className="ts-submit-hint">Track time this week to submit</span>
             )}
           </div>
 

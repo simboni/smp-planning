@@ -50,9 +50,9 @@ export type CopilotMode = Mode;
  * specific mode ("build" for spaces/lists/tasks, "form" for forms). AppShell
  * owns the modal and listens for this event.
  */
-export function openCopilot(mode?: CopilotMode): void {
+export function openCopilot(mode?: CopilotMode, prompt?: string): void {
   window.dispatchEvent(
-    new CustomEvent("stackup:build-with-ai", { detail: { mode } }),
+    new CustomEvent("stackup:build-with-ai", { detail: { mode, prompt } }),
   );
 }
 
@@ -245,11 +245,14 @@ export function BuildWithAi({
   open,
   onClose,
   initialMode,
+  initialPrompt,
 }: {
   open: boolean;
   onClose: () => void;
   /** Mode to land on when opened (defaults to "ask"). */
   initialMode?: CopilotMode;
+  /** Text to start with (e.g. what was typed into ⌘K). */
+  initialPrompt?: string;
 }) {
   const router = useRouter();
   const { reload } = useHierarchy();
@@ -288,7 +291,7 @@ export function BuildWithAi({
       setMode(initialMode ?? "ask");
       setStage("prompt");
       // Restore any instruction the user was mid-typing (survives a refresh).
-      setPrompt(loadDraft());
+      setPrompt(initialPrompt || loadDraft());
       setAnswer(null);
       setOpPlan(null);
       setOpOn([]);
@@ -301,7 +304,7 @@ export function BuildWithAi({
       setFormResult(null);
       setError(null);
     }
-  }, [open, initialMode]);
+  }, [open, initialMode, initialPrompt]);
 
   // Keep the draft persisted while the prompt is open so a refresh can't lose it.
   useEffect(() => {
