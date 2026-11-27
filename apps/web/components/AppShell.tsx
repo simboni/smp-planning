@@ -146,6 +146,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     workspace?.role === "guest"
       ? NAV_SECTIONS.filter((s) => s.title !== "Organization")
       : NAV_SECTIONS;
+
+  const renderNavSection = (section: { title: string; items: NavItem[] }) => (
+    <div key={section.title} className="nav-section">
+      <div className="nav-title">{section.title}</div>
+      {section.items.map((item) => {
+        const active = isNavActive(item, pathname);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`navlink${active ? " active" : ""}`}
+          >
+            {Icons[item.icon]}
+            {item.label}
+            {item.href === "/inbox" && unreadCount > 0 && (
+              <span className="nav-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+            )}
+            {item.href === "/chat" && chatUnread > 0 && (
+              <span className="nav-badge">{chatUnread > 99 ? "99+" : chatUnread}</span>
+            )}
+          </Link>
+        );
+      })}
+    </div>
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -571,34 +596,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav>
-          {visibleSections.map((section) => (
-            <div key={section.title} className="nav-section">
-              <div className="nav-title">{section.title}</div>
-              {section.items.map((item) => {
-                const active = isNavActive(item, pathname);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`navlink${active ? " active" : ""}`}
-                  >
-                    {Icons[item.icon]}
-                    {item.label}
-                    {item.href === "/inbox" && unreadCount > 0 && (
-                      <span className="nav-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
-                    )}
-                    {item.href === "/chat" && chatUnread > 0 && (
-                      <span className="nav-badge">{chatUnread > 99 ? "99+" : chatUnread}</span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-
-          <Suspense fallback={null}>
-            <FavoritesNav />
-          </Suspense>
+          {/* Workspace first, then Spaces, so the work itself sits at the top. */}
+          {visibleSections.slice(0, 1).map(renderNavSection)}
 
           <Suspense
             fallback={
@@ -609,6 +608,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <HierarchyTree />
           </Suspense>
+
+          <Suspense fallback={null}>
+            <FavoritesNav />
+          </Suspense>
+
+          {visibleSections.slice(1).map(renderNavSection)}
         </nav>
 
         <div className="sidebar-foot">
