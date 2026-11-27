@@ -56,8 +56,10 @@ async function ssoLogin(code: string) {
   const cb = await http
     .get(`/auth/oauth/google/callback?code=${code}&state=${encodeURIComponent(state)}`)
     .expect(302);
+  lastSetCookie = (cb.headers["set-cookie"] as unknown as string[] | undefined) ?? [];
   return new URL(cb.headers.location, "http://x").hash.slice(1);
 }
+let lastSetCookie: string[] = [];
 
 describe("Google SSO", () => {
   it("reports the provider as configured", async () => {
@@ -79,7 +81,9 @@ describe("Google SSO", () => {
     expect(frag.get("sso")).toBe("google");
     const identityToken = frag.get("identityToken") as string;
     expect(identityToken).toBeTruthy();
-    expect(frag.get("refreshToken")).toBeTruthy();
+    // Web flow: the refresh token is an httpOnly cookie, never in the URL.
+    expect(frag.get("refreshToken")).toBeNull();
+    expect(lastSetCookie.find((c) => c.startsWith("stackup_rt="))).toMatch(/HttpOnly/i);
 
     // The minted identity token works against an authed endpoint.
     const me = await http

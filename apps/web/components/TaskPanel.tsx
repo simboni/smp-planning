@@ -696,7 +696,7 @@ export function TaskPanel({
                       onChange={(e) => setDate("dueDate", e.target.value)}
                     />
                   </label>
-                  <DueChip due={detail.dueDate} />
+                  <DueChip due={detail.dueDate} done={detail.status?.type === "done"} />
                 </div>
               </div>
 

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ApiError,
-  clearWorkspace,
   getIdentityToken,
   getUser,
   setWorkspaceSession,
@@ -30,8 +29,9 @@ export default function SelectPage() {
       router.replace("/login");
       return;
     }
-    // Selecting a fresh workspace — drop any stale access token.
-    clearWorkspace();
+    // The current workspace session stays until another one is entered
+    // (enter() swaps token + workspace atomically), so backing out of this
+    // page — or landing here from /login — never signs you out of it.
     const user = getUser();
     if (user) setGreeting(firstName(user.fullName));
     workspacesApi

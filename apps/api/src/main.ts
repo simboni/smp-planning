@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { NestFactory } from "@nestjs/core";
+import { HttpAdapterHost, NestFactory } from "@nestjs/core";
 import express from "express";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
@@ -9,6 +9,7 @@ import { loadConfig } from "./config";
 import { autoMigrate } from "./db/migrator";
 import { SharesService } from "./shares/shares.service";
 import { FormsService } from "./forms/forms.service";
+import { PageNotFoundFilter } from "./common/page-not-found.filter";
 
 /** Escape a string for safe inclusion in an HTML attribute. */
 function htmlAttr(s: string): string {
@@ -246,6 +247,13 @@ async function bootstrap(): Promise<void> {
       next();
     });
     console.log(`serving web app from ${webDir}`);
+    const notFoundPage = resolve(root, "404.html");
+    app.useGlobalFilters(
+      new PageNotFoundFilter(
+        existsSync(notFoundPage) ? notFoundPage : null,
+        app.get(HttpAdapterHost).httpAdapter,
+      ),
+    );
   }
 
   app.enableShutdownHooks();

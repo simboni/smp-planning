@@ -164,9 +164,9 @@ export function PriorityFlag({
 /* ------------------------------------------------------------------ *
  * Due-date chip (red when overdue).
  * ------------------------------------------------------------------ */
-export function DueChip({ due }: { due: string | null }) {
+export function DueChip({ due, done = false }: { due: string | null; done?: boolean }) {
   if (!due) return null;
-  const overdue = isOverdue(due);
+  const overdue = isOverdue(due, done);
   return (
     <span className={`due-chip${overdue ? " overdue" : ""}`} title={overdue ? "Overdue" : "Due date"}>
       {Icons.calendar}

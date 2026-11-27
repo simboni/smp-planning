@@ -20,6 +20,7 @@ import {
 } from "../sprints/sprints.support";
 import type { UserRef } from "../tasks/tasks.service";
 import { optionalName, requireName, requireUuid } from "../tasks/tasks.support";
+import { sqlDueBeforeToday } from "../common/dates";
 
 // --- Shapes -----------------------------------------------------------------
 
@@ -814,7 +815,7 @@ export class DashboardsService {
          LEFT JOIN statuses s ON s.id = t.status_id
         WHERE t.archived = false
           AND t.due_date IS NOT NULL
-          AND t.due_date < now()
+          AND ${sqlDueBeforeToday("t.due_date")}
           AND s.type IS DISTINCT FROM 'done'
           AND ${where}
         GROUP BY u.id, u.full_name, u.avatar_url
@@ -827,7 +828,7 @@ export class DashboardsService {
          LEFT JOIN statuses s ON s.id = t.status_id
         WHERE t.archived = false
           AND t.due_date IS NOT NULL
-          AND t.due_date < now()
+          AND ${sqlDueBeforeToday("t.due_date")}
           AND s.type IS DISTINCT FROM 'done'
           AND NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id)
           AND ${where}`,

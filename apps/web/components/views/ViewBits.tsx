@@ -86,7 +86,7 @@ export function BoardCard({ task, onOpen }: { task: TaskCard; onOpen: () => void
       <div className="bv-card-meta">
         <BlockedChip count={task.blockedCount} />
         <PriorityFlag priority={task.priority} />
-        <DueChip due={task.dueDate} />
+        <DueChip due={task.dueDate} done={task.status?.type === "done"} />
         {task.subtaskCount > 0 && (
           <span className="task-count" title={`${task.subtaskCount} subtasks`}>
             {Icons.subtask}

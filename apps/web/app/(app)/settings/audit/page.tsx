@@ -36,6 +36,7 @@ export default function AuditPage() {
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [planGated, setPlanGated] = useState(false);
   const [denied, setDenied] = useState(false);
   const [integrity, setIntegrity] = useState<AuditIntegrity | null>(null);
   const [entityFilter, setEntityFilter] = useState("");
@@ -53,6 +54,10 @@ export default function AuditPage() {
       })
       .catch((e: unknown) => {
         if (e && typeof e === "object" && "status" in e && (e as { status: number }).status === 403) {
+          // Two different refusals: the plan doesn't include the audit log
+          // (even the owner sees this), or the role lacks the capability.
+          const msg = e instanceof Error ? e.message : "";
+          setPlanGated(/plan/i.test(msg));
           setDenied(true);
         }
         setEvents([]);
@@ -73,11 +78,21 @@ export default function AuditPage() {
         <div className="page-head">
           <h1>Audit log</h1>
         </div>
-        <div className="notice">
-          {Icons.info}
-          You do not have permission to view the audit log. Ask an admin for the
-          “View the audit log” capability.
-        </div>
+        {planGated ? (
+          <div className="notice">
+            {Icons.info}
+            <span>
+              The audit log is available on the Business plan.{" "}
+              <Link href="/settings/plans">See plans</Link>
+            </span>
+          </div>
+        ) : (
+          <div className="notice">
+            {Icons.info}
+            You do not have permission to view the audit log. Ask an admin for the
+            “View the audit log” capability.
+          </div>
+        )}
       </div>
     );
   }

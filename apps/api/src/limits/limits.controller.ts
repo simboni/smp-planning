@@ -16,7 +16,7 @@ import {
   RolesGuard,
   WorkspaceGuard,
 } from "../auth/guards";
-import { LimitsService } from "./limits.service";
+import { LimitsService, planSelfServe } from "./limits.service";
 
 /**
  * Module 20/24 — usage against limits, plus the plan catalog and the
@@ -38,6 +38,8 @@ export class LimitsController {
     return {
       plans: PLAN_IDS.map((id) => PLANS[id]),
       current: await this.limits.currentPlan(req.workspaceId!, req.userId!),
+      // False until card billing exists: paid plans can't be self-selected.
+      selfServe: planSelfServe(),
     };
   }
 

@@ -97,12 +97,21 @@ export class LimitsService {
     };
   }
 
-  /** Owner-gated plan switch (billing integration slots in front of this). */
+  /**
+   * Owner-gated plan switch. Until billing is wired up, a paid plan can't be
+   * self-selected in production (PLAN_SELF_SERVE=true re-enables it); moving
+   * to Free is always allowed. The operator sets paid plans directly.
+   */
   async selectPlan(
     workspaceId: string,
     userId: string,
     plan: PlanId,
   ): Promise<{ plan: PlanId }> {
+    if (plan !== "free" && !planSelfServe()) {
+      throw new ForbiddenException(
+        "Paid plans aren't available to switch to yet — online billing is coming soon",
+      );
+    }
     await this.db.withWorkspace(workspaceId, userId, async (client) => {
       await client.query(`UPDATE workspaces SET plan = $2 WHERE id = $1`, [
         workspaceId,
@@ -202,4 +211,15 @@ export class LimitsService {
       );
     }
   }
+}
+
+/**
+ * Whether owners may switch themselves onto paid plans. Off in production
+ * until card billing exists (PLAN_SELF_SERVE=true turns it on); on in
+ * development and tests.
+ */
+export function planSelfServe(): boolean {
+  const v = process.env.PLAN_SELF_SERVE;
+  if (v !== undefined && v !== "") return v === "true" || v === "1";
+  return process.env.NODE_ENV !== "production";
 }

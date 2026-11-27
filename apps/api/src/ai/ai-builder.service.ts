@@ -7,6 +7,7 @@ import { TasksService } from "../tasks/tasks.service";
 import { DocsService } from "../docs/docs.service";
 import { FormsService } from "../forms/forms.service";
 import { permAtLeast } from "../access/access.service";
+import { APP_TIMEZONE, localDateKey, localWeekday } from "../common/dates";
 
 /**
  * AI Builder — turns a natural-language brief into real StackUp work, and is
@@ -844,7 +845,7 @@ const SYSTEM_PLAN =
 function planPrompt(brief: string, ctx: BuilderContext): string {
   const now = new Date();
   const lines: string[] = [
-    `Today's date is ${now.toISOString().slice(0, 10)} (${now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })}, UTC). Interpret 'dueInDays' relative to today.`,
+    `Today's date is ${localDateKey(now)} (${localWeekday(now)}, ${APP_TIMEZONE}). Interpret 'dueInDays' relative to today.`,
   ];
   if (ctx.spaces.length === 0) {
     lines.push("(The workspace has no spaces you can edit yet.)");

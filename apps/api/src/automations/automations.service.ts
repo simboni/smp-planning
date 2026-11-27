@@ -24,6 +24,7 @@ import {
   validateTrigger,
 } from "./automations.support";
 import { requireCapabilityOn } from "../governance/governance.service";
+import { sqlDueBeforeToday } from "../common/dates";
 
 export interface AutomationOut {
   id: string;
@@ -634,7 +635,7 @@ export class AutomationsService implements OnModuleInit, OnModuleDestroy {
               `SELECT t.id FROM tasks t
                LEFT JOIN statuses s ON s.id = t.status_id
                WHERE t.space_id = $1 AND t.archived = false
-                 AND t.due_date < now()
+                 AND ${sqlDueBeforeToday("t.due_date")}
                  AND s.type IS DISTINCT FROM 'done'
                  AND NOT EXISTS (
                    SELECT 1 FROM automation_fired f

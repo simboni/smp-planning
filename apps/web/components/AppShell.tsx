@@ -9,6 +9,7 @@ import {
   clearTokens,
   eventsApi,
   getRefreshToken,
+  hasLegacyRefreshToken,
   getUser,
   getWorkspace,
   notificationsApi,
@@ -446,6 +447,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [menuOpen, bellOpen]);
+
+  // Sessions signed in before the refresh cookie existed still hold the token
+  // in localStorage: swap it for the httpOnly cookie once (renewSession sends
+  // it in cookie mode, the server sets the cookie, only a marker is kept).
+  useEffect(() => {
+    if (hasLegacyRefreshToken()) void renewSession();
+  }, []);
 
   const signOut = (): void => {
     // Best-effort server-side revoke of the refresh token, then clear locally.

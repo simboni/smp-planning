@@ -662,8 +662,30 @@ export const setIdentityToken = (t: string): void => {
   workspaceGeneration += 1;
   rawSet(KEYS.identity, t);
 };
+/**
+ * Web sessions keep the refresh token in an httpOnly cookie the server sets
+ * (scripts can't read it, so XSS can't steal it). localStorage then only holds
+ * this marker, meaning "signed in; the cookie has the token". The installed
+ * app has no shared cookie jar with the API, so it keeps the real token.
+ */
+export const REFRESH_COOKIE_MARK = "cookie";
+export function usesRefreshCookie(): boolean {
+  if (typeof window === "undefined") return false;
+  const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return cap?.isNativePlatform?.() !== true;
+}
+const cookieHeaders = (): Record<string, string> =>
+  usesRefreshCookie() ? { "x-auth-cookie": "1" } : {};
+/** The stored refresh token, or REFRESH_COOKIE_MARK when the cookie holds it. */
 export const getRefreshToken = (): string | null => rawGet(KEYS.refresh);
-export const setRefreshToken = (t: string): void => rawSet(KEYS.refresh, t);
+/** Store what the server returned; no token in the body means cookie mode. */
+export const setRefreshToken = (t: string | null | undefined): void =>
+  rawSet(KEYS.refresh, t || REFRESH_COOKIE_MARK);
+/** True when a real token still sits in localStorage on the web (pre-cookie session). */
+export const hasLegacyRefreshToken = (): boolean => {
+  const t = getRefreshToken();
+  return usesRefreshCookie() && !!t && t !== REFRESH_COOKIE_MARK;
+};
 export const getAccessToken = (): string | null => rawGet(KEYS.access);
 export const setAccessToken = (t: string): void => rawSet(KEYS.access, t);
 
@@ -991,7 +1013,8 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
  * ------------------------------------------------------------------ */
 interface AuthResult {
   identityToken: string;
-  refreshToken: string;
+  /** Absent in cookie mode (web): the server set an httpOnly cookie instead. */
+  refreshToken?: string;
   user: PublicUser;
   workspaces: WorkspaceSummary[];
 }
@@ -1015,21 +1038,24 @@ export interface SessionInfo {
 
 export const authApi = {
   signup: (body: { email: string; fullName: string; password: string }) =>
-    api<AuthResult>("/auth/signup", { method: "POST", body, auth: "none" }),
+    api<AuthResult>("/auth/signup", { method: "POST", body, auth: "none", headers: cookieHeaders() }),
   login: (body: { email: string; password: string }) =>
-    api<LoginResult>("/auth/login", { method: "POST", body, auth: "none" }),
+    api<LoginResult>("/auth/login", { method: "POST", body, auth: "none", headers: cookieHeaders() }),
   /** Second step when login returns a 2FA challenge. */
   login2fa: (challengeToken: string, code: string) =>
     api<AuthResult>("/auth/2fa/login", {
       method: "POST",
       body: { challengeToken, code },
       auth: "none",
+      headers: cookieHeaders(),
     }),
+  /** Pass REFRESH_COOKIE_MARK to refresh from the cookie (web). */
   refresh: (refreshToken: string) =>
-    api<{ identityToken: string; refreshToken: string }>("/auth/refresh", {
+    api<{ identityToken: string; refreshToken?: string }>("/auth/refresh", {
       method: "POST",
-      body: { refreshToken },
+      body: refreshToken === REFRESH_COOKIE_MARK ? {} : { refreshToken },
       auth: "none",
+      headers: cookieHeaders(),
     }),
   me: () => api<{ user: PublicUser }>("/auth/me", { auth: "identity" }),
   /** Update the caller's own profile (display name and/or avatar photo). */
@@ -1052,7 +1078,7 @@ export const authApi = {
   logout: (refreshToken: string) =>
     api<void>("/auth/logout", {
       method: "POST",
-      body: { refreshToken },
+      body: refreshToken === REFRESH_COOKIE_MARK ? {} : { refreshToken },
       auth: "none",
     }),
   /** Request a password-reset email (always resolves — never reveals if the
@@ -1102,7 +1128,11 @@ export const securityApi = {
   listSessions: () =>
     api<{ sessions: SessionInfo[] }>("/auth/sessions", {
       auth: "identity",
-      headers: { "x-refresh-token": getRefreshToken() ?? "" },
+      // Cookie mode: the server reads the cookie to flag this device.
+      headers:
+        getRefreshToken() === REFRESH_COOKIE_MARK
+          ? {}
+          : { "x-refresh-token": getRefreshToken() ?? "" },
     }),
   revokeSession: (id: string) =>
     api<void>(`/auth/sessions/${id}`, { method: "DELETE", auth: "identity" }),
@@ -1341,7 +1371,7 @@ export interface PlanDef {
 
 export const plansApi = {
   list: () =>
-    api<{ plans: PlanDef[]; current: PlanId }>("/plans", { auth: "access" }),
+    api<{ plans: PlanDef[]; current: PlanId; selfServe?: boolean }>("/plans", { auth: "access" }),
   select: (plan: PlanId) =>
     api<{ plan: PlanId }>("/plans/select", {
       method: "POST",

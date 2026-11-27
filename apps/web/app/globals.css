@@ -2640,7 +2640,7 @@ a.crumb:hover { text-decoration: none; color: var(--brand-700); }
 .cal-nav { display: flex; align-items: center; gap: 4px; }
 .cal-scroll { overflow-x: auto; }
 .cal-grid-head {
-  display: grid; grid-template-columns: repeat(7, 1fr); min-width: 700px;
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 700px;
   padding: 0 1px; margin-bottom: 6px;
 }
 .cal-dow {
@@ -2648,11 +2648,12 @@ a.crumb:hover { text-decoration: none; color: var(--brand-700); }
   color: var(--muted); padding: 0 8px;
 }
 .cal-grid {
-  display: grid; grid-template-columns: repeat(7, 1fr); min-width: 700px;
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 700px;
   border: 1px solid var(--line); border-radius: var(--r-lg);
   background: var(--line-soft); gap: 1px; overflow: hidden;
 }
 .cal-cell {
+  min-width: 0; overflow: hidden;
   background: var(--card); min-height: 108px; padding: 6px 6px 8px;
   display: flex; flex-direction: column; gap: 4px;
   transition: background 0.1s ease, box-shadow 0.1s ease;
@@ -2678,6 +2679,13 @@ a.crumb:hover { text-decoration: none; color: var(--brand-700); }
 .cal-pill.done .cal-pill-name { color: var(--muted); text-decoration: line-through; }
 .cal-pill[draggable="true"] { cursor: grab; }
 .cal-pill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Phones: all seven days fit the screen (no sideways scroll); pills ellipsize. */
+@media (max-width: 640px) {
+  .cal-grid-head, .cal-grid { min-width: 0; }
+  .cal-dow { padding: 0 2px; font-size: 0.62rem; text-align: center; }
+  .cal-cell { min-height: 84px; padding: 4px 3px 6px; }
+  .cal-pill { padding: 2px 4px; font-size: 0.66rem; gap: 3px; }
+}
 .cal-pill .prio-flag svg { width: 11px; height: 11px; }
 .cal-pill .milestone-mark svg { width: 10px; height: 10px; }
 .cal-more {
@@ -7170,6 +7178,9 @@ tr.tv-done .tv-name-text { color: var(--muted); text-decoration: line-through; }
   margin-bottom: 12px;
 }
 .plan-current { cursor: default; pointer-events: none; }
+.plan-soon { cursor: default; pointer-events: none; opacity: 0.7; }
+.brand-paid { border: 0; padding: 0; margin: 0; min-width: 0; }
+.brand-paid:disabled { opacity: 0.55; }
 
 /* ================================================================== *
  * Native app mode (Capacitor shell)

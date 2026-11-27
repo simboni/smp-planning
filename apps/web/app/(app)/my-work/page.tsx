@@ -112,7 +112,7 @@ function CompactRow({
       <span className="mw-task-name">{task.name}</span>
       <span className="mw-task-meta">
         <PriorityFlag priority={task.priority} />
-        <DueChip due={task.dueDate} />
+        <DueChip due={task.dueDate} done={task.status?.type === "done"} />
         <AvatarStack users={task.assignees} size={22} />
         <span className="mw-task-open" aria-hidden="true">
           Open {Icons.chevronRight}

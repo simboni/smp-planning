@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 
 /** A tiny realtime event: clients treat payloads as hints and refetch. */
@@ -20,6 +21,28 @@ type Listener = (event: RealtimeEvent) => void;
  */
 @Injectable()
 export class EventsService {
+  /**
+   * One-time stream tickets. EventSource can't send headers, so the browser
+   * used to put its access token in the stream URL (where proxies log it).
+   * Now it trades the token for a ticket that works once, within 60 seconds.
+   */
+  private readonly tickets = new Map<string, { workspaceId: string; userId: string; exp: number }>();
+
+  issueTicket(workspaceId: string, userId: string): string {
+    const now = Date.now();
+    for (const [k, v] of this.tickets) if (v.exp < now) this.tickets.delete(k);
+    const ticket = randomBytes(24).toString("base64url");
+    this.tickets.set(ticket, { workspaceId, userId, exp: now + 60_000 });
+    return ticket;
+  }
+
+  redeemTicket(ticket: string): { workspaceId: string; userId: string } | null {
+    const t = this.tickets.get(ticket);
+    if (!t) return null;
+    this.tickets.delete(ticket);
+    return t.exp >= Date.now() ? { workspaceId: t.workspaceId, userId: t.userId } : null;
+  }
+
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly presence = new Map<string, Map<string, number>>();
   // Cross-workspace taps that see EVERY publish with its workspace id. Used by

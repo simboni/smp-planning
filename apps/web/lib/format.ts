@@ -76,9 +76,13 @@ export function formatDueDate(iso: string | null): string {
   return d.getFullYear() === now.getFullYear() ? label : `${label}, ${d.getFullYear()}`;
 }
 
-/** True when a due date is strictly before today. */
-export function isOverdue(iso: string | null): boolean {
-  if (!iso) return false;
+/**
+ * True when an open task's due day is before today (local calendar days, so
+ * a task due today is never overdue). Done tasks are never overdue. Mirrors
+ * the API's rule in apps/api/src/common/dates.ts.
+ */
+export function isOverdue(iso: string | null, done = false): boolean {
+  if (!iso || done) return false;
   const delta = dayDelta(iso);
   return delta !== null && delta < 0;
 }

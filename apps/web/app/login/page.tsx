@@ -7,7 +7,9 @@ import {
   ApiError,
   authApi,
   clearTokens,
+  getAccessToken,
   getIdentityToken,
+  getWorkspace,
   googleSsoStartUrl,
   isTwoFactorChallenge,
   setIdentityToken,
@@ -61,8 +63,9 @@ export default function LoginPage() {
       return;
     }
     const identityToken = params.get("identityToken");
+    // On the web the refresh token arrives as an httpOnly cookie, not here.
     const refreshToken = params.get("refreshToken");
-    if (identityToken && refreshToken) {
+    if (identityToken) {
       setSsoBusy(true);
       window.history.replaceState(null, "", window.location.pathname);
       clearTokens();
@@ -76,11 +79,13 @@ export default function LoginPage() {
     }
   }, [router]);
 
-  // Already have an identity? Skip straight to workspace selection. (Guarded
-  // so it doesn't race the SSO-fragment handler above on the same load.)
+  // Already signed in? Go back into the workspace you were in (or pick one).
+  // Never touches the stored session. (Guarded so it doesn't race the
+  // SSO-fragment handler above on the same load.)
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash) return;
-    if (getIdentityToken()) router.replace("/select");
+    if (!getIdentityToken()) return;
+    router.replace(getAccessToken() && getWorkspace() ? "/dashboard" : "/select");
   }, [router]);
 
   // Native shell: the Google SSO callback arrives as a custom-scheme deep
@@ -124,7 +129,7 @@ export default function LoginPage() {
   // Store tokens and head to workspace selection — the shared "logged in" path.
   const finishAuth = (result: {
     identityToken: string;
-    refreshToken: string;
+    refreshToken?: string;
     user: PublicUser;
   }): void => {
     setIdentityToken(result.identityToken);

@@ -20,6 +20,12 @@ import type { IdentityTokenClaims, WorkspaceTokenClaims } from "@stackup/shared"
 import { loadConfig } from "../config";
 import { AuthService } from "./auth.service";
 import { CurrentAuth, JwtAuthGuard } from "./guards";
+import {
+  clearRefreshCookie,
+  deliverTokens,
+  readRefreshCookie,
+  setRefreshCookie,
+} from "./refresh-cookie";
 
 /** Tight per-IP limit for credential endpoints: 10 attempts/minute. */
 const AUTH_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
@@ -81,11 +87,11 @@ export class AuthController {
     }
     try {
       const result = await this.auth.googleCallback(code ?? "", state ?? "", ua(req));
-      const frag = new URLSearchParams({
-        sso: "google",
-        identityToken: result.identityToken,
-        refreshToken: result.refreshToken,
-      });
+      // Web: the refresh token goes into the httpOnly cookie, not the URL.
+      // The installed app has no cookie jar for us, so it keeps the fragment.
+      const frag = new URLSearchParams({ sso: "google", identityToken: result.identityToken });
+      if (native) frag.set("refreshToken", result.refreshToken);
+      else setRefreshCookie(req, res, result.refreshToken, this.config.refreshTtl);
       res.redirect(target(frag.toString()));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Sign-in failed";
@@ -97,6 +103,7 @@ export class AuthController {
   @Throttle(AUTH_THROTTLE)
   async signup(
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
     @Body()
     body: {
       email?: string;
@@ -116,7 +123,7 @@ export class AuthController {
         `Password must be at least ${MIN_PASSWORD} characters`,
       );
     }
-    return this.auth.signup({ email, fullName, password }, ua(req));
+    return deliverTokens(req, res, await this.auth.signup({ email, fullName, password }, ua(req)), this.config.refreshTtl);
   }
 
   @Post("login")
@@ -124,12 +131,13 @@ export class AuthController {
   @Throttle(AUTH_THROTTLE)
   async login(
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
     @Body() body: { email?: string; password?: string },
   ) {
     if (!body?.email || !body?.password) {
       throw new BadRequestException("Email and password are required");
     }
-    return this.auth.login(body.email, body.password, ua(req));
+    return deliverTokens(req, res, await this.auth.login(body.email, body.password, ua(req)), this.config.refreshTtl);
   }
 
   /** Second step of a 2FA login: exchange a challenge token + code for tokens. */
@@ -138,28 +146,42 @@ export class AuthController {
   @Throttle(AUTH_THROTTLE)
   async login2fa(
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
     @Body() body: { challengeToken?: string; code?: string },
   ) {
     if (!body?.challengeToken || !body?.code) {
       throw new BadRequestException("challengeToken and code are required");
     }
-    return this.auth.login2fa(body.challengeToken, body.code, ua(req));
+    return deliverTokens(req, res, await this.auth.login2fa(body.challengeToken, body.code, ua(req)), this.config.refreshTtl);
   }
 
   @Post("refresh")
   @HttpCode(200)
-  async refresh(@Req() req: Request, @Body() body: { refreshToken?: string }) {
-    if (!body?.refreshToken) {
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Body() body: { refreshToken?: string },
+  ) {
+    // Body token (native app, older web sessions) or the httpOnly cookie.
+    const fromCookie = body?.refreshToken ? undefined : readRefreshCookie(req);
+    const token = body?.refreshToken ?? fromCookie;
+    if (!token) {
       throw new BadRequestException("refreshToken is required");
     }
-    return this.auth.refresh(body.refreshToken, ua(req));
+    // A cookie-based refresh always answers in cookie mode.
+    return deliverTokens(req, res, await this.auth.refresh(token, ua(req)), this.config.refreshTtl, !!fromCookie);
   }
 
   /** Sign out: revoke the presented refresh token so it can't be replayed. */
   @Post("logout")
   @HttpCode(204)
-  async logout(@Body() body: { refreshToken?: string }) {
-    await this.auth.logout(body?.refreshToken ?? "");
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Body() body: { refreshToken?: string },
+  ) {
+    await this.auth.logout(body?.refreshToken ?? readRefreshCookie(req) ?? "");
+    clearRefreshCookie(req, res);
   }
 
   /**
@@ -288,12 +310,10 @@ export class AuthController {
     @CurrentAuth() auth: IdentityTokenClaims | WorkspaceTokenClaims,
   ) {
     // The client sends its own refresh token so we can flag the current device.
-    const current = req.headers["x-refresh-token"];
+    const header = req.headers["x-refresh-token"];
+    const current = (typeof header === "string" && header) || readRefreshCookie(req);
     return {
-      sessions: await this.auth.listSessions(
-        auth.sub,
-        typeof current === "string" ? current : undefined,
-      ),
+      sessions: await this.auth.listSessions(auth.sub, current || undefined),
     };
   }
 

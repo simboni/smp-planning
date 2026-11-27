@@ -124,7 +124,7 @@ export function TaskRow({
         )}
 
         <PriorityFlag priority={task.priority} />
-        <DueChip due={task.dueDate} />
+        <DueChip due={task.dueDate} done={task.status?.type === "done"} />
         <AvatarStack users={task.assignees} />
       </span>
 

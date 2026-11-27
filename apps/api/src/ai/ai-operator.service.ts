@@ -8,6 +8,7 @@ import { TasksService } from "../tasks/tasks.service";
 import { ChatService } from "../chat/chat.service";
 import { CommentsService } from "../comments/comments.service";
 import { HierarchyService } from "../hierarchy/hierarchy.service";
+import { APP_TIMEZONE, localDateKey, localWeekday } from "../common/dates";
 
 /**
  * Do (Copilot operator) — turns a command like "reassign the overdue design
@@ -515,7 +516,7 @@ function buildPrompt(
 ): string {
   const now = new Date();
   const parts: string[] = [
-    `Today's date is ${now.toISOString().slice(0, 10)} (${now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })}, UTC). Use it for any relative dates.`,
+    `Today's date is ${localDateKey(now)} (${localWeekday(now)}, ${APP_TIMEZONE}). Use it for any relative dates.`,
     `Command: ${command}`,
     "",
   ];

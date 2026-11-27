@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { Controller, Get, HttpCode, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import type { Request, Response } from "express";
 import type { WorkspaceTokenClaims } from "@stackup/shared";
@@ -28,28 +28,49 @@ export class EventsController {
     private readonly db: DbService,
   ) {}
 
+  /** Trade the access token (sent as a header) for a one-time stream ticket. */
+  @Post("ticket")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, WorkspaceGuard)
+  ticket(@Req() req: AuthedRequest): { ticket: string } {
+    return { ticket: this.events.issueTicket(req.workspaceId!, req.userId!) };
+  }
+
   @Get("stream")
   async stream(
     @Req() req: Request,
     @Res() res: Response,
+    @Query("ticket") ticket?: string,
     @Query("token") token?: string,
   ): Promise<void> {
-    let claims: WorkspaceTokenClaims;
-    try {
-      claims = await this.jwt.verifyAsync<WorkspaceTokenClaims>(token ?? "");
-    } catch {
-      res.status(401).json({ statusCode: 401, message: "Invalid or expired token" });
-      return;
+    let workspaceId: string;
+    let userId: string;
+    if (ticket) {
+      const t = this.events.redeemTicket(ticket);
+      if (!t) {
+        res.status(401).json({ statusCode: 401, message: "Invalid or expired ticket" });
+        return;
+      }
+      ({ workspaceId, userId } = t);
+    } else {
+      // Older app builds still pass the access token itself.
+      let claims: WorkspaceTokenClaims;
+      try {
+        claims = await this.jwt.verifyAsync<WorkspaceTokenClaims>(token ?? "");
+      } catch {
+        res.status(401).json({ statusCode: 401, message: "Invalid or expired token" });
+        return;
+      }
+      if (claims.typ !== "access" || !claims.wsp || !claims.sub) {
+        res.status(401).json({
+          statusCode: 401,
+          message: "Select a workspace first (access token required)",
+        });
+        return;
+      }
+      workspaceId = claims.wsp;
+      userId = claims.sub;
     }
-    if (claims.typ !== "access" || !claims.wsp || !claims.sub) {
-      res.status(401).json({
-        statusCode: 401,
-        message: "Select a workspace first (access token required)",
-      });
-      return;
-    }
-    const workspaceId = claims.wsp;
-    const userId = claims.sub;
 
     res.status(200);
     res.setHeader("Content-Type", "text/event-stream");

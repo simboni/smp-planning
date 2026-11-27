@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import type { Role } from "@stackup/shared";
 import { DbService } from "../db/db.service";
 import { AccessService } from "../access/access.service";
+import { isOverdue, sqlDueBeforeToday } from "../common/dates";
 
 /**
  * Workspace-state snapshot for Copilot grounding.
@@ -96,7 +97,7 @@ export class AiContextService {
       `SELECT
          count(*) FILTER (WHERE coalesce(s.type,'') <> 'done')::int AS open_tasks,
          count(*) FILTER (WHERE coalesce(s.type,'') <> 'done'
-                          AND t.due_date IS NOT NULL AND t.due_date < now())::int AS overdue,
+                          AND t.due_date IS NOT NULL AND ${sqlDueBeforeToday("t.due_date")})::int AS overdue,
          count(*) FILTER (WHERE s.type = 'done'
                           AND coalesce(t.completed_at, t.updated_at) > now() - interval '7 days')::int AS done_week
        FROM tasks t
@@ -188,7 +189,7 @@ export class AiContextService {
         WHERE t.space_id = ANY($1) AND t.parent_task_id IS NULL AND t.archived = false
         GROUP BY t.id, sp.name, s.name, s.type
         ORDER BY
-          (t.due_date IS NOT NULL AND t.due_date < now() AND coalesce(s.type,'') <> 'done') DESC,
+          (t.due_date IS NOT NULL AND ${sqlDueBeforeToday("t.due_date")} AND coalesce(s.type,'') <> 'done') DESC,
           t.updated_at DESC
         LIMIT $2`,
       [spaceIds, limit],
@@ -197,8 +198,7 @@ export class AiContextService {
       const statusType = (x.status_type as string) ?? null;
       const due = x.due_date ? new Date(x.due_date as string).toISOString() : null;
       const done = statusType === "done";
-      const overdue =
-        !done && !!x.due_date && new Date(x.due_date as string).getTime() < Date.now();
+      const overdue = isOverdue(x.due_date as string | null, done);
       const completedAt = x.completed_at ?? x.updated_at;
       const completedRecently =
         done &&

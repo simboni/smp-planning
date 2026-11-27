@@ -18,6 +18,7 @@ import {
   requireUuid,
   validColor,
 } from "../tasks/tasks.support";
+import { sqlDueBeforeToday } from "../common/dates";
 
 // --- Shapes -----------------------------------------------------------------
 
@@ -1084,7 +1085,7 @@ export class GoalsService {
                   (COUNT(*) FILTER (WHERE s.type = 'done'))::int AS done,
                   (COUNT(*) FILTER (WHERE s.type = 'active'))::int AS in_progress,
                   (COUNT(*) FILTER (
-                     WHERE t.due_date < now()
+                     WHERE ${sqlDueBeforeToday("t.due_date")}
                        AND (s.type IS NULL OR s.type <> 'done')))::int AS overdue
            FROM tasks t LEFT JOIN statuses s ON s.id = t.status_id
            WHERE t.archived = false AND t.list_id = ANY($1::uuid[])

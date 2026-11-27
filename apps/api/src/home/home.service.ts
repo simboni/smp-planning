@@ -8,6 +8,7 @@ import {
   TaskCard,
   TasksService,
 } from "../tasks/tasks.service";
+import { localDateKey, shiftDateKey } from "../common/dates";
 
 export interface HomeReminder {
   id: string;
@@ -59,7 +60,7 @@ function iso(v: unknown): string | null {
  * A personal dashboard for the caller (token sub), computed across the spaces
  * they can see. "Open" = assigned to the caller, not archived, and not in a
  * done-type status. Those open tasks are bucketed by due date relative to the
- * current UTC day: overdue (< today), dueToday (today), upcoming (the next 7
+ * current day (workspace timezone): overdue (< today), dueToday (today), upcoming (the next 7
  * days) and unscheduled (no due date). Cards use the exact TaskCard shape from
  * TasksService (assembled once, no N+1). Also returns the caller's open
  * reminders and their most recent task activity.
@@ -103,15 +104,11 @@ export class HomeService {
       );
       const cards = await this.tasks.assembleCards(client, rowsRes.rows);
 
-      // Day boundaries in UTC.
-      const now = new Date();
-      const todayStart = Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-      );
-      const tomorrowStart = todayStart + 86_400_000;
-      const in7 = todayStart + 7 * 86_400_000;
+      // Calendar days in the workspace timezone (common/dates): a task due
+      // today is "due today" all day, never "overdue".
+      const today = localDateKey();
+      const tomorrow = shiftDateKey(today, 1);
+      const in7 = shiftDateKey(today, 7);
 
       const overdue: TaskCard[] = [];
       const dueToday: TaskCard[] = [];
@@ -122,10 +119,10 @@ export class HomeService {
           if (unscheduled.length < BUCKET_CAP) unscheduled.push(card);
           continue;
         }
-        const due = Date.parse(card.dueDate);
-        if (due < todayStart) {
+        const due = localDateKey(card.dueDate);
+        if (due < today) {
           if (overdue.length < BUCKET_CAP) overdue.push(card);
-        } else if (due < tomorrowStart) {
+        } else if (due < tomorrow) {
           if (dueToday.length < BUCKET_CAP) dueToday.push(card);
         } else if (due <= in7) {
           if (upcoming.length < BUCKET_CAP) upcoming.push(card);

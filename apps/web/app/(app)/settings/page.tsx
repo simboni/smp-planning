@@ -7,6 +7,7 @@ import {
   clearWorkspace,
   getWorkspace,
   limitsApi,
+  plansApi,
   setWorkspace as persistWorkspace,
   workspacesApi,
   type UsageReport,
@@ -344,6 +345,18 @@ function BrandingCard({
 }) {
   const [name, setName] = useState(workspace.name);
   const [color, setColor] = useState(workspace.color || "#7B68EE");
+  // Accent color and logo are a paid feature (server-enforced); lock them on
+  // plans without it instead of letting the change fail on save.
+  const [brandingAllowed, setBrandingAllowed] = useState(true);
+  useEffect(() => {
+    plansApi
+      .list()
+      .then((r) => {
+        const def = r.plans.find((p) => p.id === r.current);
+        setBrandingAllowed(def?.features?.branding !== false);
+      })
+      .catch(() => undefined);
+  }, []);
   const [logo, setLogo] = useState(workspace.avatarUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -395,6 +408,16 @@ function BrandingCard({
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
+      {!brandingAllowed && (
+        <div className="notice">
+          {Icons.info}
+          <span>
+            Accent color and logo are included from the Unlimited plan.{" "}
+            <Link href="/settings/plans">See plans</Link>
+          </span>
+        </div>
+      )}
+      <fieldset className="brand-paid" disabled={!brandingAllowed}>
       <div className="field">
         <label className="label">Accent color</label>
         <div className="brand-colors">
@@ -432,6 +455,8 @@ function BrandingCard({
           <img src={logo.trim()} alt="Logo preview" className="brand-logo-preview" />
         )}
       </div>
+
+      </fieldset>
 
       {error && <div className="form-error">{error}</div>}
 

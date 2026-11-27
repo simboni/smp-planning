@@ -4,7 +4,7 @@
  * Module 6 — client-side realtime event hub.
  *
  * One shared EventSource per tab (module singleton) connected to
- * `GET /events/stream?token=<accessToken>`. Events arrive as JSON lines
+ * `GET /events/stream?ticket=<one-time ticket from POST /events/ticket>`. Events arrive as JSON lines
  * and are fanned out to every subscriber. The connection:
  *   - only opens in the browser and only when an access token exists;
  *   - auto-reconnects with exponential backoff (1s → 30s) on error;
@@ -47,16 +47,46 @@ function dispatch(event: RealtimeEvent): void {
   }
 }
 
+let opening = false;
+
+/** Trade the access token (as a header) for a one-time stream ticket, so the
+ *  token itself never appears in the stream URL (or in proxy logs). */
+async function fetchTicket(token: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${API_BASE}/events/ticket`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return null;
+    const body = (await r.json()) as { ticket?: unknown };
+    return typeof body.ticket === "string" ? body.ticket : null;
+  } catch {
+    return null;
+  }
+}
+
 function open(): void {
   if (typeof window === "undefined") return; // static export renders on the server
-  if (source || subscribers.size === 0) return;
+  if (source || opening || subscribers.size === 0) return;
   const token = getAccessToken();
   if (!token) return; // not signed into a workspace yet
+  opening = true;
+  void fetchTicket(token).then((ticket) => {
+    opening = false;
+    if (source || subscribers.size === 0) return;
+    if (!ticket) {
+      scheduleRetry();
+      return;
+    }
+    connect(ticket);
+  });
+}
 
+function connect(ticket: string): void {
   let es: EventSource;
   try {
     es = new EventSource(
-      `${API_BASE}/events/stream?token=${encodeURIComponent(token)}`,
+      `${API_BASE}/events/stream?ticket=${encodeURIComponent(ticket)}`,
     );
   } catch {
     scheduleRetry();

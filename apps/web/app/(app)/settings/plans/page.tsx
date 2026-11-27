@@ -29,6 +29,8 @@ export default function PlansPage() {
   const [current, setCurrent] = useState<PlanId | null>(null);
   const [role, setRole] = useState<WorkspaceRole | null>(getWorkspace()?.role ?? null);
   const [busy, setBusy] = useState<PlanId | null>(null);
+  // Paid plans can't be self-selected until billing exists (server-enforced).
+  const [selfServe, setSelfServe] = useState(false);
   const [error, setError] = useState("");
 
   const load = () =>
@@ -36,6 +38,7 @@ export default function PlansPage() {
       .list()
       .then((r) => {
         setPlans(r.plans);
+        setSelfServe(r.selfServe === true);
         setCurrent(r.current);
       })
       .catch(() => setPlans([]));
@@ -111,6 +114,10 @@ export default function PlansPage() {
                 </div>
                 {active ? (
                   <span className="btn btn-soft btn-block plan-current">Current plan</span>
+                ) : p.id !== "free" && !selfServe ? (
+                  <span className="btn btn-soft btn-block plan-soon" aria-disabled="true">
+                    Coming soon
+                  </span>
                 ) : (
                   <button
                     className={`btn ${popular ? "btn-primary" : "btn-soft"} btn-block`}
@@ -135,8 +142,9 @@ export default function PlansPage() {
 
       <div className="notice" style={{ marginTop: 20 }}>
         {Icons.info}
-        Payments aren&apos;t wired up yet — the owner can switch plans freely.
-        Card billing plugs into this page when you&apos;re ready to charge.
+        {selfServe
+          ? "Test mode: payments aren't wired up, so the owner can switch plans freely."
+          : "Online billing is coming soon. Until then, paid plans are set up for you — contact StackUp to upgrade."}
       </div>
     </div>
   );

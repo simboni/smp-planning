@@ -3,6 +3,7 @@ import type { Role } from "@stackup/shared";
 import { AiProvider } from "./ai.provider";
 import { AiContextService, type WorkspaceSnapshot } from "./ai-context.service";
 import { SearchService, type SearchResults } from "../search/search.service";
+import { APP_TIMEZONE, localDateKey, localWeekday } from "../common/dates";
 
 /**
  * Ask (Copilot Q&A) — answers a natural-language question about the workspace.
@@ -53,9 +54,7 @@ const SYSTEM_ASK =
 /** Server-side "now" as a grounding line the model can reason about. */
 function todayLine(): string {
   const now = new Date();
-  const iso = now.toISOString().slice(0, 10);
-  const weekday = now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
-  return `Today's date is ${iso} (${weekday}, UTC). Use it for all relative-time reasoning.`;
+  return `Today's date is ${localDateKey(now)} (${localWeekday(now)}, ${APP_TIMEZONE}). Use it for all relative-time reasoning. A task due today is not overdue; only tasks due before today are.`;
 }
 
 @Injectable()

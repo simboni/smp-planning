@@ -196,7 +196,7 @@ export function TableView({
                 {canEdit ? (
                   <input
                     type="date"
-                    className={`tv-date${isOverdue(t.dueDate) ? " overdue" : ""}`}
+                    className={`tv-date${isOverdue(t.dueDate, t.status?.type === "done") ? " overdue" : ""}`}
                     value={toDateInputValue(t.dueDate)}
                     onChange={(e) =>
                       onUpdateTask(
@@ -207,7 +207,7 @@ export function TableView({
                     }
                   />
                 ) : (
-                  <span className={`tv-date-ro${isOverdue(t.dueDate) ? " overdue" : ""}`}>
+                  <span className={`tv-date-ro${isOverdue(t.dueDate, t.status?.type === "done") ? " overdue" : ""}`}>
                     {t.dueDate ? formatDueDate(t.dueDate) : "—"}
                   </span>
                 )}
